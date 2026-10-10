@@ -20,6 +20,8 @@
 
 **Before any release (the user decided to wait; still in development).** Choose a licence (README says "not chosen yet"); remove the tracked `-q/` folder (three screenshots of the user's windows committed by mistake, ~10 MB) and do not carry it into the public repo; write the setup script and the PANNs download step.
 
+**Decided not to build (2026-10-11): a third-party game API.** Considered for score/game data; the catch is that the stream runs 20-60 s behind the API, so events must be held back (options were: release when the stream's own clock catches up, measure the delay once per stream from the first OCR-detected score change, or use the API only for ranking). The user chose to keep the audio + OCR design as it is, which also keeps everything local. Do not propose it again unless the user does.
+
 **Working agreements with the user.** The user is new to web development, knows Python and C. For anything architectural or about design, ask first with options, pros and cons and a recommendation; implementation details are mine to decide, with a short explanation. Keep replies short and plain. The repo is private: commit on the feature branch (never on `main`), push the branch freely, never force-push. Commit with `git -c user.name=saddi-a -c user.email=72130894+saddi-a@users.noreply.github.com` (never edit git config); the `Co-Authored-By: Claude Sonnet 5.5` trailer is fine because history is dropped when publishing. Keep this plan up to date as things change.
 
 **Gotchas learned the hard way.**
