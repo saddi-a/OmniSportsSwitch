@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from websockets.asyncio.client import connect
 
+from daemon.arrange import plan_swap
 from daemon.scoring import Config, Scorer
 from daemon.server import Server
 
@@ -164,15 +165,35 @@ def test_favourite_is_recognised_from_the_scoreboard_and_remembered_for_a_minute
     assert server.scorer.streams[6].favourite == 1.0
 
 
-def test_freeze_message_stops_swaps_and_tile_changes():
+def test_freeze_stops_tile_changes_on_main_only():
     server = Server()
-    server.handle_message({"type": "register", "tab_id": 9})
+    server.handle_message({"type": "register", "tab_id": 9, "is_main": True})
+    server.handle_message({"type": "register", "tab_id": 10})
     rects = [{"index": i, "audible": i == 0, "left": 0, "top": 0, "width": 700, "height": 480} for i in (0, 1, 2)]
-    server.handle_message({"type": "video_rect", "tab_id": 9, "rects": rects, "visible": True, "fullscreen": False})
+    for tab in (9, 10):
+        server.handle_message({"type": "video_rect", "tab_id": tab, "rects": rects, "visible": True, "fullscreen": False})
     now = time.monotonic()
     server.event_at[(9, 2)] = now
+    server.event_at[(10, 2)] = now
     server.handle_message({"type": "freeze", "value": True})
     assert server.scorer.frozen is True
-    assert server._focus_commands(now) == []
+    assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 10, "index": 2}]   # MAIN (tab 9) is locked
     server.handle_message({"type": "freeze", "value": False})
-    assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 9, "index": 2}]
+    assert {c["tab_id"] for c in server._focus_commands(now + 1)} == {9}                        # tab 10 is dwelling
+
+
+def test_while_frozen_the_winner_goes_to_left_and_main_stays():
+    config = Config(warmup_s=0, min_dwell_s=0, window_s=1.0)
+    server = Server(Scorer(config))
+    for tab, role, main in ((1, "MAIN", True), (2, "LEFT", False), (3, "RIGHT_BOT", False)):
+        server.handle_message({"type": "register", "tab_id": tab, "role": role, "is_main": main})
+    now = time.monotonic()
+    for t in (0, 1, 2, 3, 4):
+        for tab in (1, 2, 3):
+            server.scorer.add_audio(tab, 0.05, now - 5 + t)
+    server.scorer.set_event(3, now)                      # a goal in the RIGHT_BOT stream
+    server.handle_message({"type": "freeze", "value": True})
+    swap = server._next_swap(now)
+    assert (swap.promote, swap.demote) == (3, 2)         # replaces the LEFT stream
+    assert server.scorer.main == 1                       # MAIN untouched
+    assert plan_swap(swap.promote, swap.demote, server.roles, server.allowed) == [(3, "LEFT"), (2, "RIGHT_BOT")]

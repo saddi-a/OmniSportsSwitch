@@ -364,3 +364,21 @@ def test_no_favourite_means_no_bonus():
     assert s.components(1, now + 5)["fav"] == 1.0
     s.set_favourite(1, 0.3)             # anything below 1 is treated as no bonus
     assert s.components(1, now + 5)["fav"] == 1.0
+
+
+def test_replacing_a_target_slot_leaves_main_alone_and_ignores_the_freeze():
+    s = make()
+    s.frozen = True
+    now = warm_up(s)
+    now = roar(s, 3, now)
+    assert s.decide(now) is None                       # normal swaps are blocked while frozen
+    swap = s.decide(now, target=2)                     # but the LEFT stream (tab 2) can be replaced
+    assert (swap.promote, swap.demote) == (3, 2)
+    assert s.main == 1
+
+
+def test_the_main_stream_is_never_a_challenger_for_the_target_slot():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 1, now)                              # MAIN itself is the exciting one
+    assert s.decide(now, target=2) is None

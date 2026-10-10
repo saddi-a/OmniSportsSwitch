@@ -157,43 +157,54 @@ class Scorer:
         c = self.components(tab_id, now)
         return None if c is None else c["score"]
 
-    def decide(self, now: float) -> Swap | None:
+    def decide(self, now: float, target: int | None = None) -> Swap | None:
+        """Pick a stream to take over from the stream being replaced.
+
+        Normally that is MAIN (blocked while frozen). With `target`, the stream in that slot is replaced instead
+        and MAIN is left alone: used while MAIN is frozen, so the winner takes the LEFT window.
+        """
         cfg = self.config
-        if self.frozen or self.main not in self.streams:
+        replaced = self.main if target is None else target
+        if target is None and self.frozen:
+            return None
+        if replaced not in self.streams or self.main not in self.streams:
             return None
         if now - self._last_swap < cfg.min_dwell_s:
             return None
 
-        main_c = self.components(self.main, now)
-        if main_c is None and self._has_recent_audio(self.main, now):
-            return None  # MAIN is still warming up: nothing fair to compare against yet
-        main_score = main_c["score"] if main_c else 0.0
-        # MAIN shows an ad (music) or is on a break / over: any live stream without music is better than that.
-        main_idle = main_c is not None and (main_c["music"] >= cfg.idle_music or main_c["status"] != "live")
+        current_c = self.components(replaced, now)
+        if current_c is None and self._has_recent_audio(replaced, now):
+            return None  # still warming up: nothing fair to compare against yet
+        current_score = current_c["score"] if current_c else 0.0
+        # An ad (music) or a break / over: any live stream without music is better than that.
+        idle = current_c is not None and (current_c["music"] >= cfg.idle_music or current_c["status"] != "live")
         best_id, best_c = None, None
         for tab_id in self.streams:
-            if tab_id == self.main or not self.streams[tab_id].can_main:
+            if tab_id in (self.main, replaced) or not self.streams[tab_id].can_main:
                 continue
             c = self.components(tab_id, now)
             if c is None:
                 continue
-            if main_idle and (c["status"] != "live" or c["music"] >= cfg.idle_music):
+            if idle and (c["status"] != "live" or c["music"] >= cfg.idle_music):
                 continue
             if best_c is None or c["score"] > best_c["score"]:
                 best_id, best_c = tab_id, c
 
         if best_c is None:
             return None
-        if not main_idle:
+        if not idle:
             if best_c["score"] < cfg.min_score:
                 return None
-            if best_c["score"] < max(main_score * (1 + cfg.threshold), main_score + cfg.min_gap):
+            if best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + cfg.min_gap):
                 return None
 
         fmt = lambda c: " ".join(f"{k}={c[k]:.2f}" for k in ("score", "surge", "crowd", "speech", "music", "event"))
-        reason = f"{'MAIN idle: ' if main_idle else ''}challenger [{fmt(best_c)}] vs main [{fmt(main_c) if main_c else 'no data'}]"
-        swap = Swap(promote=best_id, demote=self.main, reason=reason)
-        self.main = best_id
+        label = "main" if target is None else "left (MAIN frozen)"
+        slot = "MAIN" if target is None else "LEFT"
+        reason = f"{slot + ' idle: ' if idle else ''}challenger [{fmt(best_c)}] vs {label} [{fmt(current_c) if current_c else 'no data'}]"
+        swap = Swap(promote=best_id, demote=replaced, reason=reason)
+        if target is None:
+            self.main = best_id
         self._last_swap = now
         return swap
 

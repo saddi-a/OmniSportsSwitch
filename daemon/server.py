@@ -227,11 +227,11 @@ class Server:
     def _focus_commands(self, now: float) -> list[dict]:
         """For multiview tabs: which tile should have the sound?"""
         commands = []
-        if self.scorer.frozen:
-            return commands
         for tab_id, info in self.rects.items():
             if not info["visible"] or len(info["rects"]) < 2:
                 continue
+            if self.scorer.frozen and tab_id == self.scorer.main:
+                continue  # MAIN is locked: leave which tile it shows alone
             tiles = []
             for pos, rect in enumerate(info["rects"][:4]):
                 index = rect.get("index", pos)
@@ -296,6 +296,13 @@ class Server:
             for (tab_id, i), r in results.items():
                 log.info("  ocr tab %s[%d]: clocks=%s texts=%s", tab_id, i, r["clocks"], r["texts"][:10])
 
+    def _next_swap(self, now: float):
+        """Normal swap into MAIN; while MAIN is frozen, a swap into the LEFT window instead."""
+        if not self.scorer.frozen:
+            return self.scorer.decide(now)
+        left = next((t for t, role in self.roles.items() if role == "LEFT" and t != self.scorer.main), None)
+        return self.scorer.decide(now, target=left) if left is not None else None
+
     async def _decide_loop(self) -> None:
         last_log = 0.0
         while True:
@@ -304,13 +311,14 @@ class Server:
             if now - last_log >= SCORE_LOG_INTERVAL_S:
                 self._log_scores(now)
                 last_log = now
-            swap = self.scorer.decide(now)
+            swap = self._next_swap(now)
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
                 moves = plan_swap(swap.promote, swap.demote, self.roles, self.allowed)
                 if moves is None:
                     log.info("swap refused (allowed slots or unknown slots): promote %s, demote %s", swap.promote, swap.demote)
-                    self.scorer.main = swap.demote  # nothing moved, so the old MAIN stays MAIN
+                    if not self.scorer.frozen:
+                        self.scorer.main = swap.demote  # nothing moved, so the old MAIN stays MAIN
                     continue
                 log.info("arrange: %s", moves)
                 await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
