@@ -40,6 +40,7 @@ class Config:
     event_s: float = 45.0     # a score change counts for this long, fading linearly
     min_dwell_s: float = 20.0 # after a swap, wait this long before allowing another one
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
+    idle_music: float = 0.5   # MAIN counts as idle (an ad) when music probability is at least this, or it is on a break/over
 
 
 @dataclass
@@ -159,21 +160,30 @@ class Scorer:
         if main_c is None and self._has_recent_audio(self.main, now):
             return None  # MAIN is still warming up: nothing fair to compare against yet
         main_score = main_c["score"] if main_c else 0.0
+        # MAIN shows an ad (music) or is on a break / over: any live stream without music is better than that.
+        main_idle = main_c is not None and (main_c["music"] >= cfg.idle_music or main_c["status"] != "live")
         best_id, best_c = None, None
         for tab_id in self.streams:
             if tab_id == self.main or not self.streams[tab_id].can_main:
                 continue
             c = self.components(tab_id, now)
-            if c is not None and (best_c is None or c["score"] > best_c["score"]):
+            if c is None:
+                continue
+            if main_idle and (c["status"] != "live" or c["music"] >= cfg.idle_music):
+                continue
+            if best_c is None or c["score"] > best_c["score"]:
                 best_id, best_c = tab_id, c
 
-        if best_c is None or best_c["score"] < cfg.min_score:
+        if best_c is None:
             return None
-        if best_c["score"] < max(main_score * (1 + cfg.threshold), main_score + cfg.min_gap):
-            return None
+        if not main_idle:
+            if best_c["score"] < cfg.min_score:
+                return None
+            if best_c["score"] < max(main_score * (1 + cfg.threshold), main_score + cfg.min_gap):
+                return None
 
         fmt = lambda c: " ".join(f"{k}={c[k]:.2f}" for k in ("score", "surge", "crowd", "speech", "music", "event"))
-        reason = f"challenger [{fmt(best_c)}] vs main [{fmt(main_c) if main_c else 'no data'}]"
+        reason = f"{'MAIN idle: ' if main_idle else ''}challenger [{fmt(best_c)}] vs main [{fmt(main_c) if main_c else 'no data'}]"
         swap = Swap(promote=best_id, demote=self.main, reason=reason)
         self.main = best_id
         self._last_swap = now

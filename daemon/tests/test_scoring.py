@@ -238,3 +238,68 @@ def test_loudness_alone_is_not_enough_to_win():
     steady(s, 2, 0.20, now, 5)              # 4x louder, but no crowd sound and no score change
     steady(s, 1, 0.05, now, 5)
     assert s.decide(now + 5) is None
+
+
+def ad(s, tab_id, start, seconds=5, level=0.12):
+    """Loud music, no crowd: an ad break."""
+    t = start
+    while t < start + seconds:
+        s.add_audio(tab_id, level, t)
+        s.set_tags(tab_id, 0.0, 0.3, 0.9, t)
+        t += 0.5
+    return t
+
+
+def quiet_play(s, tab_id, start, seconds=5):
+    t = start
+    while t < start + seconds:
+        s.add_audio(tab_id, 0.05, t)
+        s.set_tags(tab_id, 0.02, 0.8, 0.04, t)
+        t += 0.5
+    return t
+
+
+def test_ad_on_main_hands_over_to_a_quiet_live_stream():
+    s = make()
+    now = warm_up(s)
+    ad(s, 1, now)
+    quiet_play(s, 2, now)
+    quiet_play(s, 3, now)
+    swap = s.decide(now + 5)
+    assert swap is not None and swap.promote in (2, 3) and "MAIN idle" in swap.reason
+
+
+def test_quiet_play_on_main_is_not_replaced_by_other_quiet_streams():
+    s = make()
+    now = warm_up(s)
+    for tab in (1, 2, 3):
+        quiet_play(s, tab, now)
+    assert s.decide(now + 5) is None
+
+
+def test_ads_everywhere_means_no_swap():
+    s = make()
+    now = warm_up(s)
+    for tab in (1, 2, 3):
+        ad(s, tab, now)
+    assert s.decide(now + 5) is None
+
+
+def test_main_on_a_break_hands_over_to_a_live_stream():
+    s = make()
+    now = warm_up(s)
+    quiet_play(s, 1, now)
+    quiet_play(s, 2, now)
+    s.set_auto_state(1, "break")
+    assert s.decide(now + 5).promote == 2
+
+
+def test_idle_handover_still_respects_the_minimum_gap_between_swaps():
+    s = make(min_dwell_s=20)
+    now = warm_up(s)
+    ad(s, 1, now)
+    quiet_play(s, 2, now)
+    assert s.decide(now + 5) is not None
+    ad(s, 2, now + 5)                      # the new MAIN gets an ad right away
+    quiet_play(s, 1, now + 5)
+    assert s.decide(now + 10) is None      # too soon after the last swap
