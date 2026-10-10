@@ -270,3 +270,49 @@ def test_results_tickers_and_more_stat_graphics_are_skipped():
     for words in (["NORTHWESTERN deF BALL STATE", "45-14"], ["14", "PTS OFF TURNOVERS", "6"], ["PLAYS FOR NEGATIVE YARDS", "9"],
                   ["MOST RECEPTIONS", "44", "42"], ["INDIANA def NEBRASKA", "20-17"]):
         assert any(STAT_GRAPHIC_RE.search(t) for t in words), words
+
+
+# ---- the "scores only go up" memory must not hide a real goal after a false high reading ------------------------
+
+def run(w, texts, start, count, step=3.0):
+    """Feed the same reading `count` times from time `start`; returns (fired at any reading, next time)."""
+    fired = False
+    for i in range(count):
+        fired |= w.update(list(texts), [], start + i * step)
+    return fired, start + count * step
+
+
+def board(a, b):
+    return ["HOUSTON", str(a), "K-STATE", str(b), "2nd"]
+
+
+def test_a_real_touchdown_is_seen_after_a_false_higher_reading_that_went_away():
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 0), 0, 6)
+    run(w, board(9, 4), t, 4)                    # a graphic: 12 s of a false 9-4
+    _, t = t + 12, t + 12
+    fired, t = run(w, board(3, 0), t, 6)
+    assert not fired
+    fired, t = run(w, board(7, 0), t + 20, 6)    # a real touchdown within a minute
+    assert fired
+
+
+def test_a_score_that_held_for_a_while_becomes_the_ceiling():
+    w = ScoreWatcher()
+    _, t = run(w, board(17, 6), 0, 6)
+    fired, t = run(w, board(17, 0), t, 5)        # the logo 0 replaces the 6: not an event
+    assert not fired
+    fired, t = run(w, board(17, 6), t, 5)        # and back: restored, not a touchdown
+    assert not fired
+
+
+def test_a_real_goal_that_holds_is_kept_as_the_new_ceiling():
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 0), 0, 6)
+    fired, t = run(w, board(7, 0), t, 6)
+    assert fired
+    _, t = run(w, board(7, 0), t, 12)            # held for 36 s: it is now the baseline
+    fired, t = run(w, board(3, 0), t, 5)         # a misread drop is not an event
+    assert not fired
+    fired, t = run(w, board(7, 0), t, 5)
+    assert not fired
