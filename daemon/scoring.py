@@ -32,11 +32,11 @@ class Config:
     weights: Weights = field(default_factory=Weights)
     threshold: float = 0.40   # challenger must beat main by this fraction...
     min_gap: float = 0.15     # ...and by at least this much in absolute score
-    min_score: float = 0.20   # a challenger scoring below this never wins
+    min_score: float = 0.35   # a challenger scoring below this never wins (loudness alone is not enough)
     window_s: float = 3.0     # loudness is averaged over this many seconds
     baseline_s: float = 60.0  # time constant of each stream's long-term loudness average
     warmup_s: float = 20.0    # a stream cannot win until its baseline has had this long to settle
-    surge_cap: float = 3.0    # limit on the surge signal
+    surge_cap: float = 1.0    # limit on the surge signal (1.0 = loudness doubled): alone it stays below min_score
     event_s: float = 45.0     # a score change counts for this long, fading linearly
     min_dwell_s: float = 20.0 # after a swap, wait this long before allowing another one
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
@@ -156,6 +156,8 @@ class Scorer:
             return None
 
         main_c = self.components(self.main, now)
+        if main_c is None and self._has_recent_audio(self.main, now):
+            return None  # MAIN is still warming up: nothing fair to compare against yet
         main_score = main_c["score"] if main_c else 0.0
         best_id, best_c = None, None
         for tab_id in self.streams:
@@ -176,6 +178,10 @@ class Scorer:
         self.main = best_id
         self._last_swap = now
         return swap
+
+    def _has_recent_audio(self, tab_id: int, now: float) -> bool:
+        last = self.streams[tab_id].last_sample
+        return last is not None and now - last <= self.config.stale_s
 
     def _trim(self, stream: _Stream, now: float) -> None:
         cutoff = now - self.config.window_s

@@ -156,7 +156,7 @@ def test_missing_classifier_tags_fall_back_to_loudness_only():
     steady(s, 2, 0.20, now, 5)  # 4x louder than normal, no tags at all
     c = s.components(2, now + 5)
     assert c["crowd"] == 0.0
-    assert 2.0 < c["surge"] <= 3.0  # baseline drifts up a little while the stream stays loud
+    assert c["surge"] == pytest.approx(1.0)  # capped: loudness alone cannot dominate the score
     assert c["score"] > 0
 
 
@@ -220,3 +220,21 @@ def test_stream_restricted_away_from_main_is_skipped_for_promotion():
     steady(s, 1, 0.05, 60, 5)
     swap = s.decide(now)
     assert swap is not None and swap.promote == 3
+
+
+def test_no_swap_while_main_is_still_warming_up():
+    s = make(warmup_s=20)
+    steady(s, 1, 0.05, 40, 5)               # MAIN only just started sending audio
+    for tab in (2, 3):
+        steady(s, tab, 0.05, 0, 45)
+    now = roar(s, 2, 40)
+    assert s.components(1, now) is None     # warming up
+    assert s.decide(now) is None
+
+
+def test_loudness_alone_is_not_enough_to_win():
+    s = make()
+    now = warm_up(s)
+    steady(s, 2, 0.20, now, 5)              # 4x louder, but no crowd sound and no score change
+    steady(s, 1, 0.05, now, 5)
+    assert s.decide(now + 5) is None
