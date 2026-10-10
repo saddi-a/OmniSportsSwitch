@@ -30,11 +30,20 @@ class ScreenReader:
         # verbose=False: the download progress bar crashes on Windows consoles that can't print block characters.
         self.reader = easyocr.Reader(list(languages), gpu=gpu, model_storage_directory=str(MODEL_DIR), verbose=False)
 
-    def read(self, image: np.ndarray) -> list[tuple[str, float]]:
-        """Text found in the image, top-to-bottom then left-to-right, as (text, confidence)."""
+    def read_items(self, image: np.ndarray) -> list[dict]:
+        """Text found in the image in reading order, each with its confidence and box (x0, y0, x1, y1)."""
         found = self.reader.readtext(image, detail=1, paragraph=False)
         found = [item for item in found if item[2] >= MIN_CONFIDENCE and item[1].strip()]
-        return [(text.strip(), float(conf)) for _, text, conf in reading_order(found)]
+        items = []
+        for box, text, conf in reading_order(found):
+            xs, ys = [p[0] for p in box], [p[1] for p in box]
+            items.append({"text": text.strip(), "conf": float(conf),
+                          "x0": int(min(xs)), "y0": int(min(ys)), "x1": int(max(xs)), "y1": int(max(ys))})
+        return items
+
+    def read(self, image: np.ndarray) -> list[tuple[str, float]]:
+        """Text found in the image, top-to-bottom then left-to-right, as (text, confidence)."""
+        return [(item["text"], item["conf"]) for item in self.read_items(image)]
 
 
 def reading_order(found: list) -> list:

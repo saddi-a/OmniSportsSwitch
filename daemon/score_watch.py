@@ -96,6 +96,66 @@ def clock_seconds(text: str) -> int | None:
     return int(m.group(1)) * 60 + int(m.group(2)) if m else None
 
 
+def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | None:
+    """Score from the size and position of the text (each item has text, x0, y0, x1, y1).
+
+    Score digits are the biggest numbers on the scoreboard, two of them side by side on one line with similar
+    height, with a team name nearby. Play clocks, records, jersey numbers and "2nd & 10" are smaller or alone.
+    """
+    skip = set(clocks)
+    live = [it for it in items if it["text"].strip() not in skip and not CLOCK_RE.match(it["text"].strip())
+            and not LOGO_RE.match(it["text"].strip())]
+
+    def height(it):
+        return it["y1"] - it["y0"]
+
+    def cy(it):
+        return (it["y0"] + it["y1"]) / 2
+
+    teams = [it for it in live if TEAM_RE.match(it["text"].strip()) and len(it["text"].strip()) >= 3]
+
+    def teams_near(line_cy, line_h, x0, x1) -> int:
+        reach = 4 * line_h
+        return sum(1 for t in teams if abs(cy(t) - line_cy) <= 2.2 * line_h and t["x1"] >= x0 - reach and t["x0"] <= x1 + reach)
+
+    best, best_key = None, None
+
+    # one item holding both scores ("2-0", "10/20") with a team name on each side of it
+    for it in live:
+        text = it["text"].strip()
+        m = SCORE_PAIR_RE.match(text) or SLASH_PAIR_RE.match(text)
+        if not m:
+            continue
+        a, b = int(m.group(1)), int(m.group(2))
+        if SCORE_PAIR_RE.match(text) and max(a, b) > MAX_PAIR_VALUE:
+            continue
+        h = height(it)
+        left = any(t["x1"] <= it["x0"] + h and abs(cy(t) - cy(it)) <= 2.2 * h for t in teams)
+        right = any(t["x0"] >= it["x1"] - h and abs(cy(t) - cy(it)) <= 2.2 * h for t in teams)
+        if left and right:
+            key = (h, 2)
+            if best_key is None or key > best_key:
+                best, best_key = (a, b), key
+
+    # two separate numbers on one line, similar height, a team name close by
+    numbers = [it for it in live if NUMBER_RE.match(it["text"].strip())]
+    for i, a in enumerate(numbers):
+        for b in numbers[i + 1:]:
+            ha, hb = height(a), height(b)
+            if ha < 12 or hb < 12 or abs(cy(a) - cy(b)) > 0.5 * max(ha, hb) or not 0.7 <= ha / hb <= 1.43:
+                continue
+            left, right = (a, b) if a["x0"] <= b["x0"] else (b, a)
+            if right["x0"] - left["x1"] < 0.3 * min(ha, hb):
+                continue
+            near = teams_near((cy(a) + cy(b)) / 2, max(ha, hb), left["x0"], right["x1"])
+            if near == 0:
+                continue
+            key = (min(ha, hb), near)
+            if best_key is None or key > best_key:
+                best, best_key = (int(left["text"]), int(right["text"])), key
+    return best
+
+
 def _vote(values) -> int | None:
     value, count = Counter(values).most_common(1)[0]
     return value if count >= NEEDED else None
@@ -136,10 +196,10 @@ class ScoreWatcher:
         self._alt = (seconds[0], now)
         return False
 
-    def update(self, texts: list[str], clocks: list[str], now: float | None = None) -> bool:
+    def update(self, texts: list[str], clocks: list[str], now: float | None = None, items: list[dict] | None = None) -> bool:
         if now is not None and self._clock_jumped(clocks, now):
             self._reset()
-        score = find_score(texts, clocks)
+        score = (find_score_geo(items, clocks) if items else None) or find_score(texts, clocks)
         if score is None:
             return False
         self._history.append(score)

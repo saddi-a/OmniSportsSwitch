@@ -47,6 +47,7 @@ CLASSIFY_WINDOW = 3 * SAMPLE_RATE  # classify the last 3 seconds of each tab
 CROWD_CLASSES = ["Cheering", "Crowd", "Applause"]
 
 log = logging.getLogger("daemon")
+boxes_log = logging.getLogger("daemon.boxes")
 
 
 class Server:
@@ -195,8 +196,9 @@ class Server:
                 factor = OCR_MIN_WIDTH / image.shape[1]
                 size = (OCR_MIN_WIDTH, int(image.shape[0] * factor))
                 image = np.asarray(Image.fromarray(image).resize(size, Image.LANCZOS))
-            texts = [text for text, _ in self.screen_reader.read(image)]
-            results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts)}
+            items = self.screen_reader.read_items(image)
+            texts = [item["text"] for item in items]
+            results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts), "items": items}
         return results
 
     def _update_favourite(self, tab_id: int, now: float) -> None:
@@ -220,7 +222,7 @@ class Server:
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
                 self.fav_seen[(tab_id, index)] = (seen, now)
-            if self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now):
+            if self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now, r.get("items")):
                 self.event_at[(tab_id, index)] = now
                 self.scorer.set_event(tab_id, now)
                 log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
@@ -303,6 +305,8 @@ class Server:
                 await self._broadcast(command)
             for (tab_id, i), r in results.items():
                 log.info("  ocr tab %s[%d]: clocks=%s texts=%s", tab_id, i, r["clocks"], r["texts"][:40])
+                boxes_log.info("tab %s[%d] %s", tab_id, i,
+                               [(it["text"], it["y1"] - it["y0"], it["x0"], it["y0"]) for it in r["items"][:40]])
 
     def _next_swap(self, now: float):
         """Normal swap into MAIN; while MAIN is frozen, a swap into the LEFT window instead."""

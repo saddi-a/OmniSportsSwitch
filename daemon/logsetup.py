@@ -1,6 +1,7 @@
 """Log files that survive restarts.
 
 logs/daemon.log  everything the daemon prints (rotated at 5 MB, 5 files kept)
+logs/boxes.log   size and position of every OCR text item (for tuning), rotated at 20 MB
 logs/events.log  only what matters afterwards: goals, swaps and why, tile focus, game states, freeze,
                  warnings and errors (rotated at 2 MB, 10 files kept)
 """
@@ -33,6 +34,13 @@ def setup_logging(log_dir: pathlib.Path = LOG_DIR, console: bool = True) -> None
     events = logging.handlers.RotatingFileHandler(log_dir / "events.log", maxBytes=2_000_000, backupCount=10, encoding="utf-8")
     events.addFilter(EventFilter())
     handlers = [full, events]
+    # Text sizes and positions of every OCR reading, kept apart (it is bulky) for tuning the scoreboard reader.
+    boxes = logging.handlers.RotatingFileHandler(log_dir / "boxes.log", maxBytes=20_000_000, backupCount=3, encoding="utf-8")
+    boxes.setFormatter(formatter)
+    boxes_logger = logging.getLogger("daemon.boxes")
+    boxes_logger.setLevel(logging.INFO)
+    boxes_logger.propagate = False
+    boxes_logger.addHandler(boxes)
     if console:
         handlers.append(logging.StreamHandler())
     for handler in handlers:
