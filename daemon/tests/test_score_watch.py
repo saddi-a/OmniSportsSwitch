@@ -164,3 +164,22 @@ def test_a_touchdown_and_extra_point_are_detected_from_the_merged_reading():
     after = [(["M", "MARYLAND", "10/27", "OHIO STATE", "41", "8.20"], ["8:20"])] * 4
     assert feed(w, before) == []
     assert len(feed(w, after)) == 1
+
+
+# ---- layouts where the team and its score are one item (seen on a free-licensed Army-Navy mock-up) ------------
+
+def test_team_and_score_in_one_item():
+    assert find_score(["ARMY 12", "NAVY 58", "3.29", "3RD & 10"], ["3:29"]) == (12, 58)
+
+
+def test_labels_with_a_number_are_not_teams():
+    assert find_score(["TIMEOUTS 3", "FOULS 4"], []) is None
+    assert find_score(["ARMY 12", "TIMEOUTS 3"], []) is None            # only one real team
+
+
+def test_a_number_before_the_name_is_a_ranking_not_a_score():
+    assert find_score(["21 UCLA", "14 OREGON"], []) is None
+
+
+def test_the_same_team_twice_is_not_a_score():
+    assert find_score(["NAVY 58", "NAVY 58"], []) is None

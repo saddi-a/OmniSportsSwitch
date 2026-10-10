@@ -22,6 +22,9 @@ LOGO_RE = re.compile(r"^[A-Za-z]{0,2}\d\s?\+\s?\d$")  # channel logos such as "L
 TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, at least two ("PSG", "OHIO STATE")
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
+NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
+NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", "period", "round", "set", "game", "shots",
+              "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
 CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
@@ -72,6 +75,16 @@ def find_score(texts: list[str], clocks: list[str]) -> tuple[int, int] | None:
             n2 = next((k for k in range(b + 1, min(b + 3, len(items))) if NUMBER_RE.match(items[k])), None)
             if n2 is not None:
                 return int(items[n1]), int(items[n2])
+
+    # 2b. two items that each hold a team and its score ("ARMY 12", "NAVY 58"); a number BEFORE the name is usually
+    #     a ranking ("#21 UCLA") and is not used
+    named = []
+    for item in items:
+        m = NAME_NUMBER_RE.match(item)
+        if m and m.group(1).strip().lower() not in NOT_A_TEAM and m.group(1).strip().casefold().split()[-1] not in NOT_A_TEAM:
+            named.append((m.group(1).strip().casefold(), int(m.group(2))))
+    if len(named) >= 2 and named[0][0] != named[1][0]:
+        return named[0][1], named[1][1]
 
     # 3. any small "a-b" token
     for item in items:
