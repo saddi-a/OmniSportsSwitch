@@ -1,14 +1,33 @@
 // Service worker: browser-only actions (tracking a tab, moving tabs between windows).
 // The browser can shut it down at any time, so all state lives in chrome.storage.local:
-//   tracked:     { tabId: { title } }
-//   weights:     { tabId: number }
+//   tracked:     { tabId: { title, sport, teams, status } }   labels you set in the popup (status: live|break|over)
+//   weights:     { tabId: number }                     the tab's own weight
+//   priorities:  { sports: { name: weight }, teams: [{ name, mult }] }
 //   windowRoles: { windowId: "MAIN" | "LEFT" | ... }   <- roles belong to windows (screen slots)
 // A tab's role is simply the role of the window it is currently in.
 // Long-lived work (audio capture, daemon connection) lives in offscreen.js.
 
+importScripts("defaults.js");
+
 const FILL_ORDER = ["LEFT", "RIGHT_BOT", "RIGHT_MID", "RIGHT_TOP"]; // used once MAIN is taken
 
-const getState = () => chrome.storage.local.get({ tracked: {}, weights: {}, windowRoles: {} });
+const getState = () =>
+  chrome.storage.local.get({ tracked: {}, weights: {}, windowRoles: {}, priorities: DEFAULT_PRIORITIES });
+
+// Final weight sent to the daemon = tab weight x sport weight x best matching favourite-team bonus.
+function effectiveWeights({ tracked, weights, priorities }) {
+  const out = {};
+  for (const [id, info] of Object.entries(tracked)) {
+    const sportWeight = priorities.sports[info.sport] ?? 1;
+    const labels = (info.teams ?? "").toLowerCase();
+    let teamMult = 1;
+    for (const team of priorities.teams) {
+      if (team.name && labels.includes(team.name.toLowerCase())) teamMult = Math.max(teamMult, team.mult);
+    }
+    out[id] = (weights[id] ?? 1) * sportWeight * teamMult * (STATUS_MULT[info.status] ?? 1);
+  }
+  return out;
+}
 
 async function ensureOffscreen() {
   if (await chrome.offscreen.hasDocument()) return;
@@ -47,7 +66,7 @@ async function computeTabRoles() {
 
 async function pushState() {
   if (!(await chrome.offscreen.hasDocument())) return;
-  const { weights } = await getState();
+  const weights = effectiveWeights(await getState());
   chrome.runtime.sendMessage({ type: "state", roles: await computeTabRoles(), weights }).catch(() => {});
 }
 
@@ -57,7 +76,7 @@ async function trackTab(tabId) {
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
 
   const { tracked, weights, windowRoles } = await getState();
-  tracked[tabId] = { title: tab.title };
+  tracked[tabId] = { sport: "", teams: "", status: "live", ...tracked[tabId], title: tab.title };
   weights[tabId] ??= 1;
   if (!windowRoles[tab.windowId]) {
     // First tracked window becomes MAIN; later ones fill the other slots in order.
