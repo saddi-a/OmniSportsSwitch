@@ -93,6 +93,14 @@ async function load() {
     const slotRow = el("div", { className: "row slots" }, el("span", { textContent: "Allowed in:" }),
       ...SLOTS.map(([role, label], i) => el("label", {}, slotBoxes[i], label)));
 
+    trackedTitles[tabId] = info.title;
+    const makeMain = el("button", { textContent: role === "MAIN" ? "Hold on Main" : "Make Main",
+      title: "Put this stream on Main and keep it there for a while (the hold time is in Settings)" });
+    makeMain.onclick = () => {
+      connectSettings();
+      const send = () => settingsSend({ type: "force_main", tab_id: Number(tabId) });
+      if (settingsSocket.readyState === WebSocket.OPEN) send(); else settingsSocket.addEventListener("open", send, { once: true });
+    };
     const untrack = el("button", { textContent: "Untrack" });
     untrack.onclick = () => {
       chrome.runtime.sendMessage({ type: "untrack", tabId: Number(tabId) });
@@ -101,7 +109,7 @@ async function load() {
 
     const title = el("span", { className: "title grow", textContent: info.title, title: info.title });
     const block = el("div", { className: "tab" },
-      el("div", { className: "row" }, title, el("span", { className: "role", textContent: ROLE_NAMES[role] || "-" }), status, untrack),
+      el("div", { className: "row" }, title, el("span", { className: "role", textContent: ROLE_NAMES[role] || "-" }), status, makeMain, untrack),
       el("div", { className: "row" }, sport, teams, weight),
       slotRow);
     list.append(block);
@@ -163,7 +171,8 @@ $("freeze").onclick = async () => {
 $("reload").onclick = () => chrome.runtime.reload();
 
 // ---- Settings: the daemon describes every setting; this page only draws the form and sends edits. ----
-let settingsSocket = null;
+let settingsSocket = null;   // the popup's own connection to the daemon (settings and Make Main)
+const trackedTitles = {};    // tab id -> title, to name the held stream
 const settingsOpenGroups = new Set(); // group titles the user has opened, kept across redraws
 
 function settingsSend(message) {
@@ -174,10 +183,14 @@ function connectSettings() {
   if (settingsSocket && settingsSocket.readyState <= WebSocket.OPEN) return;
   $("settingsStatus").textContent = "Connecting to the daemon...";
   settingsSocket = new WebSocket("ws://127.0.0.1:8765");
-  settingsSocket.onopen = () => settingsSend({ type: "get_settings" });
+  settingsSocket.onopen = () => {
+    settingsSend({ type: "get_hold" });
+    if ($("settingsBox").open) settingsSend({ type: "get_settings" });
+  };
   settingsSocket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "settings") drawSettings(msg);
+    if (msg.type === "hold") drawHold(msg);
   };
   settingsSocket.onclose = () => {
     $("settingsStatus").textContent = "The daemon is not running (start it with scripts\\start_all.ps1), or it just stopped.";
@@ -228,7 +241,44 @@ function settingRow(item, error) {
   return row;
 }
 
-$("settingsBox").ontoggle = () => { if ($("settingsBox").open) connectSettings(); };
+$("settingsBox").ontoggle = () => {
+  if (!$("settingsBox").open) return;
+  if (settingsSocket && settingsSocket.readyState === WebSocket.OPEN) settingsSend({ type: "get_settings" });
+  else connectSettings();
+};
+
+// ---- Make Main: put a stream on Main and hold it there for a while ----
+let holdEnds = 0, holdTimer = null;
+
+function drawHold(msg) {
+  const box = $("holdStatus");
+  clearInterval(holdTimer);
+  box.classList.toggle("error", !!msg.error);
+  if (msg.error) {
+    $("holdText").textContent = msg.error;
+    $("holdRelease").hidden = true;
+    box.hidden = false;
+    setTimeout(() => { if (box.classList.contains("error")) box.hidden = true; }, 5000);
+    return;
+  }
+  $("holdRelease").hidden = false;
+  if (msg.tab_id == null || msg.left_s <= 0) {
+    box.hidden = true;
+    return;
+  }
+  holdEnds = Date.now() + msg.left_s * 1000;
+  const name = trackedTitles[msg.tab_id] ?? "a stream";
+  const show = () => {
+    const left = Math.max(0, Math.round((holdEnds - Date.now()) / 1000));
+    if (left === 0) { box.hidden = true; clearInterval(holdTimer); return; }
+    $("holdText").textContent = `Main is held on "${name}" for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} more.`;
+  };
+  show();
+  box.hidden = false;
+  holdTimer = setInterval(show, 1000);
+}
+
+$("holdRelease").onclick = () => settingsSend({ type: "release_hold" });
 $("settingsReset").onclick = () => {
   if ($("settingsReset").dataset.sure === "1") {
     settingsSend({ type: "reset_settings" });
@@ -241,3 +291,4 @@ $("settingsReset").onclick = () => {
 };
 
 load();
+connectSettings();   // also tells the hold status (Make Main) as soon as the popup opens

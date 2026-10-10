@@ -125,6 +125,10 @@ LAYOUT = [
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
         ("scoring.ad_penalty", "Ad penalty", "An ad in the picture scores minus this (music-only ads: half of it)."),
     ]),
+    ("Manual control", [
+        ("scoring.manual_hold_s", "Hold time for Make Main (s)", "How long a stream you put on Main with the popup button stays there."),
+        ("scoring.hold_break_score", "Score that breaks a hold", "A challenger scoring at least this still takes Main from a held stream. Higher = harder to break."),
+    ]),
     ("Signal weights", [
         ("weights.surge", "Loudness surge", "Weight of loudness above the stream's own normal."),
         ("weights.crowd", "Crowd", "Weight of cheering, crowd and applause sound."),

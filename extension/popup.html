@@ -26,10 +26,13 @@
   .setting textarea { width: 100%; box-sizing: border-box; height: 64px; }
   details details { margin-left: 8px; }
   #settingsStatus { color: #666; margin: 6px 0; }
+  .hold { background: #fff3cd; border: 1px solid #e0c36a; border-radius: 6px; padding: 6px; margin-bottom: 8px; }
+  .hold.error { background: #fdecea; border-color: #e0a09a; }
 </style>
 <h1>OmniSportsSwitch</h1>
 <div class="row"><span>This window is</span><select id="windowRole"></select></div>
 <button id="freeze">Freeze MAIN (Ctrl+Shift+P)</button>
+<div id="holdStatus" class="hold" hidden><span id="holdText"></span> <button id="holdRelease">Release</button></div>
 <button id="track" hidden>Track this tab</button>
 <div id="list"></div>
 

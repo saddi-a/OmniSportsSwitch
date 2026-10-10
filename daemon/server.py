@@ -173,6 +173,42 @@ class Server:
             log.info("settings reset to the defaults from the popup")
         return {"type": "settings", "groups": settings_module.describe(self.settings), "errors": errors}
 
+    async def handle_control_message(self, msg: dict) -> dict | None:
+        """The popup's manual control: put a stream on MAIN and hold it there, release the hold, ask for its state."""
+        kind = msg.get("type")
+        if kind not in ("force_main", "release_hold", "get_hold"):
+            return None
+        now, error = time.monotonic(), None
+        if kind == "force_main":
+            try:
+                tab_id = int(msg["tab_id"])
+                swap = self.scorer.force_main(tab_id, now)
+                if swap is not None:
+                    log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
+                    if not await self._perform_swap(swap, restore_main=True):
+                        self.scorer.release_hold()
+                        error = "this stream cannot go to Main (slot rules or windows not set)"
+                if error is None:
+                    log.info("MAIN forced to tab %s by the user, held for %.0f s", tab_id, self.scorer.hold_left(now))
+            except (ValueError, KeyError, TypeError) as e:
+                error = str(e) or "bad request"
+        elif kind == "release_hold":
+            self.scorer.release_hold()
+            log.info("hold on MAIN released by the user")
+        return {"type": "hold", "tab_id": self.scorer.hold_tab, "left_s": round(self.scorer.hold_left(now)), "error": error}
+
+    async def _perform_swap(self, swap, restore_main: bool) -> bool:
+        """Arrange the windows for a swap the scorer decided on. False if the slot rules refuse it."""
+        moves = plan_swap(swap.promote, swap.demote, self.roles, self.limits)
+        if moves is None:
+            log.info("swap refused (allowed slots or unknown slots): promote %s, demote %s", swap.promote, swap.demote)
+            if restore_main:
+                self.scorer.main = swap.demote  # nothing moved, so the old MAIN stays MAIN
+            return False
+        log.info("arrange: %s", moves)
+        await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
+        return True
+
     async def _client(self, ws) -> None:
         self.clients.add(ws)
         log.info("extension connected (%d client(s))", len(self.clients))
@@ -183,7 +219,7 @@ class Server:
                         self.handle_audio(raw)
                     else:
                         msg = json.loads(raw)
-                        reply = self.handle_settings_message(msg)
+                        reply = self.handle_settings_message(msg) or await self.handle_control_message(msg)
                         if reply is not None:
                             self.ui_clients.add(ws)
                             await ws.send(json.dumps(reply))
@@ -432,14 +468,7 @@ class Server:
                 await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
-                moves = plan_swap(swap.promote, swap.demote, self.roles, self.limits)
-                if moves is None:
-                    log.info("swap refused (allowed slots or unknown slots): promote %s, demote %s", swap.promote, swap.demote)
-                    if not self.scorer.frozen:
-                        self.scorer.main = swap.demote  # nothing moved, so the old MAIN stays MAIN
-                    continue
-                log.info("arrange: %s", moves)
-                await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
+                await self._perform_swap(swap, restore_main=not self.scorer.frozen)
 
     async def run(self, host: str = HOST, port: int = PORT) -> None:
         async with serve(self._client, host, port):

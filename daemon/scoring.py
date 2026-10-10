@@ -46,6 +46,8 @@ class Config:
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
+    manual_hold_s: float = 600.0   # "Make Main" from the popup holds the stream on MAIN this long
+    hold_break_score: float = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
     audio_ad_margin: float = 0.15  # ...and music must exceed speech by this much (stadium music under commentary is not an ad)
@@ -88,6 +90,8 @@ class Scorer:
         self.frozen = False
         self._last_swap = float("-inf")
         self._last_evict = float("-inf")
+        self.hold_tab: int | None = None     # the stream the user forced onto MAIN
+        self.hold_until = float("-inf")      # ...and until when it is held there
         self._candidate: tuple[int, int, float] | None = None  # (replaced, challenger, since when it has qualified)
 
     def register(self, tab_id: int, weight: float = 1.0, is_main: bool = False) -> None:
@@ -235,6 +239,9 @@ class Scorer:
         if best_c is None:
             self._candidate = None
             return None
+        if target is None and self.hold_left(now) > 0 and best_c["score"] < cfg.hold_break_score:
+            self._candidate = None
+            return None   # the user put this stream on MAIN: only something really exciting takes it away
         if not idle:
             if (best_c["score"] < cfg.min_score
                     or best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + cfg.min_gap)):
@@ -255,6 +262,39 @@ class Scorer:
             self.main = best_id
         self._last_swap = now
         return swap
+
+    def force_main(self, tab_id: int, now: float) -> Swap | None:
+        """The user wants this stream on MAIN. Starts a hold (see `hold_left`) and returns the swap to carry out,
+        or None if the stream already is MAIN. Raises ValueError with a message for the user if it cannot be."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            raise ValueError("this tab is not tracked")
+        if not stream.can_main:
+            raise ValueError("this tab is not allowed in Main (its slot rules)")
+        self.hold_tab, self.hold_until = tab_id, now + self.config.manual_hold_s
+        if tab_id == self.main or self.main is None:
+            self.main = tab_id
+            return None
+        swap = Swap(promote=tab_id, demote=self.main, reason="MAIN forced by the user")
+        self.main = tab_id
+        self._last_swap = now
+        return swap
+
+    def release_hold(self) -> None:
+        self.hold_tab, self.hold_until = None, float("-inf")
+
+    def hold_left(self, now: float) -> float:
+        """Seconds the stream the user forced onto MAIN is still held there (0 if there is no hold). The hold ends
+        by itself when it times out, when something else is on MAIN, or when that game is over."""
+        tab = self.hold_tab
+        if tab is None:
+            return 0.0
+        stream = self.streams.get(tab)
+        left = self.hold_until - now
+        if stream is None or left <= 0 or self.main != tab or (stream.override or stream.auto_state) == "over":
+            self.release_hold()
+            return 0.0
+        return left
 
     def evict_main(self, now: float) -> Swap | None:
         """MAIN holds a stream that may not be there (a rule changed): hand MAIN to the best stream that may.

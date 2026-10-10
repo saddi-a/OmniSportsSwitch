@@ -740,3 +740,62 @@ def test_a_live_stream_with_stadium_music_does_not_trigger_idle_handover():
     commentary_over_music(s, 1, now)
     quiet_play(s, 2, now)
     assert s.decide(now + 8) is None
+
+
+# ---- "Make Main": the user forces a stream onto MAIN and it is held there ---------------------------------------
+
+def test_forcing_a_stream_moves_it_to_main_and_holds_it():
+    s = make(manual_hold_s=600)
+    t = warm_up(s)
+    swap = s.force_main(2, t)
+    assert swap is not None and (swap.promote, swap.demote) == (2, 1) and s.main == 2
+    assert s.hold_left(t + 100) == pytest.approx(500)
+
+
+def test_a_normal_roar_elsewhere_does_not_take_main_from_a_held_stream():
+    s = make(manual_hold_s=600)
+    t = warm_up(s)
+    s.force_main(2, t)
+    t = roar(s, 3, t + 30)
+    assert s.decide(t) is None           # it would have swapped without the hold (see the roar tests above)
+    assert s.main == 2 and s.hold_left(t) > 0
+
+
+def test_something_really_exciting_breaks_the_hold():
+    s = make(manual_hold_s=600, hold_break_score=0.4)
+    t = warm_up(s)
+    s.force_main(2, t)
+    t = roar(s, 3, t + 30)
+    s.set_event(3, t)                    # a goal on top of the roar
+    swap = s.decide(t)
+    assert swap is not None and swap.promote == 3
+    assert s.hold_left(t) == 0 and s.hold_tab is None   # the hold ended because something else is on MAIN
+
+
+def test_the_hold_times_out_and_can_be_released():
+    s = make(manual_hold_s=60)
+    t = warm_up(s)
+    s.force_main(2, t)
+    assert s.hold_left(t + 61) == 0 and s.hold_tab is None
+    s.force_main(3, t + 100)
+    s.release_hold()
+    assert s.hold_left(t + 101) == 0
+
+
+def test_the_hold_ends_when_the_game_is_over():
+    s = make()
+    t = warm_up(s)
+    s.force_main(2, t)
+    s.set_status(2, "over")
+    assert s.hold_left(t + 1) == 0
+
+
+def test_forcing_the_current_main_just_holds_it_and_a_restricted_stream_is_refused():
+    s = make()
+    t = warm_up(s)
+    assert s.force_main(1, t) is None and s.hold_left(t) > 0
+    s.set_can_main(3, False)
+    with pytest.raises(ValueError):
+        s.force_main(3, t)
+    with pytest.raises(ValueError):
+        s.force_main(99, t)

@@ -14,17 +14,19 @@ baseline_s = 60.0    # each stream's "normal loudness" is averaged over about th
 warmup_s = 20.0      # a new stream cannot win (or be compared) until it has been seen this long
 surge_cap = 1.0      # limit of the loudness-surge signal (1.0 = loudness doubled)
 event_s = 45.0       # how long a goal / touchdown boosts a stream (fading)
-confirm_s = 2.0      # a challenger must keep qualifying this long before it takes over (one applause reading is not enough)
+confirm_s = 2.0      # a challenger must keep qualifying this long before it takes over (one applause reading is not enough)
 min_dwell_s = 20.0   # minimum time between two swaps
 stale_s = 5.0        # a stream with no audio for this long is ignored
 idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this
-audio_ad_margin = 0.15  # ...and music must exceed speech by this much (music under commentary is not an ad)
+audio_ad_margin = 0.15  # ...and music must exceed speech by this much (music under commentary is not an ad)
 audio_ad_votes = 3     # a music-only ad needs this many music readings...
 audio_ad_window = 5    # ...among the last this many (a single reading is never enough)
-recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)
+recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)
 audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)
 big_play_strength = 0.7   # a big play (banner like TAKEAWAY!) counts this much of a goal (1.0 = same as a goal)
 ad_penalty = 0.5     # an ad in the picture scores -0.5 (music-only: half of it), so it is pushed down, not just ignored
+manual_hold_s = 600.0   # "Make Main" in the popup holds the stream on MAIN this long (seconds)
+hold_break_score = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
 
 [weights]
 # score = surge*w + crowd*w + speech*w + music*w + event*w, plus the favourite bonus

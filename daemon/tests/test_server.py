@@ -327,3 +327,35 @@ def test_a_score_change_is_ignored_while_the_game_is_on_a_break():
         server._update_game_states(board(10, ["COMMERCIAL BREAK IN PROGRESS"]), 120.0 + i * 3)
     assert server.trackers[(13, 0)].state == "break"
     assert (13, 0) not in server.event_at
+
+
+def test_make_main_from_the_popup_arranges_the_windows_and_reports_the_hold():
+    server = Server(scorer=Scorer(Config(confirm_s=0.0)))
+    sent = []
+
+    async def capture(obj):
+        sent.append(obj)
+
+    server._broadcast = capture
+    server.handle_message({"type": "register", "tab_id": 1, "role": "MAIN", "is_main": True})
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT"})
+    reply = asyncio.run(server.handle_control_message({"type": "force_main", "tab_id": 2}))
+    assert reply["error"] is None and reply["tab_id"] == 2 and reply["left_s"] > 0
+    assert sent == [{"type": "arrange", "moves": [{"tab_id": 2, "role": "MAIN"}, {"tab_id": 1, "role": "LEFT"}]}]
+    assert server.scorer.main == 2
+    assert asyncio.run(server.handle_control_message({"type": "release_hold"}))["left_s"] == 0
+    assert asyncio.run(server.handle_control_message({"type": "get_hold"}))["tab_id"] is None
+    assert asyncio.run(server.handle_control_message({"type": "audio"})) is None
+
+
+def test_make_main_is_refused_by_the_slot_rules_and_main_stays():
+    server = Server(scorer=Scorer(Config(confirm_s=0.0)))
+
+    async def capture(obj):
+        pass
+
+    server._broadcast = capture
+    server.handle_message({"type": "register", "tab_id": 1, "role": "MAIN", "is_main": True})
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT", "allowed": ["LEFT"]})
+    reply = asyncio.run(server.handle_control_message({"type": "force_main", "tab_id": 2}))
+    assert "not allowed" in reply["error"] and server.scorer.main == 1 and reply["tab_id"] is None
