@@ -61,6 +61,18 @@ A single setup script that does all of this is on the to-do list.
 
 ## Running it
 
+### The one-click launcher
+
+`dist\OmniSportsSwitch.exe` does what `scripts\start_all.ps1` does, with no console window to close by accident. Double-click it (or put a shortcut to it on your desktop): it starts the daemon (hidden) and the Edge test profile, and stays in the system tray. Right-click the tray icon to see whether the daemon is running, and to **Start / Restart / Stop the daemon**, open Edge, open the logs, or **Quit** (leaving the daemon running, or stopping it). It only starts what is not already running, and a second copy exits by itself.
+
+The exe is small (about 26 MB) because it does not contain the daemon: it starts this project's own `.venv`, so keep it inside the project folder (`dist\` is fine). Build it once, and again after changing `launcher\launcher.py`:
+
+```powershell
+scriptsuild_launcher.ps1
+```
+
+`OmniSportsSwitch.exe --status` prints the daemon and Edge state and exits (useful for checks).
+
 ### First time
 
 1. Open PowerShell in the repository folder and run:

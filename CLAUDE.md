@@ -9,6 +9,7 @@ A local "live broadcast director": an Edge extension plus a Python daemon that w
 - `daemon/` Python daemon (see `daemon/CLAUDE.md`).
 - `extension/` Edge Manifest V3 extension, plain JS, no build step (see `extension/CLAUDE.md`).
 - `settings.toml` every threshold/weight/phrase; a test keeps it equal to the built-in defaults.
+- `launcher/` the tray launcher (`launcher.py`, built into `dist/OmniSportsSwitch.exe` by `scripts/build_launcher.ps1`; build tools in `requirements-build.txt`); it starts this project's `.venv` daemon and the test Edge profile.
 - `scripts/` PowerShell start/stop scripts, `capture_samples.py` (saves screenshots to untracked `samples/`).
 - `spike/` Phase 0 throwaway experiments. Not part of the product. Do not run its tests as part of the suite (they use the screen).
 - `models/`, `logs/`, `samples/`, `.venv/` are not tracked.

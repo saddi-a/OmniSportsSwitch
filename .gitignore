@@ -5,3 +5,7 @@ logs/
 samples/
 
 settings.local.json
+
+build/
+dist/
+*.spec

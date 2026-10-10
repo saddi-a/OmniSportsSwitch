@@ -36,6 +36,8 @@
 * Edge ends audio capture whenever a page reloads (single view to multiview): the tab drops off the daemon's list (`unregistered tab` in the log) and needs `Ctrl+Shift+Y` again. Never reload the extension for that.
 * Do not trust one reading: music probability, OCR text and clocks all flicker. Decisions use votes, memory and confirmations over several readings; new rules should too.
 
+**Launcher (2026-10-11).** `dist/OmniSportsSwitch.exe` (built by `scripts/build_launcher.ps1` from `launcher/launcher.py`, PyInstaller + pystray, ~26 MB) starts the daemon hidden and the test Edge profile and sits in the tray (start/restart/stop, open logs, quit). Tested: `--status`, single instance, closing it leaves the daemon running, command-line builders (daemon/tests/test_launcher.py). NOT tested live: starting/restarting the daemon from the tray menu (needs the daemon stopped); try it at the next restart. A fully packaged app (PyInstaller with torch/CUDA, several GB) was considered and left for a possible public release.
+
 **File map.** `README.md` (users), `CLAUDE.md` + `daemon/CLAUDE.md` + `extension/CLAUDE.md` (guides for Claude); `daemon/` (server, scoring, game_state, score_watch, sport_detect, favourites, arrange, multiview, screen_ocr, audio_classifier, settings, logsetup, tests/ with real-sample fixtures); `extension/` (manifest, background.js service worker, offscreen.js, popup, pcm-processor.js, defaults.js); `settings.toml`; `scripts/`; `spike/` (Phase 0 throwaway tests); `models/` (not tracked: PANNs checkpoint, EasyOCR models); `logs/`, `samples/` (not tracked).
 
 ## 1. Project Overview & Objective
