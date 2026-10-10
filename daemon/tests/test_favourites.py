@@ -1,4 +1,4 @@
-from daemon.favourites import match_multiplier
+from daemon.favourites import match_multiplier, match_slots
 
 FAVS = [{"name": "PSG", "mult": 2}, {"name": "Napoli", "mult": 1.5}, {"name": "AS", "mult": 3}]
 
@@ -27,3 +27,25 @@ def test_very_short_names_must_be_a_whole_item():
 
 def test_bad_entries_are_ignored():
     assert match_multiplier(["PSG"], [{"name": "", "mult": 5}, {"name": "PSG", "mult": "x"}, {"mult": 2}]) == 1.0
+
+
+RULES = [{"name": "PSG", "mult": 1, "slots": ["MAIN", "LEFT"]}, {"name": "Lyon", "mult": 1, "slots": ["LEFT", "RIGHT_BOT"]},
+         {"name": "Napoli", "mult": 2}]
+
+
+def test_team_rule_gives_its_slots():
+    assert match_slots(["PSG", "1", "0"], RULES) == {"MAIN", "LEFT"}
+
+
+def test_no_rule_when_team_is_absent_or_has_no_slots():
+    assert match_slots(["UCLA", "OREGON"], RULES) is None
+    assert match_slots(["Napoli"], RULES) is None
+
+
+def test_two_rules_keep_only_slots_both_allow():
+    assert match_slots(["PSG", "Lyon"], RULES) == {"LEFT"}
+
+
+def test_clashing_rules_do_not_leave_nothing():
+    teams = [{"name": "PSG", "slots": ["MAIN"]}, {"name": "Lyon", "slots": ["RIGHT_BOT"]}]
+    assert match_slots(["PSG", "Lyon"], teams) == {"MAIN"}

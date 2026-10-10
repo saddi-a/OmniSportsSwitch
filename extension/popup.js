@@ -1,5 +1,6 @@
 const ROLES = ["MAIN", "LEFT", "RIGHT_BOT", "RIGHT_MID", "RIGHT_TOP"];
 const $ = (id) => document.getElementById(id);
+const SLOTS = [["MAIN", "Main"], ["LEFT", "Left"], ["RIGHT_TOP", "R-top"], ["RIGHT_MID", "R-mid"], ["RIGHT_BOT", "R-bot"]];
 
 // Read one storage key, change it, write it back, then redraw.
 async function update(key, fallback, change) {
@@ -77,7 +78,6 @@ async function load() {
     status.value = info.status ?? "auto";
     status.onchange = () => update("tracked", {}, (t) => (t[tabId].status = status.value));
 
-    const SLOTS = [["MAIN", "Main"], ["LEFT", "Left"], ["RIGHT_TOP", "R-top"], ["RIGHT_MID", "R-mid"], ["RIGHT_BOT", "R-bot"]];
     const allowedNow = info.allowed ?? SLOTS.map(([role]) => role);
     const slotBoxes = SLOTS.map(([role, label]) => {
       const box = el("input", { type: "checkbox", checked: allowedNow.includes(role) });
@@ -122,7 +122,14 @@ async function load() {
     input.onchange = () => update("priorities", DEFAULT_PRIORITIES, (p) => (p.teams[i].mult = Number(input.value) || 0));
     const remove = el("button", { textContent: "x" });
     remove.onclick = async () => { await update("priorities", DEFAULT_PRIORITIES, (p) => p.teams.splice(i, 1)); load(); };
-    teamsBox.append(el("div", { className: "row" }, el("span", { className: "grow", textContent: team.name }), input, remove));
+    const slotsNow = team.slots ?? SLOTS.map(([role]) => role);
+    const boxes = SLOTS.map(([role]) => el("input", { type: "checkbox", checked: slotsNow.includes(role) }));
+    boxes.forEach((box) => (box.onchange = () => update("priorities", DEFAULT_PRIORITIES, (p) => {
+      const chosen = SLOTS.filter((_, k) => boxes[k].checked).map(([role]) => role);
+      if (chosen.length === SLOTS.length || !chosen.length) delete p.teams[i].slots; else p.teams[i].slots = chosen; // none ticked = no restriction
+    })));
+    teamsBox.append(el("div", { className: "row" }, el("span", { className: "grow", textContent: team.name }), input, remove),
+      el("div", { className: "row slots" }, ...SLOTS.map(([, label], k) => el("label", {}, boxes[k], label))));
   });
 
   $("hint").textContent =

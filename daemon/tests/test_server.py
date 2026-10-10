@@ -288,3 +288,14 @@ def test_an_unclear_report_keeps_waiting_until_the_deadline():
     server.pending_expand[20] = (2, time.monotonic() + 8)
     _report(server, 20, audible=1)                      # the sound is on a third tile: neither case
     assert 20 in server.pending_expand
+
+
+def test_team_rule_limits_slots_and_keeps_the_tabs_own_choice_on_a_clash():
+    server = Server(scorer=Scorer())
+    rules = [{"name": "PSG", "mult": 1, "slots": ["MAIN", "LEFT"]}]
+    server.handle_message({"type": "register", "tab_id": 1, "teams": "PSG vs Lyon", "favourites": rules})
+    server.handle_message({"type": "register", "tab_id": 2, "teams": "Napoli", "favourites": rules})
+    server.handle_message({"type": "register", "tab_id": 3, "teams": "PSG", "allowed": ["RIGHT_BOT"], "favourites": rules})
+    assert server.limits[1] == {"MAIN", "LEFT"}
+    assert server.limits[2] is None
+    assert server.limits[3] == {"RIGHT_BOT"}

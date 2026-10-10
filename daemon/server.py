@@ -27,7 +27,7 @@ import numpy as np
 from websockets.asyncio.server import serve
 
 from daemon.arrange import plan_swap
-from daemon.favourites import match_multiplier
+from daemon.favourites import match_multiplier, match_slots
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher
@@ -62,7 +62,9 @@ class Server:
         self.team_text: dict[int, str] = {}         # tab id -> teams typed in the popup
         self.fav_seen: dict[tuple[int, int], tuple[float, float]] = {}  # (tab, video) -> (multiplier, when seen on screen)
         self.roles: dict[int, str] = {}             # tab id -> slot its window currently has
-        self.allowed: dict[int, set[str] | None] = {}  # tab id -> slots it may use (None = any)
+        self.allowed: dict[int, set[str] | None] = {}  # tab id -> slots it may use (None = any), as ticked on the tab
+        self.limits: dict[int, set[str] | None] = {}   # tab id -> slots it may really use: tab choice + team rules
+        self.rule_seen: dict[tuple[int, int], tuple[set[str], float]] = {}  # (tab, video) -> (slots of a team rule, when seen)
         self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
         self.watchers: dict[tuple[int, int], ScoreWatcher] = {}  # (tab id, video index) -> score-change detector
         self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
@@ -86,7 +88,6 @@ class Server:
                 self.roles.pop(tab_id, None)
             allowed = msg.get("allowed")
             self.allowed[tab_id] = set(allowed) if allowed else None
-            self.scorer.set_can_main(tab_id, self.allowed[tab_id] is None or "MAIN" in self.allowed[tab_id])
             self.sports[tab_id] = msg.get("sport") or None
             if isinstance(msg.get("favourites"), list):
                 self.favourites = msg["favourites"]
@@ -107,10 +108,12 @@ class Server:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
             self.team_text.pop(msg["tab_id"], None)
-            for key in [k for k in self.fav_seen if k[0] == msg["tab_id"]]:
-                del self.fav_seen[key]
+            for seen in (self.fav_seen, self.rule_seen):
+                for key in [k for k in seen if k[0] == msg["tab_id"]]:
+                    del seen[key]
             self.roles.pop(msg["tab_id"], None)
             self.allowed.pop(msg["tab_id"], None)
+            self.limits.pop(msg["tab_id"], None)
             self.tags.pop(msg["tab_id"], None)
             log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
@@ -205,12 +208,21 @@ class Server:
         return results
 
     def _update_favourite(self, tab_id: int, now: float) -> None:
-        """A favourite counts if its name is in the tab's teams field or was read on screen in the last minute."""
+        """A favourite counts if its name is in the tab's teams field or was read on screen in the last minute.
+        The same goes for team rules that limit the slots a tab may use."""
         mult = match_multiplier([self.team_text.get(tab_id, "")], self.favourites)
         for (t, _), (m, seen_at) in self.fav_seen.items():
             if t == tab_id and now - seen_at <= FAVOURITE_MEMORY_S:
                 mult = max(mult, m)
         self.scorer.set_favourite(tab_id, mult)
+        rule = match_slots([self.team_text.get(tab_id, "")], self.favourites)
+        for (t, _), (slots, seen_at) in self.rule_seen.items():
+            if t == tab_id and now - seen_at <= FAVOURITE_MEMORY_S:
+                rule = slots if rule is None else ((rule & slots) or rule)
+        tab = self.allowed.get(tab_id)
+        limit = tab if rule is None else (rule if tab is None else ((tab & rule) or tab))  # a clash keeps the tab's own choice
+        self.limits[tab_id] = limit
+        self.scorer.set_can_main(tab_id, limit is None or "MAIN" in limit)
 
     def _update_game_states(self, results: dict, now: float) -> None:
         per_tab: dict[int, list[str]] = {}
@@ -233,6 +245,9 @@ class Server:
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
                 self.fav_seen[(tab_id, index)] = (seen, now)
+            rule = match_slots(r["texts"], self.favourites)
+            if rule:
+                self.rule_seen[(tab_id, index)] = (rule, now)
             if self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now, r.get("items")):
                 self.event_at[(tab_id, index)] = now
                 self.scorer.set_event(tab_id, now)
@@ -359,7 +374,7 @@ class Server:
             swap = self._next_swap(now)
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
-                moves = plan_swap(swap.promote, swap.demote, self.roles, self.allowed)
+                moves = plan_swap(swap.promote, swap.demote, self.roles, self.limits)
                 if moves is None:
                     log.info("swap refused (allowed slots or unknown slots): promote %s, demote %s", swap.promote, swap.demote)
                     if not self.scorer.frozen:
