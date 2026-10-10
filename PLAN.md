@@ -110,7 +110,7 @@ Score of a stream = `priority × (max(0, 0.3·surge + 1.0·crowd − 0.2·speech
 ## 7. Known risks & open items
 
 1. **Hardware acceleration must stay off in Edge** (the user's setting). With it on, screen capture of DRM video may go black. Re-check if it ever changes.
-2. **Per-session setup:** after a reload, windows have new ids, so window roles are set again and tabs are tracked again (one click per tab; Edge requires the click). A restart of Edge or the extension drops all tracking.
+2. **Per-session setup:** tabs must be tracked again after any restart (one click per tab; Edge requires the click) and the freeze is reset. Window roles come back automatically: the extension remembers where each role's window sits on screen and gives the role back to the window at that position. If you move a window, its remembered position updates.
 3. **OCR reads everything in the video area**, including ad boards, popups and graphics. Mitigations in place (standalone repeated captions, score pairs, thresholds), but false readings can still happen. Watch the daemon log (`score change`, `game state`, `focus tile`).
 4. **Not built yet:** teams and sport detected from the picture (the sport dropdown and teams field are still manual; the sport must be set for the per-sport break rules), freeze hotkey (`Ctrl+Shift+P`), remembering window roles across Edge restarts, a settings file for the scoring thresholds.
 5. **Unverified in live use:** the three-way rotation for allowed slots, a goal moving tile focus, and break detection on American football (set the sport on the tab).
@@ -123,4 +123,4 @@ Score of a stream = `priority × (max(0, 0.3·surge + 1.0·crowd − 0.2·speech
 * **Phase 2 — Audio classification and OCR: done.** PANNs CNN14 and EasyOCR run locally on the RTX 3080 (about 5 ms and 0.2 s per pass).
 * **Phase 3 — Extension: done.** Popup (window role, tracking, status, sport, teams, weight, allowed slots, priorities, reload), offscreen page (audio, WebSocket), service worker (tracking, arrange, tile expand).
 * **Phase 4 — Integration: done and running.** Audio, OCR, scoring, window swaps, muting and multiview focus work together.
-* **Phase 5 — Safeguards and polish: open.** Freeze hotkey, persistence across restarts, teams and sport from the picture, settings file, a one-command launcher (scripts exist: `scripts/start_test_edge.ps1`, `scripts/start_daemon.ps1`).
+* **Phase 5 — Safeguards and polish: in progress.** Done: freeze hotkey (`Ctrl+Shift+P`, LOCK badge), permanent logs (`logs/daemon.log`, `logs/events.log`), window roles remembered across restarts. Open: sport detected from the picture, one-command start, settings file, better image-based ad and break detection.

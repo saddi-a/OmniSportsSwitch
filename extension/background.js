@@ -4,6 +4,8 @@
 //   weights:     { tabId: number }                     the tab's own weight
 //   priorities:  { sports: { name: weight }, teams: [{ name, mult }] }
 //   windowRoles: { windowId: "MAIN" | "LEFT" | ... }   <- roles belong to windows (screen slots)
+//   layout:      [{ role, cx, cy }]                   <- where each role's window sat on screen (centre), so roles
+//                                                        can be given back to windows after a restart
 // A tab's role is simply the role of the window it is currently in.
 // Long-lived work (audio capture, daemon connection) lives in offscreen.js.
 
@@ -207,6 +209,54 @@ async function performArrange(moves) {
   await pushState();
 }
 
+// Remember where each role's window sits on screen. Entries for roles whose window is currently closed are kept.
+async function saveLayout() {
+  const { windowRoles } = await getState();
+  const { layout = [] } = await chrome.storage.local.get("layout");
+  const byRole = Object.fromEntries(layout.map((e) => [e.role, e]));
+  for (const [id, role] of Object.entries(windowRoles)) {
+    try {
+      const w = await chrome.windows.get(Number(id));
+      byRole[role] = { role, cx: w.left + w.width / 2, cy: w.top + w.height / 2 };
+    } catch {
+      // window is gone
+    }
+  }
+  await chrome.storage.local.set({ layout: Object.values(byRole) });
+}
+
+// Give each window without a role the saved role whose position it matches (nearest centre, and close enough).
+async function restoreRoles() {
+  const { windowRoles } = await getState();
+  const { layout = [] } = await chrome.storage.local.get("layout");
+  const taken = new Set(Object.values(windowRoles));
+  let changed = false;
+  for (const w of await chrome.windows.getAll()) {
+    if (windowRoles[w.id] || w.type !== "normal") continue;
+    const cx = w.left + w.width / 2;
+    const cy = w.top + w.height / 2;
+    const best = layout
+      .filter((e) => !taken.has(e.role))
+      .map((e) => ({ e, distance: Math.hypot(e.cx - cx, e.cy - cy) }))
+      .sort((a, b) => a.distance - b.distance)[0];
+    if (best && best.distance < Math.max(w.width, w.height) * 0.4) {
+      windowRoles[w.id] = best.e.role;
+      taken.add(best.e.role);
+      changed = true;
+    }
+  }
+  if (changed) await chrome.storage.local.set({ windowRoles });
+}
+
+// Windows opened later (Edge restoring a session) get their role once they have settled in place.
+chrome.windows.onCreated.addListener(() => setTimeout(restoreRoles, 1500));
+// Moving a window updates where its role is remembered.
+let layoutTimer = null;
+chrome.windows.onBoundsChanged.addListener(() => {
+  clearTimeout(layoutTimer);
+  layoutTimer = setTimeout(saveLayout, 2000);
+});
+
 // Audio captures do not survive an extension reload or browser restart, so forget tracked tabs and
 // drop roles of windows that no longer exist.
 async function reconcile() {
@@ -214,6 +264,8 @@ async function reconcile() {
   const { windowRoles } = await getState();
   for (const id of Object.keys(windowRoles)) if (!open.has(id)) delete windowRoles[id];
   await chrome.storage.local.set({ tracked: {}, weights: {}, windowRoles, frozen: false });
+  await restoreRoles();
+  await saveLayout(); // remember where the windows that already have a role sit
 }
 chrome.runtime.onInstalled.addListener(reconcile);
 chrome.runtime.onStartup.addListener(reconcile);
@@ -250,6 +302,8 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 });
 
 // The popup edits window roles and weights by writing storage; forward the change to the offscreen page.
-chrome.storage.onChanged.addListener((_, area) => {
-  if (area === "local") pushState();
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes.windowRoles) saveLayout();
+  pushState();
 });
