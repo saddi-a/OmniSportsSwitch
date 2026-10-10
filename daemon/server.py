@@ -54,8 +54,10 @@ boxes_log = logging.getLogger("daemon.boxes")
 
 
 class Server:
-    def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None):
+    def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None):
         self.scorer = scorer or Scorer()
+        self.settings = settings  # daemon.settings.Settings; the popup edits it live
+        self.ui_clients = set()   # sockets of the popup: they get settings replies, not arrange commands
         self.classifier = classifier
         self.screen_reader = screen_reader
         self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
@@ -149,6 +151,24 @@ class Server:
             buf = samples if old is None else np.concatenate([old, samples])
             self.buffers[tab_id] = buf[-CLASSIFY_WINDOW:]
 
+    def handle_settings_message(self, msg: dict) -> dict | None:
+        """The popup's settings requests. Returns the reply, or None if the message is not about settings."""
+        from daemon import settings as settings_module
+
+        kind = msg.get("type")
+        if kind not in ("get_settings", "set_settings", "reset_settings"):
+            return None
+        if self.settings is None:
+            return {"type": "settings", "error": "settings are not available in this daemon"}
+        errors = {}
+        if kind == "set_settings" and isinstance(msg.get("changes"), dict):
+            errors = settings_module.apply_changes(self.settings, msg["changes"])
+            log.info("settings changed from the popup: %s%s", msg["changes"], f" (refused: {errors})" if errors else "")
+        elif kind == "reset_settings":
+            settings_module.reset_all(self.settings)
+            log.info("settings reset to the defaults from the popup")
+        return {"type": "settings", "groups": settings_module.describe(self.settings), "errors": errors}
+
     async def _client(self, ws) -> None:
         self.clients.add(ws)
         log.info("extension connected (%d client(s))", len(self.clients))
@@ -158,11 +178,18 @@ class Server:
                     if isinstance(raw, bytes):
                         self.handle_audio(raw)
                     else:
-                        self.handle_message(json.loads(raw))
+                        msg = json.loads(raw)
+                        reply = self.handle_settings_message(msg)
+                        if reply is not None:
+                            self.ui_clients.add(ws)
+                            await ws.send(json.dumps(reply))
+                        else:
+                            self.handle_message(msg)
                 except (ValueError, KeyError, TypeError, struct.error) as e:
                     log.warning("bad message (%d bytes): %s", len(raw), e)
         finally:
             self.clients.discard(ws)
+            self.ui_clients.discard(ws)
             log.info("extension disconnected")
 
     def _log_scores(self, now: float) -> None:
@@ -331,8 +358,11 @@ class Server:
 
     async def _broadcast(self, obj: dict) -> None:
         text = json.dumps(obj)
-        for ws in list(self.clients):
-            await ws.send(text)
+        for ws in list(self.clients - self.ui_clients):
+            try:
+                await ws.send(text)
+            except Exception as e:  # a socket closing must not stop the decision loop
+                log.warning("could not send to a client: %s", e)
 
     async def _ocr_loop(self) -> None:
         while True:
@@ -418,6 +448,6 @@ if __name__ == "__main__":
     log.info("screen reader ready")
     try:
         asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
-                           focuser=TileFocuser(settings.focus)).run())
+                           focuser=TileFocuser(settings.focus), settings=settings).run())
     except KeyboardInterrupt:
         pass

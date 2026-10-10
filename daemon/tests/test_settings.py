@@ -83,3 +83,72 @@ def test_break_phrases_can_be_replaced_and_mistakes_are_reported(tmp_path, caplo
         load_settings(path)
     assert game_state.AD_PHRASES == ["werbung", "pub"]            # unchanged
     assert "must be a list" in caplog.text
+
+
+# ---- editing from the popup ----------------------------------------------------------------------------------
+
+from daemon import settings as settings_module  # noqa: E402
+
+
+def test_every_setting_in_the_popup_layout_exists_with_a_default(tmp_path):
+    settings = load_settings(tmp_path / "none.toml")
+    ids = [item["id"] for group in settings_module.describe(settings) for item in group["items"]]
+    assert len(ids) == len(set(ids)) > 30
+    for group in settings_module.describe(settings):
+        for item in group["items"]:
+            assert item["value"] == item["default"] and not item["changed"]
+
+
+def test_a_change_applies_at_once_and_is_saved_next_to_the_settings_file(tmp_path):
+    path = tmp_path / "settings.toml"
+    settings = load_settings(path)
+    errors = settings_module.apply_changes(settings, {"scoring.threshold": 0.6, "weights.speech": -0.5,
+                                                      "sports.football.freeze_s": 30,
+                                                      "banners.big_play_words": ["Touchdown", " Pick six "]})
+    assert errors == {}
+    assert settings.scoring.threshold == 0.6 and settings.scoring.weights.speech == -0.5
+    assert game_state.profile_for("football").freeze_s == 30
+    assert game_state.BIG_PLAY_WORDS == ["touchdown", "pick six"]
+    again = load_settings(path)                     # a new start finds the same values
+    assert again.scoring.threshold == 0.6 and again.overrides["sports.football.freeze_s"] == 30.0
+
+
+def test_a_value_equal_to_the_default_is_not_kept(tmp_path):
+    settings = load_settings(tmp_path / "settings.toml")
+    settings_module.apply_changes(settings, {"scoring.threshold": 0.6})
+    settings_module.apply_changes(settings, {"scoring.threshold": Config().threshold})
+    assert settings.overrides == {} and not (tmp_path / "settings.local.json").exists()
+
+
+def test_bad_values_are_refused_and_change_nothing(tmp_path):
+    settings = load_settings(tmp_path / "settings.toml")
+    errors = settings_module.apply_changes(settings, {"scoring.threshold": "high", "scoring.min_gap": -1,
+                                                      "weights.crowd": float("nan"), "scoring.nope": 1,
+                                                      "banners.break_phrases": ["ok", ""], "scoring.window_s": True})
+    assert set(errors) == {"scoring.threshold", "scoring.min_gap", "weights.crowd", "scoring.nope",
+                           "banners.break_phrases", "scoring.window_s"}
+    assert settings.overrides == {} and settings.scoring.threshold == Config().threshold
+
+
+def test_weights_may_be_negative_but_timings_may_not(tmp_path):
+    settings = load_settings(tmp_path / "settings.toml")
+    assert settings_module.apply_changes(settings, {"weights.music": -2}) == {}
+    assert "scoring.stale_s" in settings_module.apply_changes(settings, {"scoring.stale_s": -2})
+
+
+def test_reset_restores_every_default_and_removes_the_saved_file(tmp_path):
+    settings = load_settings(tmp_path / "settings.toml")
+    settings_module.apply_changes(settings, {"scoring.threshold": 0.9, "sports.basketball.freeze_s": 5,
+                                             "banners.break_phrases": ["x"]})
+    settings_module.reset_all(settings)
+    assert settings.scoring.threshold == Config().threshold
+    assert game_state.profile_for("basketball").freeze_s == 180
+    assert "commercial break" in game_state.AD_PHRASES
+    assert not (tmp_path / "settings.local.json").exists()
+
+
+def test_a_damaged_saved_file_never_stops_the_start(tmp_path):
+    (tmp_path / "settings.local.json").write_text("{not json", encoding="utf-8")
+    assert load_settings(tmp_path / "settings.toml").overrides == {}
+    (tmp_path / "settings.local.json").write_text('{"scoring.threshold": "x", "scoring.min_gap": 0.3}', encoding="utf-8")
+    assert load_settings(tmp_path / "settings.toml").overrides == {"scoring.min_gap": 0.3}

@@ -159,4 +159,82 @@ $("freeze").onclick = async () => {
 
 $("reload").onclick = () => chrome.runtime.reload();
 
+// ---- Settings: the daemon describes every setting; this page only draws the form and sends edits. ----
+let settingsSocket = null;
+const settingsOpenGroups = new Set(); // group titles the user has opened, kept across redraws
+
+function settingsSend(message) {
+  if (settingsSocket && settingsSocket.readyState === WebSocket.OPEN) settingsSocket.send(JSON.stringify(message));
+}
+
+function connectSettings() {
+  if (settingsSocket && settingsSocket.readyState <= WebSocket.OPEN) return;
+  $("settingsStatus").textContent = "Connecting to the daemon...";
+  settingsSocket = new WebSocket("ws://127.0.0.1:8765");
+  settingsSocket.onopen = () => settingsSend({ type: "get_settings" });
+  settingsSocket.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "settings") drawSettings(msg);
+  };
+  settingsSocket.onclose = () => {
+    $("settingsStatus").textContent = "The daemon is not running (start it with scripts\\start_all.ps1), or it just stopped.";
+    $("settingsGroups").replaceChildren();
+    $("settingsReset").hidden = true;
+  };
+}
+
+function drawSettings(msg) {
+  if (msg.error) {
+    $("settingsStatus").textContent = msg.error;
+    return;
+  }
+  const changedCount = msg.groups.reduce((n, g) => n + g.items.filter((i) => i.changed).length, 0);
+  $("settingsStatus").textContent = changedCount
+    ? `${changedCount} setting(s) changed from the defaults (shown in bold). Edits apply at once.`
+    : "All settings are at their defaults. Edits apply at once and are kept across restarts.";
+  const box = $("settingsGroups");
+  box.replaceChildren();
+  for (const group of msg.groups) {
+    const details = el("details", { open: settingsOpenGroups.has(group.title) }, el("summary", { textContent: group.title }));
+    details.ontoggle = () => (details.open ? settingsOpenGroups.add(group.title) : settingsOpenGroups.delete(group.title));
+    for (const item of group.items) details.append(settingRow(item, msg.errors?.[item.id]));
+    box.append(details);
+  }
+  $("settingsReset").hidden = false;
+}
+
+function settingRow(item, error) {
+  const send = (value) => settingsSend({ type: "set_settings", changes: { [item.id]: value } });
+  let input;
+  if (item.kind === "list") {
+    input = el("textarea", { value: item.value.join("\n"), title: "One phrase per line" });
+    input.onchange = () => send(input.value.split("\n").map((p) => p.trim()).filter(Boolean));
+  } else {
+    input = el("input", { type: "number", step: "any", value: item.value });
+    input.onchange = () => (input.value === "" ? send(item.default) : send(Number(input.value)));
+  }
+  const back = el("button", { textContent: "\u21ba", title: `Back to the default (${item.kind === "list" ? "phrase list" : item.default})` });
+  back.hidden = !item.changed;
+  back.onclick = () => send(item.default);
+  const top = el("div", { className: "row" }, el("span", { className: "name", textContent: item.label }),
+    ...(item.kind === "list" ? [] : [input]), back);
+  const row = el("div", { className: "setting" + (item.changed ? " changed" : "") }, top,
+    el("div", { className: "help", textContent: item.help }));
+  if (item.kind === "list") row.append(input);
+  if (error) row.append(el("div", { className: "err", textContent: `Not applied: ${error}` }));
+  return row;
+}
+
+$("settingsBox").ontoggle = () => { if ($("settingsBox").open) connectSettings(); };
+$("settingsReset").onclick = () => {
+  if ($("settingsReset").dataset.sure === "1") {
+    settingsSend({ type: "reset_settings" });
+    $("settingsReset").dataset.sure = "0";
+    $("settingsReset").textContent = "Reset all settings to the defaults";
+  } else {
+    $("settingsReset").dataset.sure = "1";
+    $("settingsReset").textContent = "Click again to confirm the reset";
+  }
+};
+
 load();

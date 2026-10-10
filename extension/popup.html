@@ -18,6 +18,14 @@
   .slots { flex-wrap: wrap; font-size: 11px; gap: 8px; }
   .slots label { white-space: nowrap; }
   summary { cursor: pointer; font-weight: 600; margin-top: 8px; }
+  .setting { margin-bottom: 8px; }
+  .setting .name { flex: 1; }
+  .setting.changed .name { font-weight: 600; }
+  .setting .help { color: #666; font-size: 11px; }
+  .setting .err { color: #c62828; font-size: 11px; }
+  .setting textarea { width: 100%; box-sizing: border-box; height: 64px; }
+  details details { margin-left: 8px; }
+  #settingsStatus { color: #666; margin: 6px 0; }
 </style>
 <h1>OmniSportsSwitch</h1>
 <div class="row"><span>This window is</span><select id="windowRole"></select></div>
@@ -35,6 +43,13 @@
   <div id="teams"></div>
   <div class="row"><input id="newTeam" type="text" placeholder="Team name, e.g. Paris SG" class="grow">
     <input id="newTeamMult" type="number" min="0" step="0.1" value="2"><button id="addTeam">Add</button></div>
+</details>
+
+<details id="settingsBox">
+  <summary>Settings (swapping, ads, weights, timings, banners)</summary>
+  <div id="settingsStatus">Connecting to the daemon...</div>
+  <div id="settingsGroups"></div>
+  <button id="settingsReset" hidden>Reset all settings to the defaults</button>
 </details>
 
 <div class="hint" id="hint"></div>

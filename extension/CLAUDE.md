@@ -11,6 +11,7 @@ Edge Manifest V3 extension in plain JavaScript, **no build step, no npm**. It do
 | `offscreen.html` / `offscreen.js` | Long-lived page: per-tab audio capture (tabCapture), 100 ms PCM chunks to the daemon over WebSocket, mutes everything except `MAIN` (gain nodes), registers tabs with the daemon (role, weight, sport, status, allowed slots, teams, team rules). |
 | `pcm-processor.js` | AudioWorklet that turns audio blocks into 32 kHz mono samples. |
 | `popup.html` / `popup.js` | The control panel: window role, freeze, track, per-tab settings, sport and team priorities (with allowed slots). Only edits storage; the service worker pushes the result to the daemon. |
+| Settings section of `popup.js` | Opens its own WebSocket to the daemon, asks for `get_settings`, draws the form from the reply, and sends `set_settings` / `reset_settings`. It knows no setting by name; the daemon describes them (`daemon/settings.py` `LAYOUT`). |
 | `defaults.js` | `DEFAULT_PRIORITIES`, shared by the service worker and the popup. |
 
 ## Things to know

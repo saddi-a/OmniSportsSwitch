@@ -16,14 +16,14 @@ The Python daemon: one asyncio process (`python -m daemon.server`, started by `s
 | `multiview.py` | `TileFocuser`: which tile of a multiview tab should have the sound / be expanded. |
 | `screen_ocr.py` | Screen capture of a video area (mss) and EasyOCR (GPU); also clock finding. |
 | `audio_classifier.py` | PANNs Cnn14 on the GPU, 32 kHz audio, 527 AudioSet classes. Models live in `models/panns/`. |
-| `settings.py` | Loads `settings.toml` into the config objects. |
+| `settings.py` | Loads `settings.toml` (the defaults) plus `settings.local.json` (what the user changed in the popup) into the config objects, and lets the popup read, change and reset them live (`describe`, `apply_changes`, `reset_all`). |
 | `logsetup.py` | Permanent logs in `logs/`. |
 | `tests/` | pytest suite; `tests/fixtures/*.json` are real OCR readings (items with boxes) from screenshots. |
 
 ## Rules for changes
 
 - Keep decision logic **pure** (callers pass `now`, no sockets, no sleeps) so it can be tested; only `server.py` touches time, sockets and threads.
-- Every tunable number goes in `Config`/`Weights` (or a sport profile) **and** `settings.toml`; `tests/test_settings.py` fails if they drift apart.
+- Every tunable number goes in `Config`/`Weights` (or a sport profile) **and** `settings.toml`; `tests/test_settings.py` fails if they drift apart. To make it editable in the popup, also add it to `LAYOUT` in `settings.py` (id, label, help text); the popup draws itself from that, so `extension/` needs no change. Settings objects are changed in place while running, so read `config.x` when you use it; never copy a value at startup.
 - Per-tile state is keyed `(tab id, video index)`; per-tab state by tab id. When a DAZN expand swaps streams between slots, the per-tile records must swap too (`_expand_swap`), only once the expand is confirmed by where the sound went.
 - OCR is noisy. A single reading must never trigger an event: use votes, memory windows and confirmations. When fixing a misread, add the real OCR items as a fixture and a test.
 - Slot limits: `allowed` is what the user ticked on the tab; `limits` = allowed plus team rules (by teams field, or OCR text remembered 10 minutes). Use `limits` for planning.

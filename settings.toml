@@ -1,5 +1,6 @@
-# OmniSportsSwitch settings. Read when the daemon starts: change a number, then restart the daemon
-# (scripts\stop_all.ps1, then scripts\start_all.ps1). Anything you delete falls back to the default shown here.
+# OmniSportsSwitch default settings. You do not need to edit this file: change settings in the extension popup
+# (Settings section). They apply at once and are kept in settings.local.json, which is layered on top of this file.
+# This file is read when the daemon starts and must always equal the built-in defaults (a test checks it).
 # A typo or wrong value is ignored with a warning in logs\events.log; it never stops the daemon.
 
 [scoring]

@@ -3,3 +3,5 @@ __pycache__/
 models/
 logs/
 samples/
+
+settings.local.json

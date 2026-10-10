@@ -73,7 +73,7 @@ Then:
 
 After a page reload (for example single view to multiview) the tab has to be tracked again with `Ctrl+Shift+Y`.
 
-If you edit `extension/` files, press **Reload extension** in the popup and track the tabs again. If you edit the daemon or `settings.toml`, stop and start the daemon.
+If you edit `extension/` files, press **Reload extension** in the popup and track the tabs again. If you edit the daemon code, stop and start the daemon.
 
 ### Shortcuts
 
@@ -86,11 +86,12 @@ If you edit `extension/` files, press **Reload extension** in the popup and trac
 
 - Role of the current window and the freeze button.
 - Per tab: sport, teams, weight, status (Auto, Live, Break, Over), allowed slots.
+- Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running).
 - Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed slots per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
 
 ### Settings
 
-`settings.toml` holds every threshold, weight, break timing and banner phrase. It is read when the daemon starts.
+Every threshold, weight, break timing and banner phrase is editable in the popup (**Settings** section). Each setting has a short explanation, edits apply at once without restarting the daemon, changed values are shown in bold, and the arrow button puts one back to its default. The values are kept in `settings.local.json` (not committed), layered on top of the defaults in `settings.toml`.
 
 ## Logs
 

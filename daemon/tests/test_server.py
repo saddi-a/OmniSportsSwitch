@@ -299,3 +299,19 @@ def test_team_rule_limits_slots_and_keeps_the_tabs_own_choice_on_a_clash():
     assert server.limits[1] == {"MAIN", "LEFT"}
     assert server.limits[2] is None
     assert server.limits[3] == {"RIGHT_BOT"}
+
+
+def test_the_popup_can_read_change_and_reset_settings(tmp_path):
+    from daemon.settings import load_settings
+
+    settings = load_settings(tmp_path / "settings.toml")
+    server = Server(scorer=Scorer(settings.scoring), settings=settings)
+    reply = server.handle_settings_message({"type": "get_settings"})
+    assert reply["type"] == "settings" and reply["groups"] and reply["errors"] == {}
+    reply = server.handle_settings_message({"type": "set_settings", "changes": {"scoring.min_score": 0.5, "scoring.bad": 1}})
+    assert server.scorer.config.min_score == 0.5            # the running scorer sees it at once
+    assert list(reply["errors"]) == ["scoring.bad"]
+    server.handle_settings_message({"type": "reset_settings"})
+    assert server.scorer.config.min_score == Config().min_score
+    assert server.handle_settings_message({"type": "audio"}) is None
+    assert Server().handle_settings_message({"type": "get_settings"})["error"]
