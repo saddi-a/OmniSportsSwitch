@@ -10,7 +10,7 @@ if (Test-Port 8765) {
     Write-Host "Daemon: already running (port 8765)."
 } else {
     Write-Host "Daemon: starting in a new window (first start takes about 15 s while the models load)..."
-    Start-Process powershell -WorkingDirectory $root -ArgumentList "-NoExit", "-NoProfile", "-File", (Join-Path $PSScriptRoot "start_daemon.ps1")
+    Start-Process powershell -WindowStyle Minimized -WorkingDirectory $root -ArgumentList "-NoExit", "-NoProfile", "-File", (Join-Path $PSScriptRoot "start_daemon.ps1")
 }
 
 if (Test-Port 9222) {
