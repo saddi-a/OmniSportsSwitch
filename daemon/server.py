@@ -3,7 +3,7 @@
 Messages are JSON, one object per message.
 
 Extension -> daemon:
-  {"type": "register",   "tab_id": 12, "weight": 1.0, "is_main": false}
+  {"type": "register",   "tab_id": 12, "weight": 1.0, "is_main": false, "sport": "Football", "status": "auto|live|break|over"}
   {"type": "unregister", "tab_id": 12}
   {"type": "audio",      "tab_id": 12, "rms": 0.031}   (simple loudness-only form)
   {"type": "set_weight", "tab_id": 12, "weight": 1.5}
@@ -23,6 +23,7 @@ import time
 import numpy as np
 from websockets.asyncio.server import serve
 
+from daemon.game_state import GameTracker, combine
 from daemon.screen_ocr import find_clocks, grab
 from daemon.scoring import Scorer
 
@@ -45,6 +46,8 @@ class Server:
         self.classifier = classifier
         self.screen_reader = screen_reader
         self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
+        self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
+        self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
         self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
@@ -54,13 +57,22 @@ class Server:
         kind = msg.get("type")
         if kind == "register":
             self.scorer.register(msg["tab_id"], msg.get("weight", 1.0), msg.get("is_main", False))
-            log.info("registered tab %s", msg["tab_id"])
+            tab_id = msg["tab_id"]
+            self.sports[tab_id] = msg.get("sport") or None
+            status = msg.get("status", "auto")
+            self.scorer.set_status(tab_id, None if status == "auto" else status)
+            for (t, _), tracker in self.trackers.items():
+                if t == tab_id:
+                    tracker.set_sport(self.sports[tab_id])
+            log.info("registered tab %s (sport=%s, status=%s)", tab_id, self.sports[tab_id], status)
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
-            for key in [k for k in self.ocr if k[0] == msg["tab_id"]]:
-                del self.ocr[key]
+            for store in (self.ocr, self.trackers):
+                for key in [k for k in store if k[0] == msg["tab_id"]]:
+                    del store[key]
+            self.sports.pop(msg["tab_id"], None)
             self.tags.pop(msg["tab_id"], None)
             log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
@@ -114,7 +126,7 @@ class Server:
             if c is None:
                 log.info("  %s%s: warming up or no audio", tag, tab_id)
                 continue
-            text = (f"{tag}{tab_id}: score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
+            text = (f"{tag}{tab_id}: {c['status']} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
                     f"speech={c['speech']:.2f} music={c['music']:.2f}")
             probs = self.tags.get(tab_id)
             if probs is not None:
@@ -151,6 +163,18 @@ class Server:
             results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts)}
         return results
 
+    def _update_game_states(self, results: dict, now: float) -> None:
+        per_tab: dict[int, list[str]] = {}
+        for (tab_id, index), r in results.items():
+            tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id)))
+            per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
+        for tab_id, states in per_tab.items():
+            state = combine(states)
+            stream = self.scorer.streams.get(tab_id)
+            if stream is not None and stream.auto_state != state:
+                log.info("game state tab %s: %s -> %s", tab_id, stream.auto_state, state)
+            self.scorer.set_auto_state(tab_id, state)
+
     async def _ocr_loop(self) -> None:
         while True:
             await asyncio.sleep(OCR_INTERVAL_S)
@@ -168,6 +192,7 @@ class Server:
                 log.warning("ocr pass failed: %s", e)
                 continue
             self.ocr.update(results)
+            self._update_game_states(results, time.monotonic())
             for (tab_id, i), r in results.items():
                 log.info("  ocr tab %s[%d]: clocks=%s texts=%s", tab_id, i, r["clocks"], r["texts"][:10])
 

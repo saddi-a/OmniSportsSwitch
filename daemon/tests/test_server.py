@@ -79,3 +79,12 @@ def test_video_rect_message_is_stored_and_cleared_on_unregister():
     assert server.rects[5]["rects"] == [rect] and server.rects[5]["visible"] is True
     server.handle_message({"type": "unregister", "tab_id": 5})
     assert 5 not in server.rects
+
+
+def test_register_carries_sport_and_manual_status():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 3, "sport": "Football", "status": "break"})
+    assert server.sports[3] == "Football"
+    assert server.scorer.streams[3].override == "break"
+    server.handle_message({"type": "register", "tab_id": 3, "sport": "Football", "status": "auto"})
+    assert server.scorer.streams[3].override is None

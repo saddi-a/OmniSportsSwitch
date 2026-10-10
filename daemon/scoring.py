@@ -14,6 +14,7 @@ from collections import deque
 from dataclasses import dataclass, field
 
 MIN_BASELINE = 0.002  # floor so near-silence cannot make the surge explode
+STATUS_MULT = {"live": 1.0, "break": 0.25, "over": 0.0}  # how much a stream counts in each game state
 
 
 @dataclass
@@ -54,6 +55,8 @@ class _Stream:
     last_sample: float | None = None
     tags: tuple[float, float, float] = (0.0, 0.0, 0.0)  # crowd, speech, music
     tags_at: float = float("-inf")
+    override: str | None = None  # status chosen by the user (live/break/over), None = automatic
+    auto_state: str = "live"     # status detected from the picture
 
 
 class Scorer:
@@ -96,6 +99,14 @@ class Scorer:
         if stream is not None:
             stream.tags, stream.tags_at = (crowd, speech, music), now
 
+    def set_status(self, tab_id: int, override: str | None) -> None:
+        if tab_id in self.streams:
+            self.streams[tab_id].override = override if override in STATUS_MULT else None
+
+    def set_auto_state(self, tab_id: int, state: str) -> None:
+        if tab_id in self.streams and state in STATUS_MULT:
+            self.streams[tab_id].auto_state = state
+
     def components(self, tab_id: int, now: float) -> dict | None:
         """The signals and final score of a stream, or None if it has no recent audio or is still warming up."""
         cfg = self.config
@@ -115,8 +126,9 @@ class Scorer:
 
         w = cfg.weights
         raw = w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music
-        return {"score": max(raw, 0.0) * stream.weight, "surge": surge, "crowd": crowd,
-                "speech": speech, "music": music, "level": level}
+        status = stream.override or stream.auto_state
+        return {"score": max(raw, 0.0) * stream.weight * STATUS_MULT[status], "surge": surge, "crowd": crowd,
+                "speech": speech, "music": music, "level": level, "status": status}
 
     def score(self, tab_id: int, now: float) -> float | None:
         c = self.components(tab_id, now)

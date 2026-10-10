@@ -64,8 +64,8 @@ async function load() {
     weight.onchange = () => update("weights", {}, (w) => (w[tabId] = Number(weight.value) || 0));
 
     const status = el("select", { title: "Game status" });
-    for (const [value, label] of [["live", "Live"], ["break", "Break"], ["over", "Over"]]) status.append(new Option(label, value));
-    status.value = info.status ?? "live";
+    for (const [value, label] of [["auto", "Auto"], ["live", "Live"], ["break", "Break"], ["over", "Over"]]) status.append(new Option(label, value));
+    status.value = info.status ?? "auto";
     status.onchange = () => update("tracked", {}, (t) => (t[tabId].status = status.value));
 
     const untrack = el("button", { textContent: "Untrack" });
@@ -103,7 +103,7 @@ async function load() {
   });
 
   $("hint").textContent =
-    "Final weight = tab weight x sport weight x favourite-team bonus x status (Break 0.25, Over 0).";
+    "Final weight = tab weight x sport weight x favourite-team bonus. Status Auto is detected from the picture; Live / Break / Over overrides it (Break counts 0.25, Over 0).";
 }
 
 $("addSport").onclick = async () => {

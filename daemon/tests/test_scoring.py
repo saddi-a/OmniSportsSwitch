@@ -158,3 +158,32 @@ def test_missing_classifier_tags_fall_back_to_loudness_only():
     assert c["crowd"] == 0.0
     assert 2.0 < c["surge"] <= 3.0  # baseline drifts up a little while the stream stays loud
     assert c["score"] > 0
+
+
+def test_stream_detected_as_over_cannot_win():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    s.set_auto_state(2, "over")
+    steady(s, 1, 0.05, 60, 5)
+    assert s.decide(now) is None
+
+
+def test_break_counts_a_quarter():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    live = s.score(2, now)
+    s.set_auto_state(2, "break")
+    assert s.score(2, now) == pytest.approx(live * 0.25)
+
+
+def test_manual_status_overrides_automatic_detection():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    s.set_auto_state(2, "over")
+    s.set_status(2, "live")
+    assert s.components(2, now)["status"] == "live"
+    s.set_status(2, None)  # back to automatic
+    assert s.components(2, now)["status"] == "over"
