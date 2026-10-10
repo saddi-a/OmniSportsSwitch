@@ -510,3 +510,22 @@ def test_idle_main_does_not_hand_over_to_a_stream_that_was_just_an_ad():
     flicker(s, 2, now, [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.2])      # tab 2: an ad too, but the last reading dips
     swap = s.decide(now + 8)
     assert swap is not None and swap.promote == 3                     # the clean stream, not the flickering ad
+
+
+def test_main_that_may_no_longer_be_there_is_handed_over_at_once():
+    s = make()
+    t = warm_up(s)
+    s.set_can_main(1, False)
+    swap = s.evict_main(t)
+    assert swap is not None and swap.demote == 1 and swap.promote in (2, 3)
+    assert s.main == swap.promote
+    assert s.evict_main(t + 1) is None   # nothing more to do (and not retried within 5 s)
+
+
+def test_nothing_is_evicted_while_frozen_or_when_main_is_allowed():
+    s = make()
+    t = warm_up(s)
+    assert s.evict_main(t) is None
+    s.set_can_main(1, False)
+    s.frozen = True
+    assert s.evict_main(t) is None

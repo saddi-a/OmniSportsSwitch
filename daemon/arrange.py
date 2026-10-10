@@ -17,6 +17,18 @@ def _ok(allowed: dict[int, set[str] | None], tab_id: int, role: str) -> bool:
     return permitted is None or role in permitted
 
 
+def plan_fix(roles: dict[int, str], allowed: dict[int, set[str] | None]) -> list[tuple[int, str]] | None:
+    """A tab sits in a slot it may not use (a rule changed): trade places with a tab that fits both ways.
+    MAIN is left to the scorer, which knows who holds it."""
+    for tab, slot in roles.items():
+        if slot == MAIN or _ok(allowed, tab, slot):
+            continue
+        for other, other_slot in roles.items():
+            if other != tab and other_slot != MAIN and _ok(allowed, tab, other_slot) and _ok(allowed, other, slot):
+                return [(tab, other_slot), (other, slot)]
+    return None
+
+
 def plan_swap(
     promote: int, demote: int, roles: dict[int, str], allowed: dict[int, set[str] | None]
 ) -> list[tuple[int, str]] | None:

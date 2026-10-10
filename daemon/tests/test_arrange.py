@@ -43,3 +43,15 @@ def test_restricted_winner_may_be_promoted_when_main_is_allowed():
 
 def test_unknown_tabs_are_refused():
     assert plan_swap(5, 1, {1: "MAIN"}, {}) is None
+
+
+def test_fix_moves_a_tab_out_of_a_slot_it_may_not_use():
+    from daemon.arrange import plan_fix
+    roles = {1: "RIGHT_BOT", 2: "LEFT", 3: "MAIN"}
+    assert plan_fix(roles, {1: {"MAIN", "LEFT"}}) == [(1, "LEFT"), (2, "RIGHT_BOT")]
+
+
+def test_fix_leaves_main_alone_and_does_nothing_when_all_fit():
+    from daemon.arrange import plan_fix
+    assert plan_fix({1: "MAIN", 2: "LEFT"}, {1: {"LEFT"}}) is None
+    assert plan_fix({1: "LEFT", 2: "RIGHT_BOT"}, {1: {"LEFT"}}) is None

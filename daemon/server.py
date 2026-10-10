@@ -26,7 +26,7 @@ import time
 import numpy as np
 from websockets.asyncio.server import serve
 
-from daemon.arrange import plan_swap
+from daemon.arrange import plan_fix, plan_swap
 from daemon.favourites import match_multiplier, match_slots
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
@@ -40,6 +40,7 @@ DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
+FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use are corrected
 EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
 FAVOURITE_MEMORY_S = 60.0  # a favourite read on screen keeps counting for this long
 OCR_MIN_WIDTH = 900  # smaller areas (multiview tiles) are enlarged before reading
@@ -364,14 +365,18 @@ class Server:
         return self.scorer.decide(now, target=left) if left is not None else None
 
     async def _decide_loop(self) -> None:
-        last_log = 0.0
+        last_log = last_fix = 0.0
         while True:
             await asyncio.sleep(DECIDE_INTERVAL_S)
             now = time.monotonic()
             if now - last_log >= SCORE_LOG_INTERVAL_S:
                 self._log_scores(now)
                 last_log = now
-            swap = self._next_swap(now)
+            swap = self.scorer.evict_main(now) or self._next_swap(now)
+            if not swap and now - last_fix >= FIX_INTERVAL_S and (moves := plan_fix(self.roles, self.limits)):
+                last_fix = now
+                log.info("arrange (slot rules): %s", moves)
+                await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
                 moves = plan_swap(swap.promote, swap.demote, self.roles, self.limits)

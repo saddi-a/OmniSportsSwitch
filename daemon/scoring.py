@@ -80,6 +80,7 @@ class Scorer:
         self.main: int | None = None
         self.frozen = False
         self._last_swap = float("-inf")
+        self._last_evict = float("-inf")
 
     def register(self, tab_id: int, weight: float = 1.0, is_main: bool = False) -> None:
         self.streams.setdefault(tab_id, _Stream()).weight = weight
@@ -225,6 +226,29 @@ class Scorer:
         swap = Swap(promote=best_id, demote=replaced, reason=reason)
         if target is None:
             self.main = best_id
+        self._last_swap = now
+        return swap
+
+    def evict_main(self, now: float) -> Swap | None:
+        """MAIN holds a stream that may not be there (a rule changed): hand MAIN to the best stream that may.
+        No dwell or margin applies, but a refused attempt is only retried every few seconds."""
+        if self.frozen or self.main not in self.streams or self.streams[self.main].can_main:
+            return None
+        if now - self._last_evict < 5.0:
+            return None
+        best_id, best_score = None, 0.0
+        for tab_id, stream in self.streams.items():
+            if tab_id == self.main or not stream.can_main:
+                continue
+            c = self.components(tab_id, now)
+            score = -9.0 if c is None else c["score"]
+            if best_id is None or score > best_score:
+                best_id, best_score = tab_id, score
+        if best_id is None:
+            return None
+        self._last_evict = now
+        swap = Swap(promote=best_id, demote=self.main, reason="MAIN stream is not allowed there any more")
+        self.main = best_id
         self._last_swap = now
         return swap
 
