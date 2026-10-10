@@ -76,3 +76,16 @@ def test_stat_graphic_appearing_does_not_trigger_an_event():
     graphic = ["0", "CCBS SPORTS", "PLAYERS TO WATCH", "K", "9", "This Season", "LOSS"]
     for _ in range(3):
         assert not read(w, graphic)
+
+
+def test_channel_logo_between_the_scores_does_not_hide_a_goal():
+    w = ScoreWatcher()
+    for _ in range(3):
+        read(w, ["PSG", "1", "LMFC", "0", "53:10"], ["53:10"])
+    assert not read(w, ["PSG", "1", "1+3", "LMFC", "1", "53:37"], ["53:37"])  # first sighting of 1-1
+    assert read(w, ["PSG", "1", "LMFC", "1", "53.40"], ["53:40"])               # confirmed
+
+
+def test_two_noise_items_between_the_scores_are_tolerated():
+    assert find_score(["PSG", "1", "1+3", "LMFC", "1"], []) == (1, 1)
+    assert find_score(["PSG", "1", "xx", "yy", "LMFC", "1"], []) is None   # three in between is too far
