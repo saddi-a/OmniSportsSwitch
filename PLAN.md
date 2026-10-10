@@ -53,6 +53,9 @@ Screen 3        Screen 1              Screen 2
 * **Total slots:** 5 (`MAIN`, `LEFT`, `RIGHT_TOP`, `RIGHT_MID`, `RIGHT_BOT`), but `RIGHT_TOP` is a rarely-used 5th slot in the vertical monitor's top third. In normal use only 4 slots are active.
 * **Auto-fill order for new streams into empty slots:** `LEFT → RIGHT_BOT → RIGHT_MID → RIGHT_TOP`. `MAIN` is not part of this queue — it's only ever reached via excitement-based promotion, never direct assignment.
 
+### Priority should be automatic and simple for the user
+Priority by sport, favourite teams and game status (live / break / over) should come from live information (audio and picture) with minimal manual input. Target behaviour: OCR on the screen capture detects teams, game clock, score changes and break/final text; a stopped clock or missing scorebug marks a stream as on a break or over. The user only maintains a short favourites list and sport weights. Manual per-tab sport, teams and Live/Break/Over selectors already exist in the popup as stage A and become overrides once detection works.
+
 ## 4. Core Architecture & Zero-Lag Strategy
 
 ### The Spoiler Problem
@@ -90,9 +93,13 @@ $$\text{Excitement Score} = (\text{Audio RMS} \times \text{Priority Weight}) + f
 * **Audio management:** auto-unmutes the active `MAIN` stream while muting secondary streams via Web Audio gain nodes (muting via gain rather than `video.muted` avoids pausing DRM-protected HTML5 players that pause on mute).
 * **Window-swap semantics:** `chrome.tabs.move()` moves tabs between/within windows; it does not reposition or resize OS-level windows. "Promoting to MAIN" means moving the winning tab into the window assigned to the `MAIN` role (and relocating the bumped tab to the role the promoted tab vacated), not changing window geometry.
 
-## 6. Out of Scope for v1
+## 6. Planned later (must not be forgotten)
 
-* **DAZN multiview** (up to 4 sub-streams tiled inside one DAZN tab, with click-to-focus audio per tile and two layout modes — equal grid vs. main+sidebar). v1 treats every tab, DAZN included, as a single stream. Revisit later; full support would require solving per-tile audio capture (tab-level `tabCapture` only captures whichever tile currently has focus — other tiles are muted at the element level) and per-layout OCR ROI detection.
+* **DAZN multiview** (up to 4 sub-streams tiled inside one DAZN tab, with click-to-focus audio per tile and two layout modes: equal grid vs. main+sidebar). The user wants this supported eventually. Today every tab, DAZN included, is treated as a single stream. Findings so far:
+  * **Picture:** screen capture reads every tile (verified: main tile and both side tiles returned real pixels, scorebug readable). So OCR and the image-based priority work per tile once the video-area step can report each tile's rectangle (several `<video>` elements, not just the biggest one).
+  * **Audio:** `tabCapture` hears only the tile that currently has sound (the others are muted inside the page). Per-tile loudness and crowd detection is not possible with the current approach; tiles other than the focused one would have to be scored from the picture only (score changes, clock), or the extension would click tiles to rotate audio focus.
+  * **Layouts:** equal grid vs. main+sidebar changes tile sizes; tile rectangles must come from the page, not fixed regions.
+  * Needs a design decision (tile = separate stream in the scorer? what does "promote" mean for a tile: click it in DAZN, or move the whole tab?) before building.
 
 ## 7. Known Risks & Open Questions
 

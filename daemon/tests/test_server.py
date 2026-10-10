@@ -69,3 +69,13 @@ async def test_bad_message_does_not_kill_connection():
             assert 1 in server.scorer.streams
     finally:
         task.cancel()
+
+
+def test_video_rect_message_is_stored_and_cleared_on_unregister():
+    server = Server()
+    rect = {"left": 10, "top": 20, "width": 1280, "height": 720}
+    server.handle_message({"type": "register", "tab_id": 5})
+    server.handle_message({"type": "video_rect", "tab_id": 5, "rects": [rect], "visible": True, "fullscreen": False})
+    assert server.rects[5]["rects"] == [rect] and server.rects[5]["visible"] is True
+    server.handle_message({"type": "unregister", "tab_id": 5})
+    assert 5 not in server.rects

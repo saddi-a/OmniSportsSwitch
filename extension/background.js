@@ -70,6 +70,36 @@ async function pushState() {
   chrome.runtime.sendMessage({ type: "state", roles: await computeTabRoles(), weights }).catch(() => {});
 }
 
+// Runs inside the stream page: once a second, reports where the playing video sits on the screen
+// (physical pixels), so the daemon knows which part of the screen to read. Reading position is not blocked by DRM.
+function installVideoReporter() {
+  if (window.__omniReporter) return;
+  window.__omniReporter = setInterval(() => {
+    const candidates = [...document.querySelectorAll("video")]
+      .map((video) => ({ video, r: video.getBoundingClientRect() }))
+      .filter(({ video, r }) => r.width > 200 && r.height > 100 && video.videoWidth > 0 && !video.paused)
+      .sort((a, b) => b.r.width * b.r.height - a.r.width * a.r.height);
+    const dpr = window.devicePixelRatio;
+    const border = (window.outerWidth - window.innerWidth) / 2; // window frame on each side
+    const toolbar = window.outerHeight - window.innerHeight - border; // tab strip + address bar
+    // Every playing video, biggest first (DAZN multiview has several).
+    const rects = candidates.map(({ r }) => ({
+      left: Math.round((window.screenX + border + r.left) * dpr),
+      top: Math.round((window.screenY + toolbar + r.top) * dpr),
+      width: Math.round(r.width * dpr),
+      height: Math.round(r.height * dpr),
+    }));
+    chrome.runtime
+      .sendMessage({ type: "video-rect", rects, visible: document.visibilityState === "visible", fullscreen: !!document.fullscreenElement })
+      .catch(() => {});
+  }, 1000);
+}
+
+function removeVideoReporter() {
+  clearInterval(window.__omniReporter);
+  window.__omniReporter = null;
+}
+
 async function trackTab(tabId) {
   const tab = await chrome.tabs.get(tabId);
   await ensureOffscreen();
@@ -87,11 +117,13 @@ async function trackTab(tabId) {
   await chrome.storage.local.set({ tracked, weights, windowRoles });
 
   chrome.runtime.sendMessage({ type: "start", tabId, streamId });
+  chrome.scripting.executeScript({ target: { tabId }, func: installVideoReporter }).catch((e) => console.error("reporter failed", e));
   chrome.action.setBadgeText({ tabId, text: "ON" });
   await pushState();
 }
 
 async function forgetTab(tabId) {
+  chrome.scripting.executeScript({ target: { tabId }, func: removeVideoReporter }).catch(() => {});
   const { tracked, weights } = await getState();
   delete tracked[tabId];
   delete weights[tabId];

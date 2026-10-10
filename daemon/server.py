@@ -8,6 +8,7 @@ Extension -> daemon:
   {"type": "audio",      "tab_id": 12, "rms": 0.031}   (simple loudness-only form)
   {"type": "set_weight", "tab_id": 12, "weight": 1.5}
   {"type": "freeze",     "value": true}
+  {"type": "video_rect", "tab_id": 12, "rects": [{"left":0,"top":0,"width":1920,"height":1080}], "visible": true, "fullscreen": false}
   binary frame: 4-byte little-endian tab id + 32 kHz mono int16 samples (100 ms per frame)
 
 Daemon -> extension:
@@ -41,6 +42,7 @@ class Server:
         self.classifier = classifier
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
+        self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
         self.tags: dict[int, np.ndarray] = {}     # tab id -> latest classifier probabilities
 
     def handle_message(self, msg: dict) -> None:
@@ -51,10 +53,17 @@ class Server:
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
+            self.rects.pop(msg["tab_id"], None)
             self.tags.pop(msg["tab_id"], None)
             log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
             self.scorer.add_audio(msg["tab_id"], float(msg["rms"]), time.monotonic())
+        elif kind == "video_rect":
+            tab_id = msg["tab_id"]
+            info = {"rects": msg.get("rects") or [], "visible": bool(msg.get("visible")), "fullscreen": bool(msg.get("fullscreen"))}
+            if self.rects.get(tab_id) != info:
+                log.info("video area tab %s: %s", tab_id, info)
+            self.rects[tab_id] = info
         elif kind == "set_weight":
             self.scorer.set_weight(msg["tab_id"], float(msg["weight"]))
         elif kind == "freeze":
