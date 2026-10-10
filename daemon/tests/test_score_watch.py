@@ -216,3 +216,31 @@ def test_stat_graphics_do_not_fire_an_event_or_change_the_remembered_score():
     assert feed_items(w, [RUSHING] * 5 + [POSSESSION] * 5 + [HALFTIME] * 5) == []
     assert feed_items(w, [BOARD], 4) == []        # back to the real board: still 31-17, nothing happened
     assert w._stable == (31, 17)
+
+
+# ---- UCLA / Oregon layout: a big play-clock digit between the two scores (live log, 00:43) ---------------------
+
+UCLA_WITHOUT_CLOCK = boxes([("Ucla _", 91, 705, 1150), ("21 UCLA", 32, 718, 1112), ("4-0", 26, 860, 1216), ("17", 112, 957, 1115),
+                            ("Ath", 40, 1125, 1199), ("CBS | BIG TIME", 44, 1145, 1125), ("6852", 44, 1257, 1195), ("20", 32, 1396, 1202),
+                            ("0", 122, 1698, 1136), ("OREGON", 30, 1714, 1113)])
+UCLA_WITH_CLOCK = boxes([("Ucla _", 90, 705, 1151), ("21 UCLA", 30, 718, 1114), ("4-0", 26, 860, 1216), ("17", 114, 957, 1115),
+                         ("Ath", 42, 1125, 1197), ("Isr & GOAL", 52, 1140, 1120), ("6849", 44, 1257, 1195), ("17", 32, 1398, 1202),
+                         ("6", 120, 1495, 1125), ("0", 126, 1696, 1132), ("OREGON", 30, 1714, 1114)])
+
+
+def test_a_logo_read_as_a_digit_does_not_replace_the_real_score():
+    from daemon.score_watch import find_score_geo
+    assert find_score_geo(UCLA_WITH_CLOCK, []) == (17, 6)        # was (6, 0): the "0" is the Oregon logo
+
+
+def test_the_ucla_scoreboard_flickering_between_readings_fires_nothing():
+    w = ScoreWatcher()
+    assert feed_items(w, [UCLA_WITH_CLOCK], 4) == []                  # 17-6
+    assert feed_items(w, [UCLA_WITHOUT_CLOCK] * 5 + [UCLA_WITH_CLOCK] * 5, 3) == []   # the logo "0" replaces the 6, and back
+
+
+def test_a_real_touchdown_still_fires_after_the_flicker():
+    w = ScoreWatcher()
+    feed_items(w, [UCLA_WITH_CLOCK] * 4 + [UCLA_WITHOUT_CLOCK] * 5 + [UCLA_WITH_CLOCK] * 5)
+    scored = [dict(it, text="23") if it["text"] == "17" and it["x0"] < 1000 else it for it in UCLA_WITH_CLOCK]   # 23-6
+    assert feed_items(w, [scored], 5) != []

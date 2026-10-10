@@ -32,6 +32,8 @@ CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time befo
 CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 HISTORY = 5          # readings that vote
 NEEDED = 3           # votes a value needs to count
+PEAK_MEMORY_S = 120  # a score only goes up: a lower reading is a misread (a logo read as 0), unless it lasts this long
+READING_S = 3        # assumed time between readings when the caller gives no clock
 
 
 def _items(texts: list[str], clocks: list[str]) -> list[str]:
@@ -153,6 +155,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
 
     # two separate numbers on one line, similar height, a team name close by
     numbers = [it for it in live if NUMBER_RE.match(it["text"].strip())]
+    pairs = []   # (min height, text items between the two, teams near, left, right)
     for i, a in enumerate(numbers):
         for b in numbers[i + 1:]:
             ha, hb = height(a), height(b)
@@ -164,9 +167,18 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             near = teams_near((cy(a) + cy(b)) / 2, max(ha, hb), left["x0"], right["x1"])
             if near == 0:
                 continue
-            key = (min(ha, hb), near)
-            if best_key is None or key > best_key:
-                best, best_key = (int(left["text"]), int(right["text"])), key
+            between = sum(1 for it in live if not NUMBER_RE.match(it["text"].strip()) and left["x1"] <= it["x0"] and it["x1"] <= right["x0"]
+                          and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
+            pairs.append((min(ha, hb), between, near, left, right))
+    if pairs:
+        # The scores are the biggest pair. Among pairs about as big as the biggest, the one with the centre panel
+        # (down and distance, clock) between its numbers wins: a team logo read as a digit ("0" for an O) forms a pair
+        # with the real score next to it, with nothing between them.
+        biggest = max(p[0] for p in pairs)
+        size, _, near, left, right = max((p for p in pairs if p[0] >= 0.85 * biggest), key=lambda p: (p[1], p[0], p[2]))
+        key = (size, near)
+        if best_key is None or key > best_key:
+            best, best_key = (int(left["text"]), int(right["text"])), key
     return best
 
 
@@ -181,12 +193,15 @@ class ScoreWatcher:
     def __init__(self):
         self._history: deque[tuple[int, int]] = deque(maxlen=HISTORY)
         self._stable: tuple[int, int] | None = None
+        self._peak: tuple[int, int] | None = None      # highest value seen per side
+        self._below_since: float | None = None          # since when the vote has been under the peak
+        self._readings = 0
         self._clock: tuple[int, float] | None = None   # last plausible game clock and when it was read
         self._alt: tuple[int, float] | None = None     # an implausible clock seen once, waiting for confirmation
 
     def _reset(self) -> None:
         self._history.clear()
-        self._stable = None
+        self._stable = self._peak = self._below_since = None
 
     def _clock_jumped(self, clocks: list[str], now: float) -> bool:
         seconds = [s for s in map(clock_seconds, clocks) if s is not None]
@@ -218,15 +233,27 @@ class ScoreWatcher:
         score = (find_score_geo(items, clocks) if items else None) or find_score(texts, clocks)
         if score is None:
             return False
+        self._readings += 1
+        t = now if now is not None else self._readings * READING_S
         self._history.append(score)
         left, right = _vote(p[0] for p in self._history), _vote(p[1] for p in self._history)
         if left is None or right is None:
             return False
         current = (left, right)
         if self._stable is None:
+            self._stable = self._peak = current
+            return False
+        if all(c <= p for c, p in zip(current, self._peak)):
+            # not above anything seen before: a restored score, or a misread; a drop that lasts is believed in the end
+            if current != self._peak:
+                self._below_since = t if self._below_since is None else self._below_since
+                if t - self._below_since >= PEAK_MEMORY_S:
+                    self._peak, self._below_since = current, None
+            else:
+                self._below_since = None
             self._stable = current
             return False
-        if current == self._stable:
-            return False
-        old, self._stable = self._stable, current
-        return any(1 <= n - o <= MAX_RISE for o, n in zip(old, current))
+        self._below_since = None
+        peak, self._stable = self._peak, current
+        self._peak = tuple(max(c, p) for c, p in zip(current, peak))
+        return any(1 <= n - o <= MAX_RISE for o, n in zip(peak, current))
