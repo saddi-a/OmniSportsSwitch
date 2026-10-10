@@ -61,3 +61,12 @@ def test_nothing_read_means_no_event():
     w = ScoreWatcher()
     assert not read(w, [])
     assert not read(w, ["Quitter le mode plein ecran"])
+
+
+def test_a_lone_number_changing_is_not_a_score():
+    w = ScoreWatcher()
+    for _ in range(3):
+        read(w, ["Da", "BA", "11", "Adrien Rabiot"])
+    for _ in range(3):
+        result = read(w, ["Da", "BA", "12", "Adrien Rabiot"])
+    assert not result

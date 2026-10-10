@@ -37,13 +37,13 @@ class TileFocuser:
             return None
         focused = next((t for t in tiles if t.get("audible")), None)
         best = max(tiles, key=self.tile_score)
+        if now - self._last_change.get(tab_id, float("-inf")) < self.config.min_dwell_s:
+            return None
         if focused is None:
             return None if self.tile_score(best) <= 0 else self._switch(tab_id, now, best["index"])
         if best["index"] == focused["index"]:
             return None
         if self.tile_score(best) <= self.tile_score(focused) * self.config.switch_ratio:
-            return None
-        if now - self._last_change.get(tab_id, float("-inf")) < self.config.min_dwell_s:
             return None
         return self._switch(tab_id, now, best["index"])
 

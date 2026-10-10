@@ -38,7 +38,7 @@ class ScoreWatcher:
 
     def update(self, texts: list[str], clocks: list[str]) -> bool:
         numbers = score_numbers(texts, clocks)
-        if not numbers:
+        if len(numbers) < 2:  # a score has a number for each side; a lone number is noise (jersey, ad, down and distance)
             return False
         if numbers != self._candidate:
             self._candidate = numbers  # needs to be seen twice in a row before it is trusted

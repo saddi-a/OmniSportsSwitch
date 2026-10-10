@@ -50,3 +50,12 @@ def test_dwell_is_tracked_per_tab():
 
 def test_single_video_is_not_multiview():
     assert TileFocuser().decide(1, 100, tiles()[:1]) is None
+
+
+def test_no_audible_tile_does_not_spam_focus_commands():
+    f = TileFocuser()
+    silent = tiles(t0={"audible": False}, t2={"event": 1.0})
+    assert f.decide(1, 100, silent) == 2
+    assert f.decide(1, 103, silent) is None
+    assert f.decide(1, 106, silent) is None
+    assert f.decide(1, 131, silent) == 2
