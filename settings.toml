@@ -16,6 +16,7 @@ event_s = 45.0       # how long a goal / touchdown boosts a stream (fading)
 min_dwell_s = 20.0   # minimum time between two swaps
 stale_s = 5.0        # a stream with no audio for this long is ignored
 idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this
+audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)
 big_play_strength = 0.7   # a big play (banner like TAKEAWAY!) counts this much of a goal (1.0 = same as a goal)
 ad_penalty = 0.5     # an ad in the picture scores -0.5 (music-only: half of it), so it is pushed down, not just ignored
 
@@ -40,7 +41,7 @@ ad_penalty = 0.5     # a tile showing an ad gets negative interest, so focus mov
 [banners]
 # Text a streaming player shows while an ad break is on (matched anywhere inside a text item, any case). It must
 # appear on two readings in a row. Add the wording your services use, in any language.
-break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "ad break", "advertisement", "right back"]
+break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "ad break", "advertisement", "right back", "watch now", "ondazn"]
 
 # Banners flashed for a big play. A text item counts when it is just that phrase (a few extra characters are
 # allowed), so sentences and stat labels like "TURNOVERS" do not trigger it.

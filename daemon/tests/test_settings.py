@@ -30,7 +30,7 @@ def test_the_shipped_settings_file_equals_the_built_in_defaults():
     assert game_state.profile_for("American football") == game_state.SportProfile(240, 90)
     assert game_state.profile_for(None) == game_state.SportProfile(120, 60)
     assert game_state.AD_PHRASES == ["commercial break", "publicitaria", "intervalo comercial", "publicité",
-                                     "publicite", "ad break", "advertisement", "right back"]
+                                     "publicite", "ad break", "advertisement", "right back", "watch now", "ondazn"]
     assert game_state.BIG_PLAY_WORDS == ["takeaway", "interception", "intercepted", "fumble", "sack", "red card",
                                          "carton rouge", "penalty kick"]
 

@@ -478,3 +478,35 @@ def test_a_big_play_fades_faster_than_a_goal():
     s.set_event(3, now, 0.7)
     assert s.components(3, now + 31.5)["event"] == pytest.approx(0.0, abs=0.01)
     assert s.components(2, now + 31.5)["event"] > 0.25
+
+
+# ---- the FIFA+ ad on the UCLA-Oregon multiview: the music probability flickered and one dip let it take over ----
+
+def flicker(s, tab_id, start, levels, step=1.0):
+    """Feed one reading per `step` seconds: loud speech with these music probabilities, no crowd."""
+    t = start
+    for m in levels:
+        s.add_audio(tab_id, 0.1, t)
+        s.set_tags(tab_id, 0.02, 0.8, m, t)
+        t += step
+    return t
+
+
+def test_a_stream_that_sounded_like_an_ad_stays_flagged_through_a_dip():
+    s = make()
+    now = warm_up(s)
+    now = flicker(s, 2, now, [0.77, 0.81, 0.83, 0.55, 0.17])        # the last reading dips below the ad threshold
+    c = s.components(2, now)
+    assert c["music"] < 0.5 and c["ad"] is True and c["score"] < 0
+    later = flicker(s, 2, now, [0.1] * 14)                            # clean audio for 14 s: the memory fades
+    assert s.components(2, later)["ad"] is False
+
+
+def test_idle_main_does_not_hand_over_to_a_stream_that_was_just_an_ad():
+    s = make()
+    now = warm_up(s)
+    quiet_play(s, 3, now, seconds=8)
+    ad(s, 1, now, seconds=8)                                          # MAIN is on an ad
+    flicker(s, 2, now, [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.2])      # tab 2: an ad too, but the last reading dips
+    swap = s.decide(now + 8)
+    assert swap is not None and swap.promote == 3                     # the clean stream, not the flickering ad

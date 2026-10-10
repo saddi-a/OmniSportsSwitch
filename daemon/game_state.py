@@ -22,7 +22,7 @@ KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long aft
 # Phrases a streaming player shows during an ad break (matched inside a longer text item, lower case).
 # Seen live: "COMMERCIAL BREAK IN PROGRESS", "PUBLICITARIA EN CURSO", "INTERVALO COMERCIAL", "PUBLICITE".
 AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite",
-              "ad break", "advertisement", "right back"]
+              "ad break", "advertisement", "right back", "watch now", "ondazn"]
 # Banners the broadcast flashes for a big play. A text item counts only if it is (nearly) just that phrase, so
 # sentences and stat labels ("TURNOVERS") do not. Seen live: "TAKEAWAY!" after an interception.
 BIG_PLAY_WORDS = ["takeaway", "interception", "intercepted", "fumble", "sack", "red card", "carton rouge", "penalty kick"]

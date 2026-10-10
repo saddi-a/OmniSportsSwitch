@@ -44,6 +44,7 @@ class Config:
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
+    audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
     idle_music: float = 0.5   # MAIN counts as idle (an ad) when music probability is at least this, or it is on a break/over
 
 
@@ -66,6 +67,7 @@ class _Stream:
     event_at: float = float("-inf")  # when a score change was last seen
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
     on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
+    audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd)
     favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
     auto_state: str = "live"     # status detected from the picture
@@ -110,6 +112,8 @@ class Scorer:
         stream = self.streams.get(tab_id)
         if stream is not None:
             stream.tags, stream.tags_at = (crowd, speech, music), now
+            if music >= self.config.idle_music and crowd < 0.1:
+                stream.audio_ad_at = now
 
     def set_can_main(self, tab_id: int, can_main: bool) -> None:
         if tab_id in self.streams:
@@ -161,7 +165,7 @@ class Scorer:
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
         status = stream.override or stream.auto_state
         score = max(raw, 0.0) * stream.weight * STATUS_MULT[status]
-        audio_ad = music >= cfg.idle_music and crowd < 0.1
+        audio_ad = now - stream.audio_ad_at <= cfg.audio_ad_memory_s   # remembered: music probability flickers
         if stream.on_ad:
             score = -cfg.ad_penalty            # the picture says it is an ad: its audio means nothing
         elif audio_ad:
@@ -193,7 +197,7 @@ class Scorer:
             return None  # still warming up: nothing fair to compare against yet
         current_score = current_c["score"] if current_c else 0.0
         # An ad (music) or a break / over: any live stream without music is better than that.
-        idle = current_c is not None and (current_c["music"] >= cfg.idle_music or current_c["status"] != "live")
+        idle = current_c is not None and (current_c["ad"] or current_c["music"] >= cfg.idle_music or current_c["status"] != "live")
         best_id, best_c = None, None
         for tab_id in self.streams:
             if tab_id in (self.main, replaced) or not self.streams[tab_id].can_main:
@@ -201,7 +205,7 @@ class Scorer:
             c = self.components(tab_id, now)
             if c is None:
                 continue
-            if idle and (c["status"] != "live" or c["music"] >= cfg.idle_music):
+            if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music):
                 continue
             if best_c is None or c["score"] > best_c["score"]:
                 best_id, best_c = tab_id, c

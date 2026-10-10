@@ -204,3 +204,13 @@ def test_no_big_play_is_reported_during_an_ad_break():
     for t in (0, 3):
         g.update(t, ["COMMERCIAL BREAK IN PROGRESS", "FUMBLE"], ["0:30"])
     assert g.big_play == ""
+
+
+def test_dazn_promo_screens_count_as_a_break():
+    g = GameTracker("American football")
+    promo = [(["FIFA+", "WATCH NOW", "ONDAZNCOM", "FIFA+"], []),
+             (["After", "Diego", "FIFA+", "WNATCHNOW", "ONDAZNCOM"], []),
+             (["Iatchevery gameonly onDAZN", "NFL GAME PASS"], [])]
+    states = [g.update(3.0 * i, texts, clocks) for i, (texts, clocks) in enumerate(promo)]
+    assert states[0] == "live" and states[1:] == ["break", "break"]
+    assert g.on_ad is True
