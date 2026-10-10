@@ -1,5 +1,31 @@
 # OmniSportsSwitch — Plan
 
+## 0. Resume here (read this first)
+
+**State (2026-10-10, late evening).** Everything described below is built, committed and pushed on the branch `phase-0-1-spike-and-daemon` of the private repo `saddi-a/OmniSportsSwitch` (`main` only has GitHub's first commit). `pytest` passes (153 tests) plus 1 expected failure (the UCF scoreboard layout, on purpose).
+
+**Running it.**
+* `scripts\start_all.ps1` starts the daemon (its own window, **minimized; closing it stops the daemon**) and the test Edge profile (separate profile at `%LOCALAPPDATA%\OmniSportsSwitch\edge-profile`, debug port 9222, extension preloaded). It skips whatever already runs. `scripts\stop_all.ps1` stops the daemon.
+* After changing **daemon or settings** code: stop and start the daemon. After changing **extension** files: the user presses "Reload extension" in the popup (reloading drops tracking), then clicks "Track this tab" on every stream tab again (Edge requires that click). Window roles come back by themselves.
+* Tests: `.venv\Scripts\python.exe -m pytest daemon/tests -q`.
+* Logs: `logs/events.log` (goals, swaps and why, tile focus, game states, freeze, big plays, sport detections, warnings), `logs/daemon.log` (everything, incl. OCR text per video area every ~3 s), `logs/boxes.log` (size and position of every OCR item, for tuning). The debug port 9222 can be used (read-only) to inspect the test profile's pages.
+* Real samples of a scoreboard: `.venv\Scripts\python.exe scripts\capture_samples.py "label"` (saves to `samples/`, untracked).
+
+**Pending right now.** The user put a DAZN **multiview on the Maryland @ Ohio State game** (3 tiles) to test with. The extension's reporter is lost when a page reloads, so the multiview tab must be tracked again (popup -> Track this tab) before the daemon reports its tile positions. Then check: each tile read separately (clocks, scores), score changes and breaks per tile, tile focus / expand on a goal, the negative ad score on a tile, big-play banners.
+
+**Next, in order of value.** (1) the multiview live test above; (2) more real scoreboard samples (NFL, Champions League, national-team matches, other leagues) via `capture_samples.py`, then tune the reader (`daemon/score_watch.py`) on them and on `logs/boxes.log`; (3) per-team allowed slots and a popup editor for `settings.toml`; (4) setup script, README and licence, then the public repo as a single clean commit (see section 7).
+
+**Working agreements with the user.** The user is new to web development, knows Python and C. For anything architectural or about design, ask first with options, pros and cons and a recommendation; implementation details are mine to decide, with a short explanation. Keep replies short and plain. The repo is private: commit on the feature branch (never on `main`), push the branch freely, never force-push. Commit with `git -c user.name=saddi-a -c user.email=72130894+saddi-a@users.noreply.github.com` (never edit git config); the `Co-Authored-By: Claude Sonnet 5.5` trailer is fine because history is dropped when publishing. Keep this plan up to date as things change.
+
+**Gotchas learned the hard way.**
+* In Python strings a `\b` becomes a backspace character; a stray `0x08` once silently broke a regex. Use raw strings or lookarounds, and write multi-line patches as a script file, not inline in the shell.
+* Source files have Windows line endings, so multi-line text edits can fail to match; patch from Python (read bytes, replace, write bytes) when that happens.
+* Installing a package that depends on PyTorch can replace the GPU build with a CPU one. Install `torch` and `torchvision` from the CUDA index first (`requirements.txt` explains), and use `--no-deps` for the rest.
+* Hardware acceleration must stay off in Edge, and no other window (including the daemon's console) may sit on top of a stream, because OCR works from screen capture.
+* Old background monitors watch old log files; arm new ones on `logs/events.log`, which survives restarts.
+
+**File map.** `daemon/` (server, scoring, game_state, score_watch, sport_detect, favourites, arrange, multiview, screen_ocr, audio_classifier, settings, logsetup, tests/ with real-sample fixtures); `extension/` (manifest, background.js service worker, offscreen.js, popup, pcm-processor.js, defaults.js); `settings.toml`; `scripts/`; `spike/` (Phase 0 throwaway tests); `models/` (not tracked: PANNs checkpoint, EasyOCR models); `logs/`, `samples/` (not tracked).
+
 ## 1. Project Overview & Objective
 
 **OmniSportsSwitch** is an automated multi-stream sports switching system for a multi-monitor setup. It acts as an automated live broadcast director: it continuously monitors crowd noise and visual game state across multiple browser streams, calculates a dynamic excitement score, and automatically promotes the most intense game onto the user's main center display.
@@ -24,7 +50,7 @@
 Both of these are accepted for now and can be revisited if they don't work out:
 
 1. **OCR location:** Python daemon on the GPU. **Updated after the Phase 0 spike:** frames come from the daemon screenshotting each slot's screen region itself, not from the extension, because DRM blocks reading frames out of the page (see §8, Phase 0 results). Alternatives considered: JS-only OCR inside the extension (weaker, and blocked by the same DRM issue).
-2. **Muting secondary streams:** Web Audio gain nodes. Alternatives considered: `video.muted = true` (some players pause), or `chrome.tabs.update({muted: true})` (may cut off the audio before `tabCapture` can measure it). Needs testing alongside the Phase 0 spike.
+2. **Muting secondary streams:** Web Audio gain nodes. Alternatives considered: `video.muted = true` (some players pause), or `chrome.tabs.update({muted: true})` (may cut off the audio before `tabCapture` can measure it). Validated in Phase 0: the sound goes silent, the level is still measured and the players do not pause.
 
 ## 3. Display Layout & Window Roles
 
@@ -49,12 +75,12 @@ Screen 3        Screen 1              Screen 2
 ```
 
 * **No fullscreen on `LEFT` and `MAIN`:** the user can't use fullscreen there, and a tab swap exits video fullscreen anyway. Windows are maximized with Edge's tab strip and address bar visible, so OCR screen capture must locate the video area inside each window rather than use fixed screen coordinates.
-* **Roles belong to windows, not tabs.** The user marks each window once with its role in the extension popup; a tab's role is the role of the window it is currently in, and a swap moves tabs between the fixed windows. Window ids change when Edge restarts, so roles are re-marked each session. Each slot window should hold exactly one stream tab.
+* **Roles belong to windows, not tabs.** The user marks each window once with its role in the extension popup; a tab's role is the role of the window it is currently in, and a swap moves tabs between the fixed windows. Window ids change when Edge restarts, so the extension also remembers where each role's window sits on screen and gives the role back to the window at that position. Each slot window should hold exactly one stream tab.
 * **Total slots:** 5 (`MAIN`, `LEFT`, `RIGHT_TOP`, `RIGHT_MID`, `RIGHT_BOT`), but `RIGHT_TOP` is a rarely-used 5th slot in the vertical monitor's top third. In normal use only 4 slots are active.
 * **Auto-fill order for new streams into empty slots:** `LEFT → RIGHT_BOT → RIGHT_MID → RIGHT_TOP`. `MAIN` is not part of this queue — it's only ever reached via excitement-based promotion, never direct assignment.
 
 ### Priority should be automatic and simple for the user
-Priority by sport, favourite teams and game status (live / break / over) should come from live information (audio and picture) with minimal manual input. Target behaviour: OCR on the screen capture detects teams, game clock, score changes and break/final text; a stopped clock or missing scorebug marks a stream as on a break or over. The user only maintains a short favourites list and sport weights. Manual per-tab sport, teams and Live/Break/Over selectors already exist in the popup as stage A and become overrides once detection works.
+Priority by sport, favourite teams and game status (live / break / over) should come from live information (audio and picture) with minimal manual input. Target behaviour: OCR on the screen capture detects teams, game clock, score changes and break/final text; a stopped clock or missing scorebug marks a stream as on a break or over. The user only maintains a short favourites list and sport weights. This is built: sport, favourite teams and game status are detected; the manual per-tab sport, teams and Live/Break/Over (Auto/Live/Break/Over) selectors in the popup are only overrides.
 
 ## 4. Core Architecture & Zero-Lag Strategy
 
@@ -100,14 +126,14 @@ Score of a stream = `priority × (max(0, 0.3·surge + 1.0·crowd − 0.2·speech
 * **Audio:** only the `MAIN` window is audible; the other tabs are muted with Web Audio gain nodes (measured before the gain, players do not pause).
 * **Swap mechanics:** roles belong to windows; a swap moves tabs between fixed windows with `chrome.tabs.move`, keeping a spare tab in each window so none closes.
 
-## 6. DAZN multiview (built, needs real-world confirmation)
+## 6. DAZN multiview (built; live test on the Ohio State multiview pending)
 
 * The extension reports every playing `<video>` (a tile) with its position and whether it has sound; the daemon reads each tile separately (OCR, game state, score changes).
 * **Tiles are scored from the picture only** (score change, game state), plus crowd sound for the tile that has audio focus. Rotating focus to sample other tiles' audio was rejected.
 * **Tile focus:** if another tile has a fresher score change (and is not on a break), the daemon asks the extension to expand it. Minimum 30 s between changes per tab.
 * **Expanding needs a genuine mouse click.** A scripted click only moves the sound. The extension therefore uses Edge's debugging API (`debugger` permission) to hover and click, then detaches; Edge shows its "debugging this browser" bar for a moment. A script click remains as a fallback.
 * **Slots swap streams.** In the main + sidebar layout, expanding a tile moves its stream into the big slot and the old main stream into the clicked slot, so the daemon swaps its per-tile records the same way.
-* Not yet seen on a real goal (it cannot be triggered on demand).
+* Seen live: the daemon swapped tile records and moved focus when a tile expanded, and tab-level swaps from goals inside a multiview tab. Not yet seen: a goal in a *side* tile expanding that tile on its own.
 
 ## 7. Known risks & open items
 
@@ -125,7 +151,7 @@ Score of a stream = `priority × (max(0, 0.3·surge + 1.0·crowd − 0.2·speech
 ## 8. Roadmap and status
 
 * **Phase 0 — DRM feasibility spike: done.** Page frame capture is blocked on DAZN, Canal+ and Disney+; screen capture works; `tabCapture` audio works on all three, also from hidden tabs; gain-node muting works. Scripts in `spike/`.
-* **Phase 1 — Daemon and scoring: done.** `daemon/` (async WebSocket server, pure tested modules: `scoring`, `game_state`, `score_watch`, `multiview`, `arrange`, `screen_ocr`, `audio_classifier`). 74 tests.
+* **Phase 1 — Daemon and scoring: done.** `daemon/` (async WebSocket server, pure tested modules: `scoring`, `game_state`, `score_watch`, `sport_detect`, `favourites`, `multiview`, `arrange`, `screen_ocr`, `audio_classifier`, `settings`). 153 tests plus 1 expected failure.
 * **Phase 2 — Audio classification and OCR: done.** PANNs CNN14 and EasyOCR run locally on the RTX 3080 (about 5 ms and 0.2 s per pass).
 * **Phase 3 — Extension: done.** Popup (window role, tracking, status, sport, teams, weight, allowed slots, priorities, reload), offscreen page (audio, WebSocket), service worker (tracking, arrange, tile expand).
 * **Phase 4 — Integration: done and running.** Audio, OCR, scoring, window swaps, muting and multiview focus work together.
