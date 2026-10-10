@@ -23,7 +23,9 @@ What the daemon looks at:
 - **Commercials**: a stream on an ad gets a negative score and is never promoted. A broadcast on an ad in `MAIN` is replaced.
 - **Your preferences**: favourite teams (kept on `MAIN` unless something exciting happens elsewhere), per-sport weights, per-tab weights, and slots a team or tab may or may not use.
 
-Other features: freeze `MAIN` with a hotkey, DAZN multiview support (it clicks the right tile), window roles remembered across restarts, sport detected from the picture, permanent logs.
+Other features: freeze Main with a hotkey, **Make Main** to force a stream there for a while, DAZN multiview support (it clicks the right tile), window names remembered across restarts, sport detected from the picture, close and late games valued above blowouts, every setting editable in the popup, permanent logs.
+
+The daemon understands English and French scoreboards and banners.
 
 ## Requirements
 
@@ -59,39 +61,90 @@ A single setup script that does all of this is on the to-do list.
 
 ## Running it
 
-```powershell
-scripts\start_all.ps1
-```
+### First time
 
-This starts the daemon in its own minimized window (**closing that window stops the daemon**) and a separate Edge test profile with the extension preloaded. `scripts\stop_all.ps1` stops the daemon.
+1. Open PowerShell in the repository folder and run:
 
-Then:
+   ```powershell
+   scripts\start_all.ps1
+   ```
 
-1. Open one stream per Edge window and put the windows where you want them.
-2. In each window, click the extension icon and **Track this tab** (or press `Ctrl+Shift+Y`). Edge requires this click to start audio capture.
-3. In each window's popup, give the window a name: **Main**, **Window 2**, **Window 3**, **Window 4** or **Window 5**. The names do not depend on which screen a window is on. Main is the big window that streams are promoted into; new streams fill Window 2, then 3, 4, 5. Names are remembered by window position.
+   If Windows says "running scripts is disabled", run it like this instead (same for the other scripts):
 
-After a page reload (for example single view to multiview) the tab has to be tracked again with `Ctrl+Shift+Y`.
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1
+   ```
 
-If you edit `extension/` files, press **Reload extension** in the popup and track the tabs again. If you edit the daemon code, stop and start the daemon.
+   This does two things, and skips whichever is already running:
+   - starts the **daemon** in its own minimized PowerShell window. The first start takes about 15 seconds while the models load. **Closing that window stops the daemon.**
+   - opens a separate **Edge test profile** (your normal Edge profile is not touched) with the extension already loaded.
+
+2. In that Edge, open **one stream per window** and put the windows where you want them (for example one per screen). Keep Edge's hardware acceleration off (see Requirements) and do not let any window cover a stream.
+3. In each window click the extension icon, then **Track this tab** (or press `Ctrl+Shift+Y`). Edge requires this click to start audio capture. The icon badge shows `ON`.
+4. In each window's popup, give the window a name: **Main**, **Window 2**, **Window 3**, **Window 4** or **Window 5**. Main is the big window that streams are promoted into; new streams fill Window 2, then 3, 4, 5. The names do not depend on which screen a window is on. They are remembered by window position, so after a restart they come back by themselves if the windows sit where they did.
+5. That's it. The daemon now watches every tracked stream and moves the most exciting one into Main. Only Main is audible.
+
+### Every day
+
+1. `scripts\start_all.ps1`, wait about 15 seconds.
+2. Open your streams, press `Ctrl+Shift+Y` in each window.
+3. Watch. When you're done: `scripts\stop_all.ps1` (stops the daemon; close the Edge windows yourself).
+
+### While you watch
+
+| You want to | Do this |
+|---|---|
+| Keep Main where it is | `Ctrl+Shift+P` (or the popup's Freeze button). While frozen, the winning stream goes to Window 2 instead. Press again to resume. |
+| Put a stream on Main yourself | Popup, on that stream's block: **Make Main**. It stays on Main for the hold time (10 minutes by default, set in Settings), unless something really exciting happens elsewhere. A yellow bar at the top of the popup shows the time left and a **Release** button. |
+| Stop a stream from taking Main | Untick **Main** in its "Allowed in" boxes (per tab) or in the team's boxes (per team). |
+| Prefer a team | Popup, Priorities, Teams: add the team with a multiplier (2 = twice as much). Favourites stay on Main unless something exciting happens elsewhere. |
+| Tell the daemon a game is over or on a break | Per tab: Status = Over or Break (Auto reads it from the picture). |
+| Change how it behaves | Popup, **Settings** section: every threshold, weight, timing and banner phrase, with an explanation each. Changes apply at once. |
+
+After a page reloads (for example switching a DAZN tab between single view and multiview) the tab drops off the daemon's list. Press `Ctrl+Shift+Y` in that window. Changing the layout inside a loaded multiview needs nothing.
+
+### Restarting things
+
+| What changed | What to do |
+|---|---|
+| You edited daemon code or pulled new code | `scripts\stop_all.ps1`, then `scripts\start_all.ps1`. The streams reconnect by themselves. For about 20 seconds after the start nothing swaps (the streams are warming up). |
+| You changed a setting in the popup | Nothing, it applies at once. |
+| You edited `extension\` files | In the popup, press **Reload extension**, then track every tab again (Edge requires the click). |
+| The popup says the daemon is not running | Start it: `scripts\start_all.ps1`. |
+| The daemon window was closed | Same: `scripts\start_all.ps1` (it only starts what is not running). |
+
+### Using your own Edge profile instead of the test profile
+
+The start script uses a separate test profile because it is easy to reset. To use your normal Edge: run only the daemon (`scripts\start_daemon.ps1`, which runs in the current window, stop it with `Ctrl+C`), then in Edge open `edge://extensions`, turn on Developer mode, **Load unpacked**, and choose the `extension` folder. Everything else is the same.
+
+### If something does not work
+
+| Problem | Likely cause and fix |
+|---|---|
+| A stream is never promoted, and its OCR text in `logs\daemon.log` is empty | Edge hardware acceleration is on (screen capture comes out black), or a window covers the stream. |
+| "Track this tab" does nothing | The tab is not a normal web page (for example `edge://`). Use it on the stream page itself. |
+| A tab stopped being tracked | Its page reloaded. Press `Ctrl+Shift+Y` in that window. |
+| Everything is silent | Only Main is audible. Check the window names, and that one window is Main. |
+| Nothing swaps right after a start | Normal: a 20-second warm-up. |
+| A stream will not go to Main | Check its "Allowed in" boxes and any team rule that includes it. |
+| Main stays on a stream you do not like | It may be held (**Make Main**, yellow bar in the popup) or frozen (the badge says `LOCK`). |
+| A wrong swap or a missed goal | Look in `logs\events.log` for the swap and the reason, and in `logs\daemon.log` for the scores and the OCR text at that time. |
 
 ### Shortcuts
 
 | Keys | Action |
 |---|---|
-| `Ctrl+Shift+P` | Freeze or unfreeze `MAIN`. While frozen, the winning stream goes to Window 2 instead. |
+| `Ctrl+Shift+P` | Freeze or unfreeze Main. |
 | `Ctrl+Shift+Y` | Track (or re-track) the visible tab of the current window. |
+
+If a shortcut does nothing, check `edge://extensions/shortcuts`.
 
 ### The popup
 
-- Name of the current window (Main, Window 2...) and the freeze button.
-- Per tab: sport, teams, weight, status (Auto, Live, Break, Over), allowed slots.
-- Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running).
-- Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed slots per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
-
-### Settings
-
-Every threshold, weight, break timing and banner phrase is editable in the popup (**Settings** section). Each setting has a short explanation, edits apply at once without restarting the daemon, changed values are shown in bold, and the arrow button puts one back to its default. The values are kept in `settings.local.json` (not committed), layered on top of the defaults in `settings.toml`.
+- Name of the current window (Main, Window 2...), the freeze button, and the hold bar when a stream is held on Main.
+- Per tracked tab: sport, teams, weight, status (Auto, Live, Break, Over), which windows it may use, **Make Main**, Untrack.
+- Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running). Changed values are shown in bold, the arrow button puts one back to its default, and "Reset all" restores everything. The values are kept in `settings.local.json` (not committed), layered on top of the defaults in `settings.toml`.
+- Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed windows per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
 
 ## Logs
 
