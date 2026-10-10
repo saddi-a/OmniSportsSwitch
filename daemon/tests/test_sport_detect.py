@@ -22,8 +22,12 @@ AMERICAN_LIVE = [
 ]
 
 
-def test_soccer_is_recognised_from_a_clock_past_twenty_minutes():
-    assert run(SOCCER_LIVE) == SOCCER
+def test_soccer_is_recognised_from_a_running_clock_past_twenty_minutes():
+    d = SportDetector()
+    for i in range(4):                                   # readings about 3 s apart, as in the live log
+        sec = 52 * 60 + 54 + 3 * i
+        d.update(["PSG", "1", "LMFC", "0"], [f"{sec // 60}:{sec % 60:02d}"])
+    assert d.sport == SOCCER
 
 
 def test_american_football_is_recognised_from_down_and_distance():
@@ -62,6 +66,28 @@ def test_evidence_fades_so_a_new_game_in_the_slot_can_take_over():
     for _ in range(3):
         d.update(["1ST & 10"], [])
     assert d.sport == FOOTBALL
-    for i in range(1500):           # about 75 minutes of readings with a soccer clock
-        d.update(["PSG", "LMFC"], [f"{30 + (i % 60)}:00"])
+    for i in range(1500):           # about 75 minutes of readings, the clock running 3 s per reading
+        sec = 30 * 60 + 3 * i
+        d.update(["PSG", "LMFC"], [f"{sec // 60}:{sec % 60:02d}"])
     assert d.sport == SOCCER
+
+
+def test_a_static_kickoff_time_is_not_a_soccer_clock():
+    d = SportDetector()
+    for _ in range(20):
+        d.update(["Match started at 20:45", "COMING UP AT HALFTIME", "HOOSIERS RALLY PAST HUSKERS"], ["20:45"])
+    assert d.sport is None
+
+
+def test_a_running_clock_beyond_twenty_minutes_is_soccer():
+    d = SportDetector()
+    for i in range(4):
+        d.update(["PSG", "LMFC"], [f"{50 + (3 * i) // 60}:{(3 * i) % 60 + 10:02d}"])
+    assert d.sport == SOCCER
+
+
+def test_a_lone_ot_or_one_stray_quarter_is_not_basketball():
+    d = SportDetector()
+    d.update(["OT"], [])
+    d.update(["Q4"], [])
+    assert d.sport is None

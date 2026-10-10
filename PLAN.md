@@ -2,10 +2,11 @@
 
 ## 0. Resume here (read this first)
 
-**State (2026-10-10, late evening).** Everything described below is built, committed and pushed on the branch `phase-0-1-spike-and-daemon` of the private repo `saddi-a/OmniSportsSwitch` (`main` only has GitHub's first commit). `pytest` passes (153 tests) plus 1 expected failure (the UCF scoreboard layout, on purpose).
+**State (2026-10-11, just after midnight).** Everything described below is built, committed and pushed on the branch `phase-0-1-spike-and-daemon` of the private repo `saddi-a/OmniSportsSwitch` (`main` only has GitHub's first commit). `pytest` passes (153 tests) plus 1 expected failure (the UCF scoreboard layout, on purpose).
 
 **Running it.**
 * `scripts\start_all.ps1` starts the daemon (its own window, **minimized; closing it stops the daemon**) and the test Edge profile (separate profile at `%LOCALAPPDATA%\OmniSportsSwitch\edge-profile`, debug port 9222, extension preloaded). It skips whatever already runs. `scripts\stop_all.ps1` stops the daemon.
+* **When a tab needs tracking again:** only when its page reloads (single view to multiview and back, a new game, a refresh); changing layout or adding/removing tiles inside a loaded multiview needs nothing, and the extension itself is never reloaded for this. Press **`Ctrl+Shift+Y`** (or the popup's "Re-track this tab") in that window: it tracks the visible tab of the window you are in.
 * After changing **daemon or settings** code: stop and start the daemon. After changing **extension** files: the user presses "Reload extension" in the popup (reloading drops tracking), then clicks "Track this tab" on every stream tab again (Edge requires that click). Window roles come back by themselves.
 * Tests: `.venv\Scripts\python.exe -m pytest daemon/tests -q`.
 * Logs: `logs/events.log` (goals, swaps and why, tile focus, game states, freeze, big plays, sport detections, warnings), `logs/daemon.log` (everything, incl. OCR text per video area every ~3 s), `logs/boxes.log` (size and position of every OCR item, for tuning). The debug port 9222 can be used (read-only) to inspect the test profile's pages.

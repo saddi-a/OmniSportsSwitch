@@ -40,7 +40,9 @@ async function load() {
     load();
   };
 
-  $("track").hidden = String(active.id) in tracked;
+  // Always available: after a page reload or a view change the tab needs tracking again (also on Ctrl+Shift+Y).
+  $("track").hidden = false;
+  $("track").textContent = String(active.id) in tracked ? "Re-track this tab (Ctrl+Shift+Y)" : "Track this tab (Ctrl+Shift+Y)";
   $("track").onclick = () => {
     chrome.runtime.sendMessage({ type: "track", tabId: active.id });
     window.close();

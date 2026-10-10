@@ -1,12 +1,16 @@
 {
   "manifest_version": 3,
   "name": "OmniSportsSwitch",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Measures stream audio per tab, sends it to the local OmniSportsSwitch daemon, and swaps tabs between windows on its command.",
   "permissions": ["tabCapture", "offscreen", "activeTab", "tabs", "storage", "scripting", "debugger"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "OmniSportsSwitch", "default_popup": "popup.html" },
   "commands": {
+    "track-tab": {
+      "suggested_key": { "default": "Ctrl+Shift+Y" },
+      "description": "Track (or re-track) the current tab - use it after a page reloads or the view changes"
+    },
     "toggle-freeze": {
       "suggested_key": { "default": "Ctrl+Shift+P" },
       "description": "Freeze or unfreeze MAIN (stops automatic swaps and tile changes)"

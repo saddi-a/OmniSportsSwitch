@@ -153,14 +153,26 @@ async function toggleFreeze() {
   await setFrozen(!frozen);
 }
 
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands.onCommand.addListener(async (command) => {
   if (command === "toggle-freeze") toggleFreeze();
+  if (command === "track-tab") {
+    // The shortcut counts as the click Edge needs: (re)track the visible tab of the window you are in.
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab) trackTab(tab.id).catch((e) => console.error("track failed", e));
+  }
 });
 
 async function trackTab(tabId) {
   const tab = await chrome.tabs.get(tabId);
   await ensureOffscreen();
-  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+  // Re-tracking a tab whose capture is still running makes Edge refuse a second capture: that is fine, the tab is
+  // simply refreshed (the position reporter is installed again below).
+  let streamId = null;
+  try {
+    streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+  } catch (e) {
+    console.warn("capture not restarted (already running or not allowed):", e.message);
+  }
 
   const { tracked, weights, windowRoles } = await getState();
   tracked[tabId] = { sport: "", teams: "", status: "auto", ...tracked[tabId], title: tab.title };
@@ -173,7 +185,7 @@ async function trackTab(tabId) {
   }
   await chrome.storage.local.set({ tracked, weights, windowRoles });
 
-  chrome.runtime.sendMessage({ type: "start", tabId, streamId });
+  if (streamId) chrome.runtime.sendMessage({ type: "start", tabId, streamId });
   chrome.scripting.executeScript({ target: { tabId }, func: installVideoReporter }).catch((e) => console.error("reporter failed", e));
   const { frozen = false } = await chrome.storage.local.get("frozen");
   chrome.action.setBadgeText({ tabId, text: frozen ? "LOCK" : "ON" });
