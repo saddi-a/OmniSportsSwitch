@@ -50,7 +50,7 @@ log = logging.getLogger("daemon")
 
 
 class Server:
-    def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None):
+    def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None):
         self.scorer = scorer or Scorer()
         self.classifier = classifier
         self.screen_reader = screen_reader
@@ -66,7 +66,7 @@ class Server:
         self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
         self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
-        self.focuser = TileFocuser()
+        self.focuser = focuser or TileFocuser()
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
         self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
@@ -350,11 +350,15 @@ if __name__ == "__main__":
 
     from daemon.screen_ocr import ScreenReader
 
+    from daemon.settings import load_settings
+
+    settings = load_settings()
     classifier = AudioClassifier()
     log.info("audio classifier ready on %s", classifier.device)
     screen_reader = ScreenReader()
     log.info("screen reader ready")
     try:
-        asyncio.run(Server(classifier=classifier, screen_reader=screen_reader).run())
+        asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
+                           focuser=TileFocuser(settings.focus)).run())
     except KeyboardInterrupt:
         pass

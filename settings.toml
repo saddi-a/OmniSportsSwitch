@@ -1,0 +1,54 @@
+# OmniSportsSwitch settings. Read when the daemon starts: change a number, then restart the daemon
+# (scripts\stop_all.ps1, then scripts\start_all.ps1). Anything you delete falls back to the default shown here.
+# A typo or wrong value is ignored with a warning in logs\events.log; it never stops the daemon.
+
+[scoring]
+# A challenger must beat the stream it replaces by this fraction AND by at least min_gap in score...
+threshold = 0.40
+min_gap = 0.15
+# ...and a challenger scoring below this never wins (loudness alone cannot reach it).
+min_score = 0.35
+window_s = 3.0       # loudness is averaged over this many seconds
+baseline_s = 60.0    # each stream's "normal loudness" is averaged over about this long
+warmup_s = 20.0      # a new stream cannot win (or be compared) until it has been seen this long
+surge_cap = 1.0      # limit of the loudness-surge signal (1.0 = loudness doubled)
+event_s = 45.0       # how long a goal / touchdown boosts a stream (fading)
+min_dwell_s = 20.0   # minimum time between two swaps
+stale_s = 5.0        # a stream with no audio for this long is ignored
+idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this
+
+[weights]
+# score = surge*w + crowd*w + speech*w + music*w + event*w, plus the favourite bonus
+surge = 0.3          # loudness above the stream's own normal
+crowd = 1.0          # cheering / crowd / applause sound
+speech = -0.2        # commentary (negative: talking is not excitement)
+music = -0.5         # music, ads and jingles (negative)
+event = 0.8          # a fresh goal / touchdown read from the scoreboard
+favourite = 0.4      # steady bonus per +1 of a favourite team's multiplier (x2 team = +0.4)
+
+[multiview]
+# Which tile of a DAZN multiview tab gets the sound / becomes the big one.
+switch_ratio = 1.5   # another tile must beat the current one by this factor
+min_dwell_s = 30.0   # minimum time between tile changes in one tab
+event_weight = 1.0
+crowd_weight = 1.0
+floor = 0.05         # every live tile has at least this much interest
+
+# When does a stopped game clock mean a break?  freeze_s: clock unchanged this long.  no_clock_s: scoreboard
+# without a readable clock this long. Soccer's clock only stops at half-time; American football and basketball
+# stop it constantly, so they allow much longer.
+[sports.football]
+freeze_s = 20
+no_clock_s = 45
+
+[sports."american football"]
+freeze_s = 240
+no_clock_s = 90
+
+[sports.basketball]
+freeze_s = 180
+no_clock_s = 60
+
+[sports.generic]       # any other or unknown sport
+freeze_s = 120
+no_clock_s = 60

@@ -28,12 +28,12 @@ PROFILES = {
     "football": SportProfile(freeze_s=20, no_clock_s=45),             # soccer: the clock only stops at half time / full time
     "american football": SportProfile(freeze_s=240, no_clock_s=90),   # clock stops after most plays and for TV timeouts
     "basketball": SportProfile(freeze_s=180, no_clock_s=60),          # clock stops on every foul and timeout
+    "generic": SportProfile(freeze_s=120, no_clock_s=60),             # any other or unknown sport
 }
-GENERIC = SportProfile(freeze_s=120, no_clock_s=60)
 
 
 def profile_for(sport: str | None) -> SportProfile:
-    return PROFILES.get((sport or "").strip().lower(), GENERIC)
+    return PROFILES.get((sport or "").strip().lower(), PROFILES["generic"])
 
 
 class GameTracker:
