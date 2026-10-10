@@ -653,3 +653,53 @@ def test_the_picture_ad_marks_the_stream_too():
     for tab in (2,):
         quiet_play(s, tab, now + 10)
     assert s.decide(now + 15) is None
+
+
+# ---- warm-up (first 20 s of a stream, e.g. after a daemon restart): a picture-detected ad/break on MAIN may still go ----
+
+def started(s, seconds=5):
+    for tab in (1, 2, 3):
+        steady(s, tab, 0.05, 0, seconds)
+    return seconds
+
+
+def test_main_on_a_picture_ad_hands_over_during_warmup():
+    s = make(warmup_s=20)
+    now = started(s)
+    s.set_on_ad(1, True, now)
+    for tab in (2, 3):
+        quiet_play(s, tab, 0, seconds=5)
+    swap = s.decide(now)
+    assert swap is not None and swap.promote in (2, 3) and "MAIN idle" in swap.reason
+
+
+def test_main_on_a_break_or_over_hands_over_during_warmup():
+    for state in ("break", "over"):
+        s = make(warmup_s=20)
+        now = started(s)
+        s.set_auto_state(1, state)
+        assert s.decide(now) is not None, state
+
+
+def test_an_ad_stream_is_not_chosen_during_warmup():
+    s = make(warmup_s=20)
+    now = started(s)
+    s.set_on_ad(1, True, now)
+    s.set_on_ad(2, True, now)
+    s.set_auto_state(3, "break")
+    assert s.decide(now) is None
+
+
+def test_audio_excitement_still_cannot_swap_during_warmup():
+    s = make(warmup_s=20)
+    now = started(s)
+    for t in (now, now + 0.5, now + 1.0, now + 1.5):
+        s.add_audio(2, 0.30, t)
+        s.set_tags(2, 0.9, 0.1, 0.0, t)
+    assert s.decide(now + 2) is None
+
+
+def test_a_quiet_main_that_is_not_on_an_ad_is_kept_during_warmup():
+    s = make(warmup_s=20)
+    now = started(s)
+    assert s.decide(now) is None

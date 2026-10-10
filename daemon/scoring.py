@@ -154,8 +154,9 @@ class Scorer:
         if tab_id in self.streams and state in STATUS_MULT:
             self.streams[tab_id].auto_state = state
 
-    def components(self, tab_id: int, now: float) -> dict | None:
-        """The signals and final score of a stream, or None if it has no recent audio or is still warming up."""
+    def components(self, tab_id: int, now: float, warmup: bool = True) -> dict | None:
+        """The signals and final score of a stream, or None if it has no recent audio or is still warming up
+        (`warmup=False` also reports a stream that is still warming up: only for ad / break handovers)."""
         cfg = self.config
         stream = self.streams.get(tab_id)
         if stream is None:
@@ -163,7 +164,7 @@ class Scorer:
         self._trim(stream, now)
         if not stream.samples or now - stream.last_sample > cfg.stale_s:
             return None
-        if now - stream.first_seen < cfg.warmup_s:
+        if warmup and now - stream.first_seen < cfg.warmup_s:
             return None
 
         level = sum(v for _, v in stream.samples) / len(stream.samples)
@@ -205,8 +206,14 @@ class Scorer:
             return None
 
         current_c = self.components(replaced, now)
-        if current_c is None and self._has_recent_audio(replaced, now):
-            return None  # still warming up: nothing fair to compare against yet
+        warming = current_c is None and self._has_recent_audio(replaced, now)
+        if warming:
+            # Still warming up (the first seconds after a restart): nothing fair to compare by loudness. But a stream
+            # that the picture shows on an ad, a break or over can still hand over to a live stream without an ad.
+            stream = self.streams[replaced]
+            if not (stream.on_ad or (stream.override or stream.auto_state) != "live"):
+                return None
+            current_c = self.components(replaced, now, warmup=False)
         current_score = current_c["score"] if current_c else 0.0
         # An ad (music) or a break / over: any live stream without music is better than that.
         idle = current_c is not None and (current_c["ad"] or current_c["status"] != "live")
@@ -214,7 +221,7 @@ class Scorer:
         for tab_id in self.streams:
             if tab_id in (self.main, replaced) or not self.streams[tab_id].can_main:
                 continue
-            c = self.components(tab_id, now)
+            c = self.components(tab_id, now, warmup=not warming)
             if c is None:
                 continue
             if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music
