@@ -108,3 +108,26 @@ def test_single_video_tab_never_gets_focus_commands():
     server.handle_message({"type": "video_rect", "tab_id": 9, "rects": one, "visible": True, "fullscreen": False})
     server.event_at[(9, 0)] = time.monotonic()
     assert server._focus_commands(time.monotonic()) == []
+
+
+def test_expanding_a_sidebar_tile_swaps_its_records_with_the_main_slot():
+    server = Server()
+    big = {"index": 0, "width": 1900, "height": 1000}
+    small = lambda i: {"index": i, "width": 600, "height": 330}
+    rects = [big, small(1), small(2), small(3)]
+    server.trackers[(9, 0)], server.trackers[(9, 2)] = "main-stream", "tile2-stream"
+    server.event_at[(9, 2)] = 123.0
+    server._expand_swap(9, rects, 2)
+    assert server.trackers[(9, 0)] == "tile2-stream" and server.trackers[(9, 2)] == "main-stream"
+    assert server.event_at[(9, 0)] == 123.0 and (9, 2) not in server.event_at
+
+
+def test_equal_grid_or_main_tile_expand_changes_nothing():
+    server = Server()
+    grid = [{"index": i, "width": 700, "height": 480} for i in range(4)]
+    server.trackers[(9, 0)], server.trackers[(9, 1)] = "a", "b"
+    server._expand_swap(9, grid, 1)
+    assert server.trackers == {(9, 0): "a", (9, 1): "b"}
+    sidebar = [{"index": 0, "width": 1900, "height": 1000}, {"index": 1, "width": 600, "height": 330}]
+    server._expand_swap(9, sidebar, 0)
+    assert server.trackers == {(9, 0): "a", (9, 1): "b"}

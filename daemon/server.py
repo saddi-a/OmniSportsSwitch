@@ -207,7 +207,25 @@ class Server:
             if target is not None:
                 log.info("focus tile: tab %s -> tile %s | %s", tab_id, target, tiles)
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": target})
+                self._expand_swap(tab_id, info["rects"], target)
         return commands
+
+    def _expand_swap(self, tab_id: int, rects: list[dict], target: int) -> None:
+        """DAZN's expand moves the clicked stream into the big main slot and the old main stream into the
+        clicked slot, so the per-tile records must change places too (main + sidebar layout only)."""
+        areas = sorted(((r["width"] * r["height"], r.get("index", pos)) for pos, r in enumerate(rects)), reverse=True)
+        if len(areas) < 2 or areas[0][0] < 1.8 * areas[1][0]:
+            return  # equal-size grid: nothing moves
+        main = areas[0][1]
+        if target == main:
+            return
+        for store in (self.trackers, self.watchers, self.event_at, self.ocr):
+            a, b = (tab_id, target), (tab_id, main)
+            moved_a, moved_b = store.pop(a, None), store.pop(b, None)
+            if moved_b is not None:
+                store[a] = moved_b
+            if moved_a is not None:
+                store[b] = moved_a
 
     async def _broadcast(self, obj: dict) -> None:
         text = json.dumps(obj)

@@ -105,6 +105,35 @@ function clickVideoTile(index) {
   if (video) video.click();
 }
 
+// DAZN only expands a multiview tile (makes it the main one) for a genuine mouse click; a script click just
+// moves the sound. So send a real click through Edge's debugging API: attach, hover, click, detach.
+// Edge shows its "is debugging this browser" bar while attached, which is only a moment.
+async function expandTile(tabId, index) {
+  const [{ result: center }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (i) => {
+      const video = document.querySelectorAll("video")[i];
+      if (!video) return null;
+      const r = video.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2];
+    },
+    args: [index],
+  });
+  if (!center) return;
+  const [x, y] = center;
+  const target = { tabId };
+  await chrome.debugger.attach(target, "1.3");
+  try {
+    const mouse = (type, extra = {}) => chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x, y, ...extra });
+    await mouse("mouseMoved");
+    await new Promise((resolve) => setTimeout(resolve, 700)); // lets the tile show its expand icon
+    await mouse("mousePressed", { button: "left", clickCount: 1 });
+    await mouse("mouseReleased", { button: "left", clickCount: 1 });
+  } finally {
+    await chrome.debugger.detach(target).catch(() => {});
+  }
+}
+
 function removeVideoReporter() {
   clearInterval(window.__omniReporter);
   window.__omniReporter = null;
@@ -173,9 +202,10 @@ chrome.runtime.onStartup.addListener(reconcile);
 chrome.runtime.onMessage.addListener((m) => {
   if (m.type === "track") trackTab(m.tabId).catch((e) => console.error("track failed", e));
   if (m.type === "focus_tile") {
-    chrome.scripting
-      .executeScript({ target: { tabId: m.tab_id }, func: clickVideoTile, args: [m.index] })
-      .catch((e) => console.error("focus_tile failed", e));
+    expandTile(m.tab_id, m.index).catch((e) => {
+      console.error("expand failed, falling back to a script click (moves the sound only)", e);
+      chrome.scripting.executeScript({ target: { tabId: m.tab_id }, func: clickVideoTile, args: [m.index] }).catch(() => {});
+    });
   }
   if (m.type === "swap") performSwap(m.promote, m.demote).catch((e) => console.error("swap failed", e));
   if (m.type === "untrack") {
