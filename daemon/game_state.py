@@ -10,8 +10,11 @@ Rules (see PLAN.md):
 import re
 from dataclasses import dataclass
 
-OVER_RE = re.compile(r"\b(FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|TERMIN[EÉ])\b", re.IGNORECASE)
-BREAK_RE = re.compile(r"\b(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)\b", re.IGNORECASE)
+# A caption only counts when a whole OCR text item is exactly the keyword. Words inside a sentence do not
+# (an ad saying "ready for the half time?" must not mark the game as on a break).
+OVER_RE = re.compile(r"(FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|TERMIN[EÉ])", re.IGNORECASE)
+BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)", re.IGNORECASE)
+CAPTION_CONFIRMATIONS = 2  # a caption must show on this many consecutive readings
 KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long after it was last seen
 
 
@@ -45,6 +48,8 @@ class GameTracker:
         self._first_seen: float | None = None
         self._over_seen = float("-inf")
         self._break_seen = float("-inf")
+        self._over_hits = 0
+        self._break_hits = 0
 
     def set_sport(self, sport: str | None) -> None:
         self.profile = profile_for(sport)
@@ -53,10 +58,12 @@ class GameTracker:
         if self._first_seen is None:
             self._first_seen = now
 
-        joined = " ".join(texts)
-        if OVER_RE.search(joined):
+        items = [re.sub(r"[^\w\s-]", "", t).strip() for t in texts]
+        self._over_hits = self._over_hits + 1 if any(OVER_RE.fullmatch(t) for t in items) else 0
+        self._break_hits = self._break_hits + 1 if any(BREAK_RE.fullmatch(t) for t in items) else 0
+        if self._over_hits >= CAPTION_CONFIRMATIONS:
             self._over_seen = now
-        if BREAK_RE.search(joined):
+        if self._break_hits >= CAPTION_CONFIRMATIONS:
             self._break_seen = now
 
         if clocks:

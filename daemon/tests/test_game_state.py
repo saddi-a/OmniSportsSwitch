@@ -84,3 +84,16 @@ def test_combine_tab_state_from_tiles():
     assert combine(["break", "over"]) == "break"
     assert combine(["over", "over"]) == "over"
     assert combine([]) == "live"
+
+
+def test_caption_inside_a_sentence_is_ignored():
+    g = GameTracker("football")
+    assert run(g, 0, 30, ticking, texts=["Pret pour la mi-temps ?", "Final countdown", "PSG"]) == "live"
+
+
+def test_caption_must_appear_on_consecutive_readings():
+    g = GameTracker("football")
+    g.update(0, ["FINAL"], ["00:01"])
+    assert g.update(3, ["PSG"], ["00:04"]) == "live"  # appeared once only (e.g. a popup flashing past)
+    g.update(6, ["FINAL"], ["00:07"])
+    assert g.update(9, ["FINAL"], ["00:10"]) == "over"
