@@ -197,3 +197,21 @@ def test_while_frozen_the_winner_goes_to_left_and_main_stays():
     assert (swap.promote, swap.demote) == (3, 2)         # replaces the LEFT stream
     assert server.scorer.main == 1                       # MAIN untouched
     assert plan_swap(swap.promote, swap.demote, server.roles, server.allowed) == [(3, "LEFT"), (2, "RIGHT_BOT")]
+
+
+def test_sport_is_detected_from_the_scoreboard_and_sets_the_break_rules():
+    from daemon.game_state import profile_for
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 8})
+    for i in range(3):
+        server._update_game_states({(8, 0): {"texts": ["HOUSTON", "0", "K-STATE", "0", "1ST & GOAL"], "clocks": ["10:45"]}}, 100.0 + i * 3)
+    assert server.trackers[(8, 0)].profile == profile_for("American football")
+
+
+def test_a_sport_chosen_in_the_popup_wins_over_the_detected_one():
+    from daemon.game_state import profile_for
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 8, "sport": "Basketball"})
+    for i in range(3):
+        server._update_game_states({(8, 0): {"texts": ["HOUSTON", "0", "K-STATE", "0", "1ST & GOAL"], "clocks": ["10:45"]}}, 100.0 + i * 3)
+    assert server.trackers[(8, 0)].profile == profile_for("Basketball")

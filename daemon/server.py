@@ -31,6 +31,7 @@ from daemon.favourites import match_multiplier
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher
+from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab
 from daemon.scoring import Scorer
 
@@ -63,6 +64,8 @@ class Server:
         self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
         self.watchers: dict[tuple[int, int], ScoreWatcher] = {}  # (tab id, video index) -> score-change detector
         self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
+        self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
+        self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
         self.focuser = TileFocuser()
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
@@ -96,7 +99,7 @@ class Server:
             self.scorer.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
-            for store in (self.ocr, self.trackers, self.watchers, self.event_at):
+            for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.sport_detectors, self.sport_seen):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
@@ -208,6 +211,11 @@ class Server:
         per_tab: dict[int, list[str]] = {}
         for (tab_id, index), r in results.items():
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id)))
+            detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
+            tracker.set_sport(self.sports.get(tab_id) or detected)  # a sport chosen in the popup wins
+            if detected != self.sport_seen.get((tab_id, index)):
+                log.info("sport detected tab %s tile %s: %s", tab_id, index, detected or "unknown")
+                self.sport_seen[(tab_id, index)] = detected
             per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
@@ -260,7 +268,7 @@ class Server:
         main = areas[0][1]
         if target == main:
             return
-        for store in (self.trackers, self.watchers, self.event_at, self.ocr):
+        for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen):
             a, b = (tab_id, target), (tab_id, main)
             moved_a, moved_b = store.pop(a, None), store.pop(b, None)
             if moved_b is not None:
