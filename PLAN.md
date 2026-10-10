@@ -64,6 +64,8 @@ Both of these are accepted for now and can be revisited if they don't work out:
 
 ## 3. Display Layout & Window Roles
 
+**Names shown to the user (decided 2026-10-11):** Main, Window 2, Window 3, Window 4, Window 5, independent of the physical screens (Window 2 = internal id `LEFT`, Window 3 = `RIGHT_BOT`, Window 4 = `RIGHT_MID`, Window 5 = `RIGHT_TOP`). Only the popup and docs use the new names; the ids in code, logs, storage and tests are unchanged on purpose (saved roles and team rules use them).
+
 Three physical monitors, arranged left to right as **Screen 3 → Screen 1 → Screen 2**:
 
 | Screen | Size | Orientation | Role(s) |

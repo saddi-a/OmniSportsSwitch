@@ -22,6 +22,10 @@ A local "live broadcast director": an Edge extension plus a Python daemon that w
 - **Do not trust single readings**: music probability, OCR text and clocks flicker. Use votes, memory and confirmations over several readings.
 - **Never cover a stream** with a window (OCR reads the screen) and keep Edge hardware acceleration off.
 
+## Names
+
+Windows are shown to the user as Main, Window 2, 3, 4, 5. The internal ids stay `MAIN`, `LEFT`, `RIGHT_BOT`, `RIGHT_MID`, `RIGHT_TOP` (in this order of filling) because they are saved in the browser and used by the daemon, arrange and the tests: Window 2 = `LEFT`, Window 3 = `RIGHT_BOT`, Window 4 = `RIGHT_MID`, Window 5 = `RIGHT_TOP`. The labels live in `ROLE_NAMES` in `extension/popup.js`. Use the user-facing names when talking to the user.
+
 ## Windows quirks
 
 - Source files use CRLF line endings. Multi-line Edit calls can fail to match; patch from a Python script (read bytes, replace, write bytes) instead. Write patch scripts to files rather than inline shell.

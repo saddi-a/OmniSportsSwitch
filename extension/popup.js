@@ -1,6 +1,9 @@
+// The ids are stored in the browser and used by the daemon; the names shown to the user do not depend on the
+// physical screens. Windows fill up in this order: Main, then Window 2, 3, 4, 5.
 const ROLES = ["MAIN", "LEFT", "RIGHT_BOT", "RIGHT_MID", "RIGHT_TOP"];
+const ROLE_NAMES = { MAIN: "Main", LEFT: "Window 2", RIGHT_BOT: "Window 3", RIGHT_MID: "Window 4", RIGHT_TOP: "Window 5" };
 const $ = (id) => document.getElementById(id);
-const SLOTS = [["MAIN", "Main"], ["LEFT", "Left"], ["RIGHT_TOP", "R-top"], ["RIGHT_MID", "R-mid"], ["RIGHT_BOT", "R-bot"]];
+const SLOTS = ROLES.map((role) => [role, ROLE_NAMES[role]]);
 
 // Read one storage key, change it, write it back, then redraw.
 async function update(key, fallback, change) {
@@ -30,7 +33,7 @@ async function load() {
   // Role of the window this popup was opened from.
   const select = $("windowRole");
   select.replaceChildren(new Option("(none)", ""));
-  for (const r of ROLES) select.append(new Option(r, r));
+  for (const r of ROLES) select.append(new Option(ROLE_NAMES[r], r));
   select.value = windowRoles[active.windowId] ?? "";
   select.onchange = async () => {
     await update("windowRoles", {}, (current) => {
@@ -98,7 +101,7 @@ async function load() {
 
     const title = el("span", { className: "title grow", textContent: info.title, title: info.title });
     const block = el("div", { className: "tab" },
-      el("div", { className: "row" }, title, el("span", { className: "role", textContent: role || "-" }), status, untrack),
+      el("div", { className: "row" }, title, el("span", { className: "role", textContent: ROLE_NAMES[role] || "-" }), status, untrack),
       el("div", { className: "row" }, sport, teams, weight),
       slotRow);
     list.append(block);

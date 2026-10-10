@@ -69,7 +69,7 @@ Then:
 
 1. Open one stream per Edge window and put the windows where you want them.
 2. In each window, click the extension icon and **Track this tab** (or press `Ctrl+Shift+Y`). Edge requires this click to start audio capture.
-3. In each window's popup, give the window a role (`MAIN`, `LEFT`, `RIGHT_BOT`, `RIGHT_MID`, `RIGHT_TOP`). Roles are remembered by window position.
+3. In each window's popup, give the window a name: **Main**, **Window 2**, **Window 3**, **Window 4** or **Window 5**. The names do not depend on which screen a window is on. Main is the big window that streams are promoted into; new streams fill Window 2, then 3, 4, 5. Names are remembered by window position.
 
 After a page reload (for example single view to multiview) the tab has to be tracked again with `Ctrl+Shift+Y`.
 
@@ -79,12 +79,12 @@ If you edit `extension/` files, press **Reload extension** in the popup and trac
 
 | Keys | Action |
 |---|---|
-| `Ctrl+Shift+P` | Freeze or unfreeze `MAIN`. While frozen, the winning stream goes to `LEFT` instead. |
+| `Ctrl+Shift+P` | Freeze or unfreeze `MAIN`. While frozen, the winning stream goes to Window 2 instead. |
 | `Ctrl+Shift+Y` | Track (or re-track) the visible tab of the current window. |
 
 ### The popup
 
-- Role of the current window and the freeze button.
+- Name of the current window (Main, Window 2...) and the freeze button.
 - Per tab: sport, teams, weight, status (Auto, Live, Break, Over), allowed slots.
 - Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running).
 - Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed slots per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
