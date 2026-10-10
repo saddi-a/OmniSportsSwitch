@@ -21,6 +21,13 @@ idle_music = 0.5     # MAIN counts as showing an ad when music probability is at
 audio_ad_margin = 0.15  # ...and music must exceed speech by this much (music under commentary is not an ad)
 audio_ad_votes = 3     # a music-only ad needs this many music readings...
 audio_ad_window = 5    # ...among the last this many (a single reading is never enough)
+leverage_weight = 0.3   # closeness and time left: a late close game adds up to this to its score, a late blowout takes it away
+lev_us_football_close = 8.0     # points apart that count as close (one score) in American football...
+lev_us_football_blowout = 24.0  # ...and as a blowout (three scores)
+lev_basketball_close = 6.0
+lev_basketball_blowout = 20.0
+lev_soccer_close = 1.0
+lev_soccer_blowout = 3.0
 recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)
 audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)
 big_play_strength = 0.7   # a big play (banner like TAKEAWAY!) counts this much of a goal (1.0 = same as a goal)

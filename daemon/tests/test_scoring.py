@@ -740,3 +740,56 @@ def test_a_live_stream_with_stadium_music_does_not_trigger_idle_handover():
     commentary_over_music(s, 1, now)
     quiet_play(s, 2, now)
     assert s.decide(now + 8) is None
+
+
+# ---- closeness and time left: a late close game is more interesting, a blowout less -------------------------------
+
+def test_a_close_late_game_scores_higher_than_a_blowout_of_the_same_sound():
+    s = make()
+    now = warm_up(s)
+    for tab in (1, 2, 3):
+        quiet_play(s, tab, now)
+    s.set_leverage(2, 1.0)
+    s.set_leverage(3, -1.0)
+    close = s.components(2, now + 5)["score"]
+    blowout = s.components(3, now + 5)["score"]
+    assert close == pytest.approx(Config().leverage_weight, abs=0.02) and blowout == 0.0
+
+
+def test_idle_handover_prefers_the_close_late_game_over_a_blowout():
+    s = make()
+    now = warm_up(s)
+    ad(s, 1, now)
+    quiet_play(s, 2, now)
+    quiet_play(s, 3, now)
+    s.set_leverage(2, -1.0)            # Ohio State 45-16
+    s.set_leverage(3, 1.0)             # Texas-Oklahoma 24-24, 4th quarter
+    assert s.decide(now + 5).promote == 3
+
+
+def test_leverage_alone_never_takes_main_from_a_quiet_stream():
+    s = make()
+    now = warm_up(s)
+    for tab in (1, 2, 3):
+        quiet_play(s, tab, now)
+    s.set_leverage(2, 1.0)
+    assert s.decide(now + 5) is None
+
+
+def test_a_close_late_game_helps_a_challenger_with_some_excitement():
+    s = make()
+    now = warm_up(s)
+    steady(s, 1, 0.05, now, 5)
+    s.set_leverage(1, -1.0)            # MAIN is a blowout
+    now2 = roar(s, 2, now, seconds=5, level=0.05, crowd=0.1, speech=0.1)     # too weak on its own (below min_score)
+    assert s.decide(now2) is None
+    s.set_leverage(2, 1.0)
+    assert s.decide(now2) is not None
+
+
+def test_leverage_is_clamped():
+    s = make()
+    s.set_leverage(2, 5.0)
+    assert s.streams[2].leverage == 1.0
+    s.set_leverage(2, -5.0)
+    assert s.streams[2].leverage == -1.0

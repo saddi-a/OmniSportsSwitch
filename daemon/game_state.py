@@ -24,8 +24,10 @@ OVERTIME_MEMORY_S = 30.0
 # labels ("3rd DOWNS", "3rd DOWN CONVERSIONS") have no "&" and do not match.
 DOWN_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*&\s*(\d{1,2}|goal|inches)", re.IGNORECASE)
 # The quarter on its own ("4th", read "Ath"; "1st", read "Ist") sits on the same scorebug: also proof that it is on screen.
-QUARTER_RE = re.compile(r"(1st|ist|isr|lst|2nd|znd|3rd|3r0|jrd|4th|ath)", re.IGNORECASE)
+QUARTER_RE = re.compile(r"(1st|ist|isr|lst|2nd|znd|3rd|3r0|jrd|4th|ath|q[1-4])", re.IGNORECASE)
 DOWN_MEMORY_S = 20.0
+PERIOD_OF = {"1st": 1, "ist": 1, "isr": 1, "lst": 1, "2nd": 2, "znd": 2, "3rd": 3, "3r0": 3, "jrd": 3, "4th": 4, "ath": 4, "q1": 1, "q2": 2, "q3": 3, "q4": 4}
+PERIOD_VOTES, PERIOD_NEEDED = 5, 3   # the period is the value most of the last readings agree on
 BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)", re.IGNORECASE)
 CAPTION_CONFIRMATIONS = 2  # a caption must show on this many consecutive readings
 KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long after it was last seen
@@ -75,6 +77,9 @@ class GameTracker:
         self._break_seen = float("-inf")
         self._overtime_seen = float("-inf")
         self._down_seen = float("-inf")
+        self._period_votes: list[int] = []
+        self.clock_minute: int | None = None   # minutes on the last readable game clock (soccer: 67 for 67:23)
+        self.period: int | None = None   # quarter 1..4, 5 = overtime; None until read on several readings
         self._over_hits = 0
         self._break_hits = 0
         self._ad_hits = 0
@@ -95,6 +100,13 @@ class GameTracker:
         self._break_hits = self._break_hits + 1 if any(BREAK_RE.fullmatch(t) for t in items) else 0
         if any(OVERTIME_RE.fullmatch(t) for t in items):
             self._overtime_seen = now
+        found = 5 if any(OVERTIME_RE.fullmatch(t) for t in items) else next(
+            (PERIOD_OF[t.strip().casefold()] for t in texts if QUARTER_RE.fullmatch(t.strip())), None)
+        if found is not None:
+            self._period_votes = (self._period_votes + [found])[-PERIOD_VOTES:]
+            best = max(set(self._period_votes), key=self._period_votes.count)
+            if self._period_votes.count(best) >= PERIOD_NEEDED:
+                self.period = best
         if any(DOWN_RE.fullmatch(t.strip()) or QUARTER_RE.fullmatch(t.strip()) for t in texts):
             self._down_seen = now
         if self._over_hits >= CAPTION_CONFIRMATIONS:
@@ -124,6 +136,9 @@ class GameTracker:
                     break
 
         if clocks and not on_ad:  # the countdown shown during an ad is not the game clock
+            shown = re.fullmatch(r"(\d{1,3}):\d{2}", clocks[0].strip())
+            if shown:
+                self.clock_minute = int(shown.group(1))
             if clocks[0] != self._clock:
                 self._clock, self._clock_changed_at = clocks[0], now
             self._last_clock_seen = now

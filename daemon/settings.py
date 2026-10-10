@@ -120,6 +120,13 @@ LAYOUT = [
     ]),
     ("Ads", [
         ("scoring.idle_music", "Music level for an ad", "MAIN counts as showing an ad when the music probability is at least this."),
+        ("scoring.leverage_weight", "Close / late game bonus", "A late close game adds up to this to a stream's score; a late blowout takes it away. 0 turns it off."),
+        ("scoring.lev_us_football_close", "American football: close (points)", "At most this many points apart counts as a close game."),
+        ("scoring.lev_us_football_blowout", "American football: blowout (points)", "This many points apart or more counts as a blowout."),
+        ("scoring.lev_basketball_close", "Basketball: close (points)", "At most this many points apart counts as a close game."),
+        ("scoring.lev_basketball_blowout", "Basketball: blowout (points)", "This many points apart or more counts as a blowout."),
+        ("scoring.lev_soccer_close", "Soccer: close (goals)", "At most this many goals apart counts as a close game."),
+        ("scoring.lev_soccer_blowout", "Soccer: blowout (goals)", "This many goals apart or more counts as a blowout."),
         ("scoring.recent_ad_s", "No hopping between ads (s)", "MAIN is not handed to a stream that was showing an ad this recently."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),

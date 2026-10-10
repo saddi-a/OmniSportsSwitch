@@ -330,3 +330,10 @@ def test_a_goal_that_flickers_back_and_forth_inside_the_hold_fires_once():
     fired, t = run(w, board(7, 0), t, 4)
     fired_total += fired
     assert fired_total == 1
+
+
+def test_the_watcher_exposes_the_score_it_believes():
+    w = ScoreWatcher()
+    assert w.score is None
+    run(w, board(24, 24), 0, 5)
+    assert w.score == (24, 24)

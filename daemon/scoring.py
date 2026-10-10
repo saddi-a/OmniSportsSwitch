@@ -46,6 +46,13 @@ class Config:
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
+    leverage_weight: float = 0.3      # closeness / time left: a late close game adds up to this to its score, a late blowout takes it away
+    lev_us_football_close: float = 8.0      # points apart that still count as close (one score)...
+    lev_us_football_blowout: float = 24.0   # ...and as a blowout (three scores)
+    lev_basketball_close: float = 6.0
+    lev_basketball_blowout: float = 20.0
+    lev_soccer_close: float = 1.0
+    lev_soccer_blowout: float = 3.0
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
     audio_ad_margin: float = 0.15  # ...and music must exceed speech by this much (stadium music under commentary is not an ad)
@@ -73,6 +80,7 @@ class _Stream:
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
     on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
     audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
+    leverage: float = 0.0   # -1 (late blowout) .. +1 (late close game), set from the scoreboard; 0 = unknown
     ad_at: float = float("-inf")        # when the stream was last seen on an ad (picture or sound)
     music_hits: list = field(default_factory=list)  # recent readings: did each one look like an ad?
     favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
@@ -131,6 +139,10 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].can_main = can_main
 
+    def set_leverage(self, tab_id: int, value: float) -> None:
+        if tab_id in self.streams:
+            self.streams[tab_id].leverage = min(max(value, -1.0), 1.0)
+
     def set_favourite(self, tab_id: int, multiplier: float) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
@@ -178,6 +190,7 @@ class Scorer:
         w = cfg.weights
         excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.event * event)
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
+        raw += cfg.leverage_weight * stream.leverage                 # a late close game is worth more, a late blowout less
         status = stream.override or stream.auto_state
         score = max(raw, 0.0) * stream.weight * STATUS_MULT[status]
         audio_ad = now - stream.audio_ad_at <= cfg.audio_ad_memory_s   # remembered: music probability flickers
@@ -186,7 +199,7 @@ class Scorer:
         elif audio_ad:
             score = -cfg.ad_penalty / 2         # music-dominated sound without a crowd: probably an ad too
         return {"score": score, "ad": stream.on_ad or audio_ad, "surge": surge, "crowd": crowd,
-                "speech": speech, "music": music, "event": event, "fav": stream.favourite, "level": level, "status": status}
+                "speech": speech, "music": music, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
 
     def score(self, tab_id: int, now: float) -> float | None:
         c = self.components(tab_id, now)

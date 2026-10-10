@@ -318,3 +318,46 @@ def test_a_break_caption_still_beats_down_and_distance():
     for i in range(6):
         over = g.update(100 + i * 3.0, ["FINAL", "3rd & 4"], [])
     assert over == "over"
+
+
+# ---- the period (quarter) read from the scorebug, by vote ---------------------------------------------------------
+
+def test_period_from_the_quarter_text_needs_several_readings():
+    g = GameTracker("american football")
+    g.update(0.0, ["TEXAS", "24", "Ath", "OKLAHOMA", "24"], [])
+    assert g.period is None
+    g.update(3.0, ["TEXAS", "24", "Ath", "OKLAHOMA", "24"], [])
+    g.update(6.0, ["TEXAS", "24", "Ath", "OKLAHOMA", "24"], [])
+    assert g.period == 4
+
+
+def test_period_mangles_and_overtime():
+    for text, period in (("Q1", 1), ("Q4", 4), ("Ist", 1), ("1st", 1), ("Znd", 2), ("2nd", 2), ("3R0", 3), ("Jrd", 3), ("4th", 4), ("OVERTIME", 5), ("2OT", 5)):
+        g = GameTracker("american football")
+        for i in range(4):
+            g.update(i * 3.0, ["TEXAS", "24", text, "OKLAHOMA", "24"], [])
+        assert g.period == period, text
+
+
+def test_a_stray_reading_does_not_change_the_period():
+    g = GameTracker("american football")
+    for i in range(5):
+        g.update(i * 3.0, ["TEXAS", "Ath", "OKLAHOMA"], [])
+    g.update(20.0, ["TEXAS", "2nd", "OKLAHOMA"], [])
+    assert g.period == 4
+
+
+def test_stat_labels_do_not_give_a_period():
+    g = GameTracker("american football")
+    for i in range(5):
+        g.update(i * 3.0, ["3rd DOWNS", "2/10", "1st half", "4th qtr stats"], [])
+    assert g.period is None
+
+
+def test_the_clock_minute_is_available_for_soccer():
+    g = GameTracker("football")
+    assert g.clock_minute is None
+    g.update(0.0, ["PSG", "1", "LYON", "1"], ["67:23"])
+    assert g.clock_minute == 67
+    g.update(3.0, ["PSG", "1", "LYON", "1"], ["bad"])
+    assert g.clock_minute == 67
