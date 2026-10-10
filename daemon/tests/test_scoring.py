@@ -13,6 +13,7 @@ def steady(scorer, tab_id, level, start, seconds, step=0.5):
 
 
 def make(**cfg):
+    cfg.setdefault("confirm_s", 0.0)   # confirmation is tested on its own below
     s = Scorer(Config(**cfg))
     s.register(1, is_main=True)
     s.register(2)
@@ -562,3 +563,31 @@ def test_a_stream_with_a_blip_is_not_replaced_when_main_and_others_are_quiet():
         quiet_play(s, tab, now)
     s.set_tags(1, 0.0, 0.8, 0.8, now + 5)
     assert s.decide(now + 5.5) is None
+
+
+# ---- confirmation: one applause reading must not take MAIN (live log 00:39:00: crowd=0.55 for one reading, then an ad) ----
+
+def test_a_single_crowd_reading_does_not_take_main():
+    s = make(confirm_s=2.0)
+    now = warm_up(s)
+    for tab in (1, 2, 3):
+        quiet_play(s, tab, now)
+    t = now + 5
+    s.add_audio(2, 0.05, t)
+    s.set_tags(2, 0.8, 0.4, 0.05, t)                 # one reading
+    assert s.decide(t) is None
+    s.add_audio(2, 0.05, t + 1)
+    s.set_tags(2, 0.05, 0.8, 0.05, t + 1)            # gone again
+    assert s.decide(t + 1) is None
+    assert s.decide(t + 3.5) is None
+
+
+def test_a_challenger_that_keeps_qualifying_wins_after_the_confirmation_time():
+    s = make(confirm_s=2.0)
+    now = warm_up(s)
+    swaps = []
+    for _ in range(8):                               # the daemon asks every 0.25 s; here every 0.5 s
+        now = roar(s, 2, now, seconds=0.5)
+        swaps.append((now, s.decide(now)))
+    first = next(t for t, swap in swaps if swap)
+    assert first - swaps[0][0] >= 2.0 - 0.5          # not on the first qualifying reading

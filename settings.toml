@@ -14,6 +14,7 @@ baseline_s = 60.0    # each stream's "normal loudness" is averaged over about th
 warmup_s = 20.0      # a new stream cannot win (or be compared) until it has been seen this long
 surge_cap = 1.0      # limit of the loudness-surge signal (1.0 = loudness doubled)
 event_s = 45.0       # how long a goal / touchdown boosts a stream (fading)
+confirm_s = 2.0      # a challenger must keep qualifying this long before it takes over (one applause reading is not enough)
 min_dwell_s = 20.0   # minimum time between two swaps
 stale_s = 5.0        # a stream with no audio for this long is ignored
 idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this

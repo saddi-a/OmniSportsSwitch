@@ -17,7 +17,7 @@ PORT = 8799
 
 @pytest.mark.asyncio
 async def test_crowd_roar_triggers_swap_message():
-    config = Config(min_dwell_s=0, warmup_s=0, window_s=1.0)
+    config = Config(min_dwell_s=0, warmup_s=0, window_s=1.0, confirm_s=0)
     server = Server(Scorer(config))
     task = asyncio.create_task(server.run(port=PORT))
     await asyncio.sleep(0.2)
@@ -184,7 +184,7 @@ def test_freeze_stops_tile_changes_on_main_only():
 
 
 def test_while_frozen_the_winner_goes_to_left_and_main_stays():
-    config = Config(warmup_s=0, min_dwell_s=0, window_s=1.0)
+    config = Config(warmup_s=0, min_dwell_s=0, window_s=1.0, confirm_s=0)
     server = Server(Scorer(config))
     for tab, role, main in ((1, "MAIN", True), (2, "LEFT", False), (3, "RIGHT_BOT", False)):
         server.handle_message({"type": "register", "tab_id": tab, "role": role, "is_main": main})

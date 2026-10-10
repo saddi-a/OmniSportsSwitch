@@ -40,6 +40,7 @@ class Config:
     warmup_s: float = 20.0    # a stream cannot win until its baseline has had this long to settle
     surge_cap: float = 1.0    # limit on the surge signal (1.0 = loudness doubled): alone it stays below min_score
     event_s: float = 45.0     # a score change counts for this long, fading linearly
+    confirm_s: float = 2.0    # a normal (not idle) challenger must keep qualifying this long: one applause reading is not a swap
     min_dwell_s: float = 20.0 # after a swap, wait this long before allowing another one
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
@@ -84,6 +85,7 @@ class Scorer:
         self.frozen = False
         self._last_swap = float("-inf")
         self._last_evict = float("-inf")
+        self._candidate: tuple[int, int, float] | None = None  # (replaced, challenger, since when it has qualified)
 
     def register(self, tab_id: int, weight: float = 1.0, is_main: bool = False) -> None:
         self.streams.setdefault(tab_id, _Stream()).weight = weight
@@ -217,12 +219,18 @@ class Scorer:
                 best_id, best_c = tab_id, c
 
         if best_c is None:
+            self._candidate = None
             return None
         if not idle:
-            if best_c["score"] < cfg.min_score:
+            if (best_c["score"] < cfg.min_score
+                    or best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + cfg.min_gap)):
+                self._candidate = None
                 return None
-            if best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + cfg.min_gap):
+            if self._candidate is None or self._candidate[:2] != (replaced, best_id):
+                self._candidate = (replaced, best_id, now)   # first reading that qualifies: wait for confirmation
+            if now - self._candidate[2] < cfg.confirm_s:
                 return None
+        self._candidate = None
 
         fmt = lambda c: " ".join(f"{k}={c[k]:.2f}" for k in ("score", "surge", "crowd", "speech", "music", "event"))
         label = "main" if target is None else "left (MAIN frozen)"
