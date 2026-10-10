@@ -23,12 +23,15 @@ import time
 import numpy as np
 from websockets.asyncio.server import serve
 
+from daemon.screen_ocr import find_clocks, grab
 from daemon.scoring import Scorer
 
 HOST, PORT = "127.0.0.1", 8765
 DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
+OCR_INTERVAL_S = 2.0
+OCR_MIN_WIDTH = 900  # smaller areas (multiview tiles) are enlarged before reading
 SAMPLE_RATE = 32000
 CLASSIFY_WINDOW = 3 * SAMPLE_RATE  # classify the last 3 seconds of each tab
 CROWD_CLASSES = ["Cheering", "Crowd", "Applause"]
@@ -37,9 +40,11 @@ log = logging.getLogger("daemon")
 
 
 class Server:
-    def __init__(self, scorer: Scorer | None = None, classifier=None):
+    def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None):
         self.scorer = scorer or Scorer()
         self.classifier = classifier
+        self.screen_reader = screen_reader
+        self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
         self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
@@ -54,6 +59,8 @@ class Server:
             self.scorer.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
+            for key in [k for k in self.ocr if k[0] == msg["tab_id"]]:
+                del self.ocr[key]
             self.tags.pop(msg["tab_id"], None)
             log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
@@ -129,6 +136,41 @@ class Server:
                 crowd = float(max(p[idx[name]] for name in CROWD_CLASSES))
                 self.scorer.set_tags(tab_id, crowd, float(p[idx["Speech"]]), float(p[idx["Music"]]), now)
 
+    def _ocr_pass(self, jobs: list[tuple[int, int, dict]]) -> dict:
+        """Runs in a worker thread: screenshot each video area and read its text."""
+        from PIL import Image
+
+        results = {}
+        for tab_id, index, rect in jobs:
+            image = grab(rect)
+            if image.shape[1] < OCR_MIN_WIDTH:
+                factor = OCR_MIN_WIDTH / image.shape[1]
+                size = (OCR_MIN_WIDTH, int(image.shape[0] * factor))
+                image = np.asarray(Image.fromarray(image).resize(size, Image.LANCZOS))
+            texts = [text for text, _ in self.screen_reader.read(image)]
+            results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts)}
+        return results
+
+    async def _ocr_loop(self) -> None:
+        while True:
+            await asyncio.sleep(OCR_INTERVAL_S)
+            jobs = [
+                (tab_id, i, rect)
+                for tab_id, info in list(self.rects.items())
+                if info["visible"]
+                for i, rect in enumerate(info["rects"][:4])
+            ]
+            if not jobs:
+                continue
+            try:
+                results = await asyncio.to_thread(self._ocr_pass, jobs)
+            except Exception as e:  # e.g. window moved off-screen mid-capture
+                log.warning("ocr pass failed: %s", e)
+                continue
+            self.ocr.update(results)
+            for (tab_id, i), r in results.items():
+                log.info("  ocr tab %s[%d]: clocks=%s texts=%s", tab_id, i, r["clocks"], r["texts"][:10])
+
     async def _decide_loop(self) -> None:
         last_log = 0.0
         while True:
@@ -150,6 +192,8 @@ class Server:
             loops = [self._decide_loop()]
             if self.classifier is not None:
                 loops.append(self._classify_loop())
+            if self.screen_reader is not None:
+                loops.append(self._ocr_loop())
             await asyncio.gather(*loops)
 
 
@@ -157,9 +201,13 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     from daemon.audio_classifier import AudioClassifier
 
+    from daemon.screen_ocr import ScreenReader
+
     classifier = AudioClassifier()
     log.info("audio classifier ready on %s", classifier.device)
+    screen_reader = ScreenReader()
+    log.info("screen reader ready")
     try:
-        asyncio.run(Server(classifier=classifier).run())
+        asyncio.run(Server(classifier=classifier, screen_reader=screen_reader).run())
     except KeyboardInterrupt:
         pass
