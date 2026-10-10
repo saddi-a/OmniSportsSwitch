@@ -316,3 +316,17 @@ def test_a_real_goal_that_holds_is_kept_as_the_new_ceiling():
     assert not fired
     fired, t = run(w, board(7, 0), t, 5)
     assert not fired
+
+
+def test_a_goal_that_flickers_back_and_forth_inside_the_hold_fires_once():
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 0), 0, 6)
+    fired_total = 0
+    for _ in range(1):                           # 7-0, a misread back to 3-0, 7-0 again, inside a minute
+        fired, t = run(w, board(7, 0), t, 4)
+        fired_total += fired
+        fired, t = run(w, board(3, 0), t, 4)
+        fired_total += fired
+    fired, t = run(w, board(7, 0), t, 4)
+    fired_total += fired
+    assert fired_total == 1
