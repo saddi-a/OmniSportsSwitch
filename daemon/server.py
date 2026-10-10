@@ -30,7 +30,7 @@ from daemon.arrange import plan_fix, plan_swap
 from daemon.favourites import match_multiplier, match_slots
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
-from daemon.score_watch import ScoreWatcher
+from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab
 from daemon.scoring import Scorer
@@ -40,6 +40,7 @@ DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
+DIGIT_RETRY_S = 6.0       # the digit fallback looks again this often on a tile where it found nothing
 FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use are corrected
 EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
 FAVOURITE_MEMORY_S = 60.0
@@ -68,6 +69,8 @@ class Server:
         self.roles: dict[int, str] = {}             # tab id -> slot its window currently has
         self.allowed: dict[int, set[str] | None] = {}  # tab id -> slots it may use (None = any), as ticked on the tab
         self.limits: dict[int, set[str] | None] = {}   # tab id -> slots it may really use: tab choice + team rules
+        self.digit_try_at: dict[tuple[int, int], float] = {}  # (tab, video) -> when the digit fallback last looked
+        self.digit_found: set[tuple[int, int]] = set()          # tiles where the digit fallback currently finds the score
         self.rule_seen: dict[tuple[int, int], tuple[set[str], float]] = {}  # (tab, video) -> (slots of a team rule, when seen)
         self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
         self.watchers: dict[tuple[int, int], ScoreWatcher] = {}  # (tab id, video index) -> score-change detector
@@ -113,7 +116,8 @@ class Server:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
             self.team_text.pop(msg["tab_id"], None)
-            for seen in (self.fav_seen, self.rule_seen):
+            self.digit_found = {k for k in self.digit_found if k[0] != msg["tab_id"]}
+            for seen in (self.fav_seen, self.rule_seen, self.digit_try_at):
                 for key in [k for k in seen if k[0] == msg["tab_id"]]:
                     del seen[key]
             self.roles.pop(msg["tab_id"], None)
@@ -234,6 +238,20 @@ class Server:
                 image = np.asarray(Image.fromarray(image).resize(size, Image.LANCZOS))
             items = self.screen_reader.read_items(image)
             texts = [item["text"] for item in items]
+            if hasattr(self.screen_reader, "read_digits_beside_names") and find_score_geo(items, find_clocks(texts)) is None:
+                # The big score digits of some scoreboards are not read at all. Look right beside the team names, but
+                # not on every pass when nothing is there (it costs GPU time).
+                key, now_s = (tab_id, index), time.monotonic()
+                if now_s - self.digit_try_at.get(key, float("-inf")) >= DIGIT_RETRY_S or key in self.digit_found:
+                    extra = self.screen_reader.read_digits_beside_names(image, items)
+                    self.digit_try_at[key] = now_s
+                    if extra:
+                        if key not in self.digit_found:
+                            log.info("digit fallback tab %s tile %s: %s", tab_id, index, [it["text"] for it in extra])
+                        self.digit_found.add(key)
+                        items, texts = items + extra, texts + [it["text"] for it in extra]
+                    else:
+                        self.digit_found.discard(key)
             results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts), "items": items}
         return results
 

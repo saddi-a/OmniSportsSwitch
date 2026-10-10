@@ -12,6 +12,9 @@ import numpy as np
 MODEL_DIR = pathlib.Path(__file__).resolve().parent.parent / "models" / "easyocr"
 CLOCK_RE = re.compile(r"\b\d{1,3}\s?[:.,]\s?\d{2}\b")
 MIN_CONFIDENCE = 0.4
+TEAM_NAME_RE = re.compile(r"[A-Z][A-Z .'&-]{3,}")   # an uppercase word such as MARYLAND or K-STATE
+DIGIT_MIN_CONFIDENCE = 0.7   # a number read beside a team name must be this sure
+DIGIT_SEARCH = 2.4           # how far (in text heights) to look beside a name
 
 
 def grab(rect: dict) -> np.ndarray:
@@ -41,9 +44,55 @@ class ScreenReader:
                           "x0": int(min(xs)), "y0": int(min(ys)), "x1": int(max(xs)), "y1": int(max(ys))})
         return items
 
+    def read_digits_beside_names(self, image: np.ndarray, items: list[dict]) -> list[dict]:
+        """A fallback for scoreboards whose big score digits the normal reading misses (white italic digits with a
+        shadow on a coloured plate). The team names are read fine, so look right beside a name: the digits are
+        located by detection inside a small crop and read with a digits-only alphabet. Only a PAIR of numbers
+        side by side counts (the two scores), so a stray number never comes back. Meant to be used only when the
+        normal reading found no score at all."""
+        names = [it for it in items if TEAM_NAME_RE.fullmatch(it["text"]) and it["conf"] >= 0.6
+                 and 14 <= it["y1"] - it["y0"] <= 90]
+        for name in sorted(names, key=lambda it: it["y0"] - it["y1"])[:3]:
+            h = name["y1"] - name["y0"]
+            y0, y1 = name["y0"] - int(0.35 * h), name["y1"] + int(0.35 * h)
+            first = self._number_right_of(image, name["x1"], y0, y1, h)
+            if first is None:
+                continue
+            second = self._number_right_of(image, first["x1"], y0, y1, h)
+            if second is not None:
+                return [first, second]
+        return []
+
+    def _number_right_of(self, image: np.ndarray, x: int, y0: int, y1: int, text_height: int) -> dict | None:
+        H, W = image.shape[:2]
+        x0, x1, y0, y1 = max(0, x), min(W, x + int(DIGIT_SEARCH * text_height)), max(0, y0), min(H, y1)
+        if x1 - x0 < 10 or y1 - y0 < 10:
+            return None
+        horizontal, _ = self.reader.detect(image[y0:y1, x0:x1], text_threshold=0.3, low_text=0.2, link_threshold=0.2)
+        boxes = sorted(horizontal[0], key=lambda b: b[0]) if horizontal and horizontal[0] else []
+        for bx0, bx1, by0, by1 in boxes:
+            bx0, bx1, by0, by1 = int(bx0) + x0, int(bx1) + x0, int(by0) + y0, int(by1) + y0
+            if not 0.6 * text_height <= by1 - by0 <= 3.0 * text_height or bx0 - x > 1.2 * text_height:
+                continue   # not number-sized, or not right beside the name
+            result = self.reader.recognize(image, horizontal_list=[[bx0, bx1, by0, by1]], free_list=[],
+                                           allowlist="0123456789", detail=1)
+            for _, text, conf in result:
+                if conf >= DIGIT_MIN_CONFIDENCE and 1 <= len(text) <= 3:
+                    bx0, by0, bx1, by1 = _trim_padding(bx0, by0, bx1, by1)
+                    return {"text": text, "conf": float(conf), "x0": bx0, "y0": by0, "x1": bx1, "y1": by1}
+            return None   # the nearest box is not a number: stop here
+        return None
+
     def read(self, image: np.ndarray) -> list[tuple[str, float]]:
         """Text found in the image, top-to-bottom then left-to-right, as (text, confidence)."""
         return [(item["text"], item["conf"]) for item in self.read_items(image)]
+
+
+def _trim_padding(x0: int, y0: int, x1: int, y1: int) -> tuple[int, int, int, int]:
+    """The text detector pads its boxes by a fixed fraction (about 20% of the width on each side, measured on a real
+    scoreboard), so two neighbouring numbers overlap. Take the padding off again."""
+    dx, dy = int(0.2 * (x1 - x0)), int(0.08 * (y1 - y0))
+    return x0 + dx, y0 + dy, x1 - dx, y1 - dy
 
 
 def reading_order(found: list) -> list:
