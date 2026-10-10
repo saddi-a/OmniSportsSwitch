@@ -123,11 +123,17 @@ async function expandTile(tabId, index) {
   const target = { tabId };
   await chrome.debugger.attach(target, "1.3");
   try {
-    const mouse = (type, extra = {}) => chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x, y, ...extra });
+    const mouse = (type, extra = {}, dx = 0, dy = 0) =>
+      chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x: x + dx, y: y + dy, ...extra });
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await mouse("mouseMoved");
-    await new Promise((resolve) => setTimeout(resolve, 700)); // lets the tile show its expand icon
-    await mouse("mousePressed", { button: "left", clickCount: 1 });
-    await mouse("mouseReleased", { button: "left", clickCount: 1 });
+    await wait(700); // the tile shows its expand icon under the pointer
+    // The pointer has not moved since the icon appeared, so DAZN does not count it as over the icon and the
+    // click only selects the tile. A second small move makes the icon hovered, and the click then expands.
+    await mouse("mouseMoved", {}, 3, 2);
+    await wait(250);
+    await mouse("mousePressed", { button: "left", clickCount: 1 }, 3, 2);
+    await mouse("mouseReleased", { button: "left", clickCount: 1 }, 3, 2);
   } finally {
     await chrome.debugger.detach(target).catch(() => {});
   }

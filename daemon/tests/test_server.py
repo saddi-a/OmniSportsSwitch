@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import json
 import struct
 import time
@@ -247,3 +248,43 @@ def test_a_takeaway_banner_boosts_the_stream_and_its_tile_by_the_big_play_streng
     assert (12, 0) in server.event_at
     fresh = 1 - (now - server.event_at[(12, 0)]) / config.event_s
     assert fresh == pytest.approx(config.big_play_strength, abs=0.01)
+
+
+# ---- expand confirmation: slots keep their size, the streams move; the sound shows what really happened ------
+
+def _tiles(audible):
+    sizes = {0: (1272, 577), 1: (622, 282), 2: (622, 282)}
+    return [{"index": i, "audible": i == audible, "left": 0, "top": 0, "width": sizes[i][0], "height": sizes[i][1]} for i in (0, 1, 2)]
+
+
+def _report(server, tab, audible):
+    server.handle_message({"type": "video_rect", "tab_id": tab, "rects": _tiles(audible), "visible": True, "fullscreen": True})
+
+
+def test_a_confirmed_expand_swaps_the_records_of_the_two_slots():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
+    server.pending_expand[20] = (2, time.monotonic() + 8)
+    _report(server, 20, audible=0)                      # the sound is on the big slot: the stream moved there
+    assert server.trackers[(20, 0)] == "tile2-game" and server.trackers[(20, 2)] == "main-game"
+    assert 20 not in server.pending_expand
+
+
+def test_a_click_that_only_selected_the_tile_swaps_nothing_and_warns(caplog):
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
+    server.pending_expand[20] = (2, time.monotonic() + 8)
+    with caplog.at_level(logging.WARNING):
+        _report(server, 20, audible=2)                  # the sound went to the clicked tile: only selected
+    assert server.trackers[(20, 0)] == "main-game" and server.trackers[(20, 2)] == "tile2-game"
+    assert 20 not in server.pending_expand and "only selected" in caplog.text
+
+
+def test_an_unclear_report_keeps_waiting_until_the_deadline():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.pending_expand[20] = (2, time.monotonic() + 8)
+    _report(server, 20, audible=1)                      # the sound is on a third tile: neither case
+    assert 20 in server.pending_expand

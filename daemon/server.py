@@ -40,6 +40,7 @@ DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
+EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
 FAVOURITE_MEMORY_S = 60.0  # a favourite read on screen keeps counting for this long
 OCR_MIN_WIDTH = 900  # smaller areas (multiview tiles) are enlarged before reading
 SAMPLE_RATE = 32000
@@ -68,6 +69,7 @@ class Server:
         self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
         self.focuser = focuser or TileFocuser()
+        self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
         self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
@@ -119,6 +121,7 @@ class Server:
             if self.rects.get(tab_id) != info:
                 log.info("video area tab %s: %s", tab_id, info)
             self.rects[tab_id] = info
+            self._check_expand(tab_id, info)
         elif kind == "set_weight":
             self.scorer.set_weight(msg["tab_id"], float(msg["weight"]))
         elif kind == "freeze":
@@ -268,8 +271,28 @@ class Server:
             if target is not None:
                 log.info("focus tile: tab %s -> tile %s | %s", tab_id, target, tiles)
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": target})
-                self._expand_swap(tab_id, info["rects"], target)
+                self.pending_expand[tab_id] = (target, now + EXPAND_CHECK_S)
         return commands
+
+    def _check_expand(self, tab_id: int, info: dict) -> None:
+        """After a tile was asked to expand, look at where the sound went. Slots keep their size and the streams
+        move between them, so an expand puts the sound on the big (main) slot, while a click that only selected the
+        tile leaves the sound on the tile that was clicked. Records are swapped only for a confirmed expand."""
+        pending = self.pending_expand.get(tab_id)
+        rects = info.get("rects") or []
+        if pending is None or len(rects) < 2:
+            return
+        target, deadline = pending
+        areas = sorted(((r["width"] * r["height"], r.get("index", pos)) for pos, r in enumerate(rects)), reverse=True)
+        main = areas[0][1]
+        audible = next((r.get("index", pos) for pos, r in enumerate(rects) if r.get("audible")), None)
+        if audible == target and target != main:
+            log.warning("expand of tab %s tile %s did not happen: the tile was only selected", tab_id, target)
+            del self.pending_expand[tab_id]
+        elif audible == main or time.monotonic() > deadline:
+            del self.pending_expand[tab_id]
+            if audible == main:
+                self._expand_swap(tab_id, rects, target)
 
     def _expand_swap(self, tab_id: int, rects: list[dict], target: int) -> None:
         """DAZN's expand moves the clicked stream into the big main slot and the old main stream into the
