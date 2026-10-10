@@ -215,3 +215,21 @@ def test_a_sport_chosen_in_the_popup_wins_over_the_detected_one():
     for i in range(3):
         server._update_game_states({(8, 0): {"texts": ["HOUSTON", "0", "K-STATE", "0", "1ST & GOAL"], "clocks": ["10:45"]}}, 100.0 + i * 3)
     assert server.trackers[(8, 0)].profile == profile_for("Basketball")
+
+
+def test_a_tab_whose_player_shows_the_ad_placeholder_gets_a_negative_score():
+    config = Config(warmup_s=0)
+    server = Server(Scorer(config))
+    server.handle_message({"type": "register", "tab_id": 11})
+    now = time.monotonic()
+    for t in range(5):
+        server.scorer.add_audio(11, 0.05, now - 5 + t)
+    ad = {(11, 0): {"texts": ["COMMERCIAL BREAK IN PROGRESS", "0:37"], "clocks": ["0:37"]}}
+    server._update_game_states(ad, 100.0)
+    server._update_game_states(ad, 103.0)
+    assert server.scorer.streams[11].on_ad is True
+    assert server.scorer.score(11, now) == pytest.approx(-0.5)
+    live = {(11, 0): {"texts": ["TEXAS", "14", "7", "OKLAHOMA"], "clocks": ["18:50"]}}
+    for i in range(4):
+        server._update_game_states(live, 120.0 + i * 3)
+    assert server.scorer.streams[11].on_ad is False

@@ -61,6 +61,7 @@ class GameTracker:
         self._break_hits = 0
         self._ad_hits = 0
         self._ad_seen = float("-inf")
+        self.on_ad = False   # True while the player's ad placeholder is showing
 
     def set_sport(self, sport: str | None) -> None:
         self.profile = profile_for(sport)
@@ -82,6 +83,7 @@ class GameTracker:
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
         on_ad = now - self._ad_seen <= AD_MEMORY_S
+        self.on_ad = on_ad
 
         if clocks and not on_ad:  # the countdown shown during an ad is not the game clock
             if clocks[0] != self._clock:

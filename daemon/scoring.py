@@ -42,6 +42,7 @@ class Config:
     event_s: float = 45.0     # a score change counts for this long, fading linearly
     min_dwell_s: float = 20.0 # after a swap, wait this long before allowing another one
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
+    ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     idle_music: float = 0.5   # MAIN counts as idle (an ad) when music probability is at least this, or it is on a break/over
 
 
@@ -63,6 +64,7 @@ class _Stream:
     tags_at: float = float("-inf")
     event_at: float = float("-inf")  # when a score change was last seen
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
+    on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
     favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
     auto_state: str = "live"     # status detected from the picture
@@ -116,6 +118,10 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
 
+    def set_on_ad(self, tab_id: int, on_ad: bool) -> None:
+        if tab_id in self.streams:
+            self.streams[tab_id].on_ad = on_ad
+
     def set_event(self, tab_id: int, now: float) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].event_at = now
@@ -150,7 +156,13 @@ class Scorer:
         excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.event * event)
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
         status = stream.override or stream.auto_state
-        return {"score": max(raw, 0.0) * stream.weight * STATUS_MULT[status], "surge": surge, "crowd": crowd,
+        score = max(raw, 0.0) * stream.weight * STATUS_MULT[status]
+        audio_ad = music >= cfg.idle_music and crowd < 0.1
+        if stream.on_ad:
+            score = -cfg.ad_penalty            # the picture says it is an ad: its audio means nothing
+        elif audio_ad:
+            score = -cfg.ad_penalty / 2         # music-dominated sound without a crowd: probably an ad too
+        return {"score": score, "ad": stream.on_ad or audio_ad, "surge": surge, "crowd": crowd,
                 "speech": speech, "music": music, "event": event, "fav": stream.favourite, "level": level, "status": status}
 
     def score(self, tab_id: int, now: float) -> float | None:

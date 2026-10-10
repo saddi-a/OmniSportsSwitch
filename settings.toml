@@ -16,6 +16,7 @@ event_s = 45.0       # how long a goal / touchdown boosts a stream (fading)
 min_dwell_s = 20.0   # minimum time between two swaps
 stale_s = 5.0        # a stream with no audio for this long is ignored
 idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this
+ad_penalty = 0.5     # an ad in the picture scores -0.5 (music-only: half of it), so it is pushed down, not just ignored
 
 [weights]
 # score = surge*w + crowd*w + speech*w + music*w + event*w, plus the favourite bonus
@@ -33,6 +34,7 @@ min_dwell_s = 30.0   # minimum time between tile changes in one tab
 event_weight = 1.0
 crowd_weight = 1.0
 floor = 0.05         # every live tile has at least this much interest
+ad_penalty = 0.5     # a tile showing an ad gets negative interest, so focus moves off it
 
 [banners]
 # Text a streaming player shows while an ad break is on (matched anywhere inside a text item, any case). It must

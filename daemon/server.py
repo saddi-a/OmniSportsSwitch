@@ -163,7 +163,7 @@ class Server:
             if c is None:
                 log.info("  %s%s: warming up or no audio", tag, tab_id)
                 continue
-            text = (f"{tag}{tab_id}: {c['status']} fav={c['fav']:.1f} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
+            text = (f"{tag}{tab_id}: {'AD' if c['ad'] else c['status']} fav={c['fav']:.1f} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
                     f"speech={c['speech']:.2f} music={c['music']:.2f}")
             probs = self.tags.get(tab_id)
             if probs is not None:
@@ -211,6 +211,7 @@ class Server:
 
     def _update_game_states(self, results: dict, now: float) -> None:
         per_tab: dict[int, list[str]] = {}
+        ads: dict[int, list[bool]] = {}
         for (tab_id, index), r in results.items():
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id)))
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
@@ -219,6 +220,7 @@ class Server:
                 log.info("sport detected tab %s tile %s: %s", tab_id, index, detected or "unknown")
                 self.sport_seen[(tab_id, index)] = detected
             per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
+            ads.setdefault(tab_id, []).append(tracker.on_ad)
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
                 self.fav_seen[(tab_id, index)] = (seen, now)
@@ -228,6 +230,7 @@ class Server:
                 log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
         for tab_id, states in per_tab.items():
             self._update_favourite(tab_id, now)
+            self.scorer.set_on_ad(tab_id, all(ads.get(tab_id, [False])))   # the whole tab is on an ad
             state = combine(states)
             stream = self.scorer.streams.get(tab_id)
             if stream is not None and stream.auto_state != state:
@@ -249,6 +252,7 @@ class Server:
                 age = now - self.event_at.get((tab_id, index), float("-inf"))
                 tile = {"index": index, "audible": bool(rect.get("audible")),
                         "state": tracker.state if tracker else "live",
+                        "ad": bool(tracker and tracker.on_ad),
                         "event": max(0.0, 1.0 - age / self.scorer.config.event_s)}
                 if tile["audible"]:
                     c = self.scorer.components(tab_id, now)

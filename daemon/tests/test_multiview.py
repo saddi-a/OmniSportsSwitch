@@ -59,3 +59,15 @@ def test_no_audible_tile_does_not_spam_focus_commands():
     assert f.decide(1, 103, silent) is None
     assert f.decide(1, 106, silent) is None
     assert f.decide(1, 131, silent) == 2
+
+
+def test_a_tile_on_an_ad_has_negative_interest_and_loses_focus():
+    f = TileFocuser()
+    assert f.tile_score({"index": 0, "ad": True, "state": "break"}) < 0
+    ad_on_focused = tiles(t0={"ad": True, "state": "break", "crowd": 0.0})
+    assert f.decide(1, 100, ad_on_focused) in (1, 2)
+
+
+def test_a_tile_on_an_ad_never_takes_focus():
+    f = TileFocuser()
+    assert f.decide(1, 100, tiles(t2={"ad": True, "event": 1.0})) is None

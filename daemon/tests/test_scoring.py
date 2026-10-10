@@ -382,3 +382,52 @@ def test_the_main_stream_is_never_a_challenger_for_the_target_slot():
     now = warm_up(s)
     now = roar(s, 1, now)                              # MAIN itself is the exciting one
     assert s.decide(now, target=2) is None
+
+
+# ---- negative scores for ads and breaks -----------------------------------------------------------------
+
+def test_a_stream_showing_an_ad_has_a_negative_score_whatever_its_audio_says():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)                              # loud, crowd-like audio (the ad's soundtrack)
+    s.set_event(2, now)
+    s.set_on_ad(2, True)
+    c = s.components(2, now)
+    assert c["score"] == pytest.approx(-0.5) and c["ad"] is True
+
+
+def test_music_without_a_crowd_is_a_milder_negative():
+    s = make()
+    now = warm_up(s)
+    now = ad(s, 2, now)
+    c = s.components(2, now)
+    assert c["score"] == pytest.approx(-0.25) and c["ad"] is True
+
+
+def test_normal_play_is_not_marked_as_an_ad():
+    s = make()
+    now = warm_up(s)
+    now = quiet_play(s, 2, now)
+    c = s.components(2, now)
+    assert c["ad"] is False and c["score"] >= 0
+
+
+def test_a_stream_on_an_ad_never_wins_a_swap():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    s.set_on_ad(2, True)
+    quiet_play(s, 1, now - 5)
+    assert s.decide(now) is None
+
+
+def test_main_on_an_ad_gives_way_to_a_quiet_live_stream():
+    s = make()
+    now = warm_up(s)
+    quiet_play(s, 1, now)
+    quiet_play(s, 2, now)
+    s.set_on_ad(1, True)
+    s.set_auto_state(1, "break")
+    swap = s.decide(now + 5)
+    assert swap is not None and swap.promote == 2
+    assert s.components(1, now + 5)["score"] < 0

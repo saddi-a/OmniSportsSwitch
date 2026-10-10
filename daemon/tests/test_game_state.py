@@ -148,3 +148,20 @@ def test_game_returns_to_live_a_few_seconds_after_the_placeholder_goes():
         last = g.update(t, ["TEXAS", "14", "1st & 10", "7", "OKLAHOMA"], [f"18:{50 - i * 3}"])
         t += 3
     assert last == "live"
+
+
+def test_on_ad_follows_the_placeholder():
+    g = GameTracker("American football")
+    t = 0.0
+    for i in range(4):
+        g.update(t, *SCOREBUG)
+        t += 3
+    assert g.on_ad is False
+    for texts, clocks in AD_READINGS[:3]:
+        g.update(t, texts, clocks)
+        t += 3
+    assert g.on_ad is True
+    for i in range(4):
+        g.update(t, ["TEXAS", "14", "7", "OKLAHOMA"], [f"18:{50 - i * 3}"])
+        t += 3
+    assert g.on_ad is False

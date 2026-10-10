@@ -6,6 +6,7 @@ Pure logic: callers pass `now` in seconds. A tile is a dict:
   state   "live" | "break" | "over" (from game_state)
   event   0..1, how fresh a score change on this tile is (1 = just now)
   crowd   0..1 crowd-noise probability, only known for the audible tile
+  ad      True while the tile shows the player's ad placeholder
 """
 from dataclasses import dataclass, field
 
@@ -19,6 +20,7 @@ class FocusConfig:
     event_weight: float = 1.0     # how much a fresh score change counts
     crowd_weight: float = 1.0     # how much crowd noise on the focused tile counts
     floor: float = 0.05           # every live tile has at least this much, so scores never reach zero
+    ad_penalty: float = 0.5       # a tile showing an ad has negative interest, so focus moves off it
 
 
 @dataclass
@@ -28,6 +30,8 @@ class TileFocuser:
 
     def tile_score(self, tile: dict) -> float:
         c = self.config
+        if tile.get("ad"):
+            return -c.ad_penalty
         interest = c.floor + c.event_weight * tile.get("event", 0.0) + c.crowd_weight * tile.get("crowd", 0.0)
         return interest * STATUS_MULT.get(tile.get("state", "live"), 1.0)
 
