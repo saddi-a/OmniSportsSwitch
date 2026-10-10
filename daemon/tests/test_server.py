@@ -315,3 +315,15 @@ def test_the_popup_can_read_change_and_reset_settings(tmp_path):
     assert server.scorer.config.min_score == Config().min_score
     assert server.handle_settings_message({"type": "audio"}) is None
     assert Server().handle_settings_message({"type": "get_settings"})["error"]
+
+
+def test_a_score_change_is_ignored_while_the_game_is_on_a_break():
+    server = Server(Scorer(Config(warmup_s=0)))
+    server.handle_message({"type": "register", "tab_id": 13})
+    board = lambda a, extra=(): {(13, 0): {"texts": ["HOUSTON", str(a), "K-STATE", "3", *extra], "clocks": []}}
+    for i in range(5):
+        server._update_game_states(board(7), 100.0 + i * 3)
+    for i in range(5):                                                   # numbers change under an ad / break screen
+        server._update_game_states(board(10, ["COMMERCIAL BREAK IN PROGRESS"]), 120.0 + i * 3)
+    assert server.trackers[(13, 0)].state == "break"
+    assert (13, 0) not in server.event_at

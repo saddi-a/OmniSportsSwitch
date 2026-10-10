@@ -1,4 +1,4 @@
-from daemon.score_watch import ScoreWatcher, find_score
+from daemon.score_watch import STAT_GRAPHIC_RE, ScoreWatcher, find_score
 
 
 def feed(w, readings):
@@ -244,3 +244,29 @@ def test_a_real_touchdown_still_fires_after_the_flicker():
     feed_items(w, [UCLA_WITH_CLOCK] * 4 + [UCLA_WITHOUT_CLOCK] * 5 + [UCLA_WITH_CLOCK] * 5)
     scored = [dict(it, text="23") if it["text"] == "17" and it["x0"] < 1000 else it for it in UCLA_WITH_CLOCK]   # 23-6
     assert feed_items(w, [scored], 5) != []
+
+
+# ---- records, tickers and more stat graphics (live log, 22:58-00:42) ---------------------------------------------
+
+def test_a_team_record_is_not_a_score_when_the_boxes_show_no_real_score():
+    # "21 UCLA 4-0": the record 4-0 and the rank must not become the score when the big digits were not read
+    record_only = boxes([("CBS SPORTS", 40, 2137, 61), ("21 UCLA", 32, 718, 1112), ("4-0", 26, 860, 1216), ("3RD", 30, 1125, 1199),
+                         ("OREGON", 30, 1714, 1113)])
+    w = ScoreWatcher()
+    assert feed_items(w, [record_only], 6) == []
+    assert w._stable is None
+    nothing_but_a_record = boxes([("OKLAHOMA", 36, 1619, 1109), ("4-0", 30, 878, 1162), ("17", 20, 1026, 1126), ("22", 30, 1612, 1162)])
+    assert feed_items(w, [nothing_but_a_record], 6) == [] and w._stable is None
+
+
+def test_records_read_as_one_number_are_not_scores_in_the_text_fallback_with_boxes():
+    items = boxes([("TEXAS", 30, 700, 1112), ("40", 30, 878, 1162), ("17", 26, 1027, 1165), ("Ath", 32, 1194, 1194), ("22", 30, 1612, 1162)])
+    w = ScoreWatcher()
+    feed_items(w, [items], 6)
+    assert w._stable is None
+
+
+def test_results_tickers_and_more_stat_graphics_are_skipped():
+    for words in (["NORTHWESTERN deF BALL STATE", "45-14"], ["14", "PTS OFF TURNOVERS", "6"], ["PLAYS FOR NEGATIVE YARDS", "9"],
+                  ["MOST RECEPTIONS", "44", "42"], ["INDIANA def NEBRASKA", "20-17"]):
+        assert any(STAT_GRAPHIC_RE.search(t) for t in words), words

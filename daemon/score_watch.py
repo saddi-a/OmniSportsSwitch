@@ -20,14 +20,16 @@ NUMBER_RE = re.compile(r"^\d{1,3}$")
 CLOCK_RE = re.compile(r"^\d{1,3}\s?[:.,]\s?\d{2}$")
 LOGO_RE = re.compile(r"^[A-Za-z]{0,2}\d\s?\+\s?\d$")  # channel logos such as "L1+3"
 TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, at least two ("PSG", "OHIO STATE")
+ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "1st" as OCR mangles them (Ath, Ist, Znd, Isr, Jrd)
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
-STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversion|receptions|leaders|half\s?time|mi-temps", re.I)   # overlays full of numbers
+STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversion|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b", re.I)   # overlays full of numbers
 NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", "period", "round", "set", "game", "shots",
               "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
+SCORE_VS_LABEL = 1.2   # score digits are at least this much taller than the team names beside them
 CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
 CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 HISTORY = 5          # readings that vote
@@ -49,10 +51,11 @@ def _small_pair(item: str) -> tuple[int, int] | None:
     return None
 
 
-def find_score(texts: list[str], clocks: list[str]) -> tuple[int, int] | None:
-    """The (left, right) score found in the OCR text items, or None."""
+def find_score(texts: list[str], clocks: list[str], anchored_only: bool = False) -> tuple[int, int] | None:
+    """The (left, right) score found in the OCR text items, or None. `anchored_only` keeps just the readings tied to team
+    names: the loose ones (any small "a-b", two numbers side by side) pick up team records ("4-0", read as "40")."""
     items = _items(texts, clocks)
-    is_team = [bool(TEAM_RE.match(t)) for t in items]
+    is_team = [bool(TEAM_RE.match(t)) and not ORDINAL_RE.match(t) for t in items]
 
     # 1. "TEAM a-b TEAM" (any size for "a/b": merged scores such as "10/20" are only trusted between team names,
     #    because the same text shows passing stats elsewhere)
@@ -88,6 +91,9 @@ def find_score(texts: list[str], clocks: list[str]) -> tuple[int, int] | None:
             named.append((m.group(1).strip().casefold(), int(m.group(2))))
     if len(named) >= 2 and named[0][0] != named[1][0]:
         return named[0][1], named[1][1]
+
+    if anchored_only:
+        return None
 
     # 3. any small "a-b" token
     for item in items:
@@ -128,7 +134,8 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     def cy(it):
         return (it["y0"] + it["y1"]) / 2
 
-    teams = [it for it in live if TEAM_RE.match(it["text"].strip()) and len(it["text"].strip()) >= 3]
+    teams = [it for it in live if TEAM_RE.match(it["text"].strip()) and len(it["text"].strip()) >= 3
+             and not ORDINAL_RE.match(it["text"].strip())]
 
     def teams_near(line_cy, line_h, x0, x1) -> int:
         reach = 4 * line_h
@@ -167,6 +174,10 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             near = teams_near((cy(a) + cy(b)) / 2, max(ha, hb), left["x0"], right["x1"])
             if near == 0:
                 continue
+            labels = [height(t) for t in teams if abs(cy(t) - cy(a)) <= 2.2 * max(ha, hb) and t["x1"] >= left["x0"] - 4 * max(ha, hb)
+                      and t["x0"] <= right["x1"] + 4 * max(ha, hb)]
+            if labels and min(ha, hb) < SCORE_VS_LABEL * max(labels):
+                continue   # as small as the team labels: a record ("4-0" read as 40), a down and distance, a quarter
             between = sum(1 for it in live if not NUMBER_RE.match(it["text"].strip()) and left["x1"] <= it["x0"] and it["x1"] <= right["x0"]
                           and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
             pairs.append((min(ha, hb), between, near, left, right))
@@ -230,7 +241,7 @@ class ScoreWatcher:
             self._reset()
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
-        score = (find_score_geo(items, clocks) if items else None) or find_score(texts, clocks)
+        score = (find_score_geo(items, clocks) if items else None) or find_score(texts, clocks, anchored_only=bool(items))
         if score is None:
             return False
         self._readings += 1
