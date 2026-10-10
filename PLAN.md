@@ -114,8 +114,12 @@ Score of a stream = `priority × (max(0, 0.3·surge + 1.0·crowd − 0.2·speech
 1. **Hardware acceleration must stay off in Edge** (the user's setting). With it on, screen capture of DRM video may go black. Re-check if it ever changes.
 2. **Per-session setup:** tabs must be tracked again after any restart (one click per tab; Edge requires the click) and the freeze is reset. Window roles come back automatically: the extension remembers where each role's window sits on screen and gives the role back to the window at that position. If you move a window, its remembered position updates.
 3. **OCR reads everything in the video area**, including ad boards, popups and graphics. Mitigations in place (standalone repeated captions, score pairs, thresholds), but false readings can still happen. Watch the daemon log (`score change`, `game state`, `focus tile`).
-4. **Not built yet:** a settings file for the scoring thresholds, a one-command start, better image-based ad and break detection. The sport dropdown is now only an override: the sport is guessed per video area from the scoreboard (down-and-distance means American football, a clock past 20:00 or stoppage time means football, quarters mean basketball) and sets the break rules; wrong guesses are visible in the log as `sport detected`.
-5. **Unverified in live use:** the three-way rotation for allowed slots, a goal moving tile focus, and break detection on American football (set the sport on the tab).
+4. **Not built yet:**
+   * **Big-play banners** (TAKEAWAY, INTERCEPTION, FUMBLE, SACK, RED CARD...) read from the picture as a smaller boost than a goal. Waiting for the user's answer on how strong the boost should be.
+   * **More scoreboard layouts:** no NFL or national-team samples yet; the UCF layout still reads a logo as a score (expected-failure test); the score reader needs tuning on the data in `logs/boxes.log`.
+   * **Per-team allowed slots** ("PSG only on MAIN or LEFT" by team name instead of per tab) and a popup editor for `settings.toml` (settings are read at daemon start only).
+   * **Setup for other people:** a setup script (venv, CUDA PyTorch, model downloads), a README and a licence, then the clean single-commit public repo.
+5. **Verified live so far:** goals on non-MAIN streams promote them, the allowed-slot rotation (PSG moved to LEFT), idle MAIN handover on ads, favourite teams staying on MAIN, the freeze hotkey, window roles restored after a reload, sport detection, commercial placeholder detection. **Not yet seen live:** a goal in a multiview side tile expanding that tile, the freeze sending the winner to LEFT, and the negative ad score during a real ad.
 6. **Publishing later:** create a new public repo with a single clean commit (no history). Models (`models/`) and the venv are not tracked.
 
 ## 8. Roadmap and status
