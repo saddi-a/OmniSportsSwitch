@@ -36,8 +36,10 @@ class Server:
         kind = msg.get("type")
         if kind == "register":
             self.scorer.register(msg["tab_id"], msg.get("weight", 1.0), msg.get("is_main", False))
+            log.info("registered tab %s", msg["tab_id"])
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
+            log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
             self.scorer.add_audio(msg["tab_id"], float(msg["rms"]), time.monotonic())
         elif kind == "set_weight":
