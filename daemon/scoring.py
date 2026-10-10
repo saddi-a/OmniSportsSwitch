@@ -59,6 +59,7 @@ class _Stream:
     tags: tuple[float, float, float] = (0.0, 0.0, 0.0)  # crowd, speech, music
     tags_at: float = float("-inf")
     event_at: float = float("-inf")  # when a score change was last seen
+    can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
     auto_state: str = "live"     # status detected from the picture
 
@@ -102,6 +103,10 @@ class Scorer:
         stream = self.streams.get(tab_id)
         if stream is not None:
             stream.tags, stream.tags_at = (crowd, speech, music), now
+
+    def set_can_main(self, tab_id: int, can_main: bool) -> None:
+        if tab_id in self.streams:
+            self.streams[tab_id].can_main = can_main
 
     def set_event(self, tab_id: int, now: float) -> None:
         if tab_id in self.streams:
@@ -154,7 +159,7 @@ class Scorer:
         main_score = main_c["score"] if main_c else 0.0
         best_id, best_c = None, None
         for tab_id in self.streams:
-            if tab_id == self.main:
+            if tab_id == self.main or not self.streams[tab_id].can_main:
                 continue
             c = self.components(tab_id, now)
             if c is not None and (best_c is None or c["score"] > best_c["score"]):

@@ -37,6 +37,8 @@ function register(tabId) {
     is_main: state.roles[tabId] === "MAIN",
     sport: state.labels[tabId]?.sport ?? "",
     status: state.labels[tabId]?.status ?? "auto",
+    role: state.roles[tabId] ?? "",
+    allowed: state.labels[tabId]?.allowed ?? null,
   });
 }
 
@@ -56,7 +58,7 @@ function connect() {
   };
   socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === "swap" || msg.type === "focus_tile") chrome.runtime.sendMessage(msg); // service worker performs it
+    if (msg.type === "arrange" || msg.type === "focus_tile") chrome.runtime.sendMessage(msg); // service worker performs it
   };
   socket.onclose = () => setTimeout(connect, RECONNECT_MS);
   socket.onerror = () => socket.close();
@@ -119,6 +121,7 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   }
   if (m.type === "start") startCapture(m).catch((e) => console.error("capture failed", e));
   if (m.type === "stop") stopCapture(m.tabId);
+  if (m.type === "resync") for (const tabId of captures.keys()) register(tabId);
   if (m.type === "state") {
     const before = state;
     state = { roles: m.roles, weights: m.weights, labels: m.labels ?? {} };

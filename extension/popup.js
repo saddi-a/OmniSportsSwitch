@@ -68,6 +68,19 @@ async function load() {
     status.value = info.status ?? "auto";
     status.onchange = () => update("tracked", {}, (t) => (t[tabId].status = status.value));
 
+    const SLOTS = [["MAIN", "Main"], ["LEFT", "Left"], ["RIGHT_TOP", "R-top"], ["RIGHT_MID", "R-mid"], ["RIGHT_BOT", "R-bot"]];
+    const allowedNow = info.allowed ?? SLOTS.map(([role]) => role);
+    const slotBoxes = SLOTS.map(([role, label]) => {
+      const box = el("input", { type: "checkbox", checked: allowedNow.includes(role) });
+      box.onchange = () => update("tracked", {}, (t) => {
+        const chosen = SLOTS.filter(([r], i) => slotBoxes[i].checked).map(([r]) => r);
+        t[tabId].allowed = chosen.length === SLOTS.length ? null : chosen; // null = no restriction
+      });
+      return box;
+    });
+    const slotRow = el("div", { className: "row slots" }, el("span", { textContent: "Allowed in:" }),
+      ...SLOTS.map(([role, label], i) => el("label", {}, slotBoxes[i], label)));
+
     const untrack = el("button", { textContent: "Untrack" });
     untrack.onclick = () => {
       chrome.runtime.sendMessage({ type: "untrack", tabId: Number(tabId) });
@@ -77,7 +90,8 @@ async function load() {
     const title = el("span", { className: "title grow", textContent: info.title, title: info.title });
     const block = el("div", { className: "tab" },
       el("div", { className: "row" }, title, el("span", { className: "role", textContent: role || "-" }), status, untrack),
-      el("div", { className: "row" }, sport, teams, weight));
+      el("div", { className: "row" }, sport, teams, weight),
+      slotRow);
     list.append(block);
   }
 

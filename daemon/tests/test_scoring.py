@@ -209,3 +209,14 @@ def test_manual_status_overrides_automatic_detection():
     assert s.components(2, now)["status"] == "live"
     s.set_status(2, None)  # back to automatic
     assert s.components(2, now)["status"] == "over"
+
+
+def test_stream_restricted_away_from_main_is_skipped_for_promotion():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    roar(s, 3, now - 5)
+    s.set_can_main(2, False)
+    steady(s, 1, 0.05, 60, 5)
+    swap = s.decide(now)
+    assert swap is not None and swap.promote == 3

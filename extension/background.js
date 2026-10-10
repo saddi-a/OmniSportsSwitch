@@ -68,7 +68,7 @@ async function pushState() {
   if (!(await chrome.offscreen.hasDocument())) return;
   const weights = effectiveWeights(await getState());
   const { tracked } = await getState();
-  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status }]));
+  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status, allowed: t.allowed ?? null }]));
   chrome.runtime.sendMessage({ type: "state", roles: await computeTabRoles(), weights, labels }).catch(() => {});
 }
 
@@ -175,16 +175,18 @@ async function ensureSpareTab(windowId) {
   if (tabs.length < 2) await chrome.tabs.create({ windowId, active: false, url: "about:blank" });
 }
 
-// Window roles stay put; the two tabs trade windows, so their roles trade automatically.
-async function performSwap(promoteId, demoteId) {
-  const [promote, demote] = await Promise.all([chrome.tabs.get(promoteId), chrome.tabs.get(demoteId)]);
-  await ensureSpareTab(promote.windowId);
-  await ensureSpareTab(demote.windowId);
-
-  await chrome.tabs.move(promoteId, { windowId: demote.windowId, index: -1 });
-  await chrome.tabs.update(promoteId, { active: true });
-  await chrome.tabs.move(demoteId, { windowId: promote.windowId, index: -1 });
-  await chrome.tabs.update(demoteId, { active: true });
+// The daemon decides who goes where (it knows the allowed slots); this just moves each tab into the window
+// that carries the requested slot. Window roles stay put, so a tab's role follows the window it ends up in.
+async function performArrange(moves) {
+  const { windowRoles } = await getState();
+  const windowOfRole = Object.fromEntries(Object.entries(windowRoles).map(([id, role]) => [role, Number(id)]));
+  const plan = moves.filter((m) => windowOfRole[m.role] !== undefined);
+  if (plan.length !== moves.length) return;
+  for (const m of plan) await ensureSpareTab((await chrome.tabs.get(m.tab_id)).windowId); // a window must never end up empty
+  for (const m of plan) {
+    await chrome.tabs.move(m.tab_id, { windowId: windowOfRole[m.role], index: -1 });
+    await chrome.tabs.update(m.tab_id, { active: true });
+  }
   await pushState();
 }
 
@@ -207,7 +209,7 @@ chrome.runtime.onMessage.addListener((m) => {
       chrome.scripting.executeScript({ target: { tabId: m.tab_id }, func: clickVideoTile, args: [m.index] }).catch(() => {});
     });
   }
-  if (m.type === "swap") performSwap(m.promote, m.demote).catch((e) => console.error("swap failed", e));
+  if (m.type === "arrange") performArrange(m.moves).catch((e) => console.error("arrange failed", e));
   if (m.type === "untrack") {
     chrome.runtime.sendMessage({ type: "stop", tabId: m.tabId }).catch(() => {}); // offscreen then reports "stopped"
     chrome.action.setBadgeText({ tabId: m.tabId, text: "" }).catch(() => {});

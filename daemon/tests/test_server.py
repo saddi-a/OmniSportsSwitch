@@ -21,8 +21,8 @@ async def test_crowd_roar_triggers_swap_message():
     await asyncio.sleep(0.2)
     try:
         async with connect(f"ws://127.0.0.1:{PORT}") as ws:
-            await ws.send(json.dumps({"type": "register", "tab_id": 1, "is_main": True}))
-            await ws.send(json.dumps({"type": "register", "tab_id": 2}))
+            await ws.send(json.dumps({"type": "register", "tab_id": 1, "is_main": True, "role": "MAIN"}))
+            await ws.send(json.dumps({"type": "register", "tab_id": 2, "role": "RIGHT_BOT"}))
             for _ in range(5):  # normal level for both
                 await ws.send(json.dumps({"type": "audio", "tab_id": 1, "rms": 0.05}))
                 await ws.send(json.dumps({"type": "audio", "tab_id": 2, "rms": 0.05}))
@@ -33,7 +33,7 @@ async def test_crowd_roar_triggers_swap_message():
                 server.scorer.set_tags(2, 0.9, 0.1, 0.0, time.monotonic())
                 await asyncio.sleep(0.1)
             reply = json.loads(await asyncio.wait_for(ws.recv(), 2))
-            assert reply == {"type": "swap", "promote": 2, "demote": 1}
+            assert reply == {"type": "arrange", "moves": [{"tab_id": 2, "role": "MAIN"}, {"tab_id": 1, "role": "RIGHT_BOT"}]}
     finally:
         task.cancel()
 
@@ -131,3 +131,13 @@ def test_equal_grid_or_main_tile_expand_changes_nothing():
     sidebar = [{"index": 0, "width": 1900, "height": 1000}, {"index": 1, "width": 600, "height": 330}]
     server._expand_swap(9, sidebar, 0)
     assert server.trackers == {(9, 0): "a", (9, 1): "b"}
+
+
+def test_stream_not_allowed_on_main_is_never_promoted():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 1, "role": "MAIN", "is_main": True})
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT", "allowed": ["LEFT", "RIGHT_BOT"]})
+    assert server.scorer.streams[2].can_main is False
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT", "allowed": None})
+    assert server.scorer.streams[2].can_main is True
+    assert server.allowed[2] is None and server.roles[2] == "LEFT"

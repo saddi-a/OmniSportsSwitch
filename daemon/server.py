@@ -3,13 +3,14 @@
 Messages are JSON, one object per message.
 
 Extension -> daemon:
-  {"type": "register",   "tab_id": 12, "weight": 1.0, "is_main": false, "sport": "Football", "status": "auto|live|break|over"}
+  {"type": "register",   "tab_id": 12, "weight": 1.0, "is_main": false, "sport": "Football", "status": "auto|live|break|over", "role": "LEFT", "allowed": ["MAIN", "LEFT"]|null}
   {"type": "unregister", "tab_id": 12}
   {"type": "audio",      "tab_id": 12, "rms": 0.031}   (simple loudness-only form)
   {"type": "set_weight", "tab_id": 12, "weight": 1.5}
   {"type": "freeze",     "value": true}
   {"type": "video_rect", "tab_id": 12, "rects": [{"left":0,"top":0,"width":1920,"height":1080}], "visible": true, "fullscreen": false}
-  {"type": "focus_tile", "tab_id": 12, "index": 2}   (daemon -> extension: click that video tile)
+  {"type": "focus_tile", "tab_id": 12, "index": 2}   (daemon -> extension: expand that video tile)
+  {"type": "arrange", "moves": [{"tab_id": 12, "role": "MAIN"}, ...]}  (daemon -> extension: put each tab in that slot's window)
   binary frame: 4-byte little-endian tab id + 32 kHz mono int16 samples (100 ms per frame)
 
 Daemon -> extension:
@@ -24,6 +25,7 @@ import time
 import numpy as np
 from websockets.asyncio.server import serve
 
+from daemon.arrange import plan_swap
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher
@@ -50,6 +52,8 @@ class Server:
         self.screen_reader = screen_reader
         self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
         self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
+        self.roles: dict[int, str] = {}             # tab id -> slot its window currently has
+        self.allowed: dict[int, set[str] | None] = {}  # tab id -> slots it may use (None = any)
         self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
         self.watchers: dict[tuple[int, int], ScoreWatcher] = {}  # (tab id, video index) -> score-change detector
         self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
@@ -64,6 +68,13 @@ class Server:
         if kind == "register":
             self.scorer.register(msg["tab_id"], msg.get("weight", 1.0), msg.get("is_main", False))
             tab_id = msg["tab_id"]
+            if msg.get("role"):
+                self.roles[tab_id] = msg["role"]
+            else:
+                self.roles.pop(tab_id, None)
+            allowed = msg.get("allowed")
+            self.allowed[tab_id] = set(allowed) if allowed else None
+            self.scorer.set_can_main(tab_id, self.allowed[tab_id] is None or "MAIN" in self.allowed[tab_id])
             self.sports[tab_id] = msg.get("sport") or None
             status = msg.get("status", "auto")
             self.scorer.set_status(tab_id, None if status == "auto" else status)
@@ -79,6 +90,8 @@ class Server:
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
+            self.roles.pop(msg["tab_id"], None)
+            self.allowed.pop(msg["tab_id"], None)
             self.tags.pop(msg["tab_id"], None)
             log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
@@ -266,7 +279,13 @@ class Server:
             swap = self.scorer.decide(now)
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
-                await self._broadcast({"type": "swap", "promote": swap.promote, "demote": swap.demote})
+                moves = plan_swap(swap.promote, swap.demote, self.roles, self.allowed)
+                if moves is None:
+                    log.info("swap refused (allowed slots or unknown slots): promote %s, demote %s", swap.promote, swap.demote)
+                    self.scorer.main = swap.demote  # nothing moved, so the old MAIN stays MAIN
+                    continue
+                log.info("arrange: %s", moves)
+                await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
 
     async def run(self, host: str = HOST, port: int = PORT) -> None:
         async with serve(self._client, host, port):
