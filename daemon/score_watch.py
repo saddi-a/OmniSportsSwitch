@@ -8,7 +8,9 @@ down-and-distance. So:
   * each side's score is the value most of the last few readings agree on (a vote), so one or two bad
     frames cannot flip it;
   * a goal is a stable change in which at least one side rose by 1 to MAX_RISE. The other side may have
-    changed because of noise and is not checked.
+    changed because of noise and is not checked;
+  * if the game clock jumps by more than the elapsed time allows (a different game moved into this video
+    slot, or a rewind), the baseline is thrown away, so numbers of two different games are never compared.
 """
 import re
 from collections import Counter, deque
@@ -20,6 +22,8 @@ LOGO_RE = re.compile(r"^[A-Za-z]{0,2}\d\s?\+\s?\d$")  # channel logos such as "L
 TEAM_RE = re.compile(r"^[^\W\d_]{2,}$")                 # letters only, at least two ("PSG", "LMFC")
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
+CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
+CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 HISTORY = 5          # readings that vote
 NEEDED = 3           # votes a value needs to count
 
@@ -80,6 +84,11 @@ def find_score(texts: list[str], clocks: list[str]) -> tuple[int, int] | None:
     return None
 
 
+def clock_seconds(text: str) -> int | None:
+    m = CLOCK_TEXT_RE.match(text)
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+
 def _vote(values) -> int | None:
     value, count = Counter(values).most_common(1)[0]
     return value if count >= NEEDED else None
@@ -91,8 +100,38 @@ class ScoreWatcher:
     def __init__(self):
         self._history: deque[tuple[int, int]] = deque(maxlen=HISTORY)
         self._stable: tuple[int, int] | None = None
+        self._clock: tuple[int, float] | None = None   # last plausible game clock and when it was read
+        self._alt: tuple[int, float] | None = None     # an implausible clock seen once, waiting for confirmation
 
-    def update(self, texts: list[str], clocks: list[str]) -> bool:
+    def _reset(self) -> None:
+        self._history.clear()
+        self._stable = None
+
+    def _clock_jumped(self, clocks: list[str], now: float) -> bool:
+        seconds = [s for s in map(clock_seconds, clocks) if s is not None]
+        if not seconds:
+            return False
+        if self._clock is None:
+            self._clock = (seconds[0], now)
+            return False
+        previous, then = self._clock
+        plausible = [s for s in seconds if abs(s - previous) <= abs(now - then) * 2 + CLOCK_SLACK_S]
+        if plausible:
+            self._clock, self._alt = (plausible[0], now), None
+            return False
+        # Only a clock seen twice in a row, continuing from itself, counts (a lone "20:45" kickoff text does not).
+        if self._alt is not None:
+            alt, alt_at = self._alt
+            near = [s for s in seconds if abs(s - alt) <= abs(now - alt_at) * 2 + CLOCK_SLACK_S]
+            if near:
+                self._clock, self._alt = (near[0], now), None
+                return True
+        self._alt = (seconds[0], now)
+        return False
+
+    def update(self, texts: list[str], clocks: list[str], now: float | None = None) -> bool:
+        if now is not None and self._clock_jumped(clocks, now):
+            self._reset()
         score = find_score(texts, clocks)
         if score is None:
             return False

@@ -104,3 +104,44 @@ def test_stat_graphic_appearing_does_not_trigger_an_event():
 def test_nothing_read_means_no_event():
     w = ScoreWatcher()
     assert feed(w, [([], []), (["Quitter le mode plein ecran"], [])]) == []
+
+
+# ---- clock jumps: a different game in the slot, or a rewind -------------------------------------------------
+
+def sequence(score, start_sec, n, step=3):
+    """n readings of the Napoli scorebug with a clock that advances `step` seconds per reading."""
+    out = []
+    for i in range(n):
+        sec = start_sec + i * step
+        clock = f"{sec // 60}:{sec % 60:02d}"
+        out.append((["DA", clock.replace(":", "."), "NAP", score, "FRO", "ZN"], [clock]))
+    return out
+
+
+def timed(w, readings, t0, step=3.0):
+    """Feed readings with timestamps; returns the indexes at which an event fired."""
+    return [i for i, (texts, clocks) in enumerate(readings) if w.update(list(texts), list(clocks), t0 + i * step)]
+
+
+def test_a_different_game_moving_into_the_slot_is_not_a_goal():
+    w = ScoreWatcher()
+    assert timed(w, sequence("2-0", 31 * 60, 6), 0) == []
+    other_game = [(["CBS", "UCLA", "3", "OREGON", "6", f"12:{i * 3:02d}"], [f"12:{i * 3:02d}"]) for i in range(8)]
+    assert timed(w, other_game, 20) == []
+
+
+def test_after_a_rewind_the_goal_is_detected_once_a_baseline_is_rebuilt():
+    w = ScoreWatcher()
+    assert timed(w, sequence("2-0", 72 * 60, 6), 0) == []                # watching the end of the game
+    replay = sequence("0-0", 27 * 60, 6) + sequence("1-0", 27 * 60 + 18, 6)   # rewound: 0-0, then the goal
+    fired = timed(w, replay, 30)
+    assert len(fired) == 1
+
+
+def test_a_lone_kickoff_time_does_not_reset_the_baseline():
+    w = ScoreWatcher()
+    assert timed(w, sequence("1-0", 31 * 60, 6), 0) == []
+    stray = [(["Match started at 20:45", "NAP", "1-0", "FRO"], ["20:45"])]
+    assert timed(w, stray, 18) == []                                      # one odd clock reading
+    goal = sequence("2-0", 31 * 60 + 21, 6)                               # the real clock carries on
+    assert len(timed(w, goal, 21)) == 1

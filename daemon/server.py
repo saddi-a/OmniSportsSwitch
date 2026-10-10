@@ -187,7 +187,7 @@ class Server:
         for (tab_id, index), r in results.items():
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id)))
             per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
-            if self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"]):
+            if self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now):
                 self.event_at[(tab_id, index)] = now
                 self.scorer.set_event(tab_id, now)
                 log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
