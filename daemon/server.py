@@ -42,7 +42,8 @@ CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
 FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use are corrected
 EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
-FAVOURITE_MEMORY_S = 60.0  # a favourite read on screen keeps counting for this long
+FAVOURITE_MEMORY_S = 60.0
+RULE_MEMORY_S = 600.0     # slot rules are remembered longer: a team stays on its tab through ads and breaks  # a favourite read on screen keeps counting for this long
 OCR_MIN_WIDTH = 900  # smaller areas (multiview tiles) are enlarged before reading
 SAMPLE_RATE = 32000
 CLASSIFY_WINDOW = 3 * SAMPLE_RATE  # classify the last 3 seconds of each tab
@@ -99,7 +100,8 @@ class Server:
             for (t, _), tracker in self.trackers.items():
                 if t == tab_id:
                     tracker.set_sport(self.sports[tab_id])
-            log.info("registered tab %s (sport=%s, status=%s)", tab_id, self.sports[tab_id], status)
+            log.info("registered tab %s (sport=%s, status=%s, %d team(s), limits=%s)", tab_id, self.sports[tab_id], status,
+                     len(self.favourites), self.limits.get(tab_id))
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
@@ -218,7 +220,7 @@ class Server:
         self.scorer.set_favourite(tab_id, mult)
         rule = match_slots([self.team_text.get(tab_id, "")], self.favourites)
         for (t, _), (slots, seen_at) in self.rule_seen.items():
-            if t == tab_id and now - seen_at <= FAVOURITE_MEMORY_S:
+            if t == tab_id and now - seen_at <= RULE_MEMORY_S:
                 rule = slots if rule is None else ((rule & slots) or rule)
         tab = self.allowed.get(tab_id)
         limit = tab if rule is None else (rule if tab is None else ((tab & rule) or tab))  # a clash keeps the tab's own choice

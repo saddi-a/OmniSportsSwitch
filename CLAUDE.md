@@ -1,0 +1,30 @@
+# OmniSportsSwitch (guide for Claude)
+
+A local "live broadcast director": an Edge extension plus a Python daemon that watch several browser sports streams and move the most exciting one into the `MAIN` window. Everything must run locally (no cloud, accounts or APIs).
+
+**Read `PLAN.md` section 0 first.** It has the current state, how to run and test, what is verified live, next steps and gotchas. It is the durable hand-over; keep it up to date after every change. Sections 1 to 8 hold the architecture, display layout, scoring and risks. `README.md` is for users; do not duplicate it here.
+
+## Layout
+
+- `daemon/` Python daemon (see `daemon/CLAUDE.md`).
+- `extension/` Edge Manifest V3 extension, plain JS, no build step (see `extension/CLAUDE.md`).
+- `settings.toml` every threshold/weight/phrase; a test keeps it equal to the built-in defaults.
+- `scripts/` PowerShell start/stop scripts, `capture_samples.py` (saves screenshots to untracked `samples/`).
+- `spike/` Phase 0 throwaway experiments. Not part of the product. Do not run its tests as part of the suite (they use the screen).
+- `models/`, `logs/`, `samples/`, `.venv/` are not tracked.
+
+## How to work here
+
+- **Ask before architecture or design decisions**: give options with pros and cons and a recommendation. Implementation details are yours; explain them briefly. The user is new to web development, knows Python and C. Keep replies short and plain.
+- **Git**: private repo. Commit on the feature branch `phase-0-1-spike-and-daemon`, never on `main`. Push the branch freely. Never force-push. Never edit git config; commit with `git -c user.name=saddi-a -c user.email=72130894+saddi-a@users.noreply.github.com`. Publishing later will be a NEW repo with one clean commit (no history, no email, no Claude trailers).
+- **Tests**: `.venv\Scripts\python.exe -m pytest daemon -q` (one expected failure: the UCF layout). Add a test for every behaviour you add. Real scoreboard fixtures are in `daemon/tests/fixtures/`.
+- **After changes**: daemon or settings changes need a daemon restart (`scripts\stop_all.ps1`, `scripts\start_all.ps1`). Extension changes need the user to press "Reload extension" in the popup and re-track each tab.
+- **Do not trust single readings**: music probability, OCR text and clocks flicker. Use votes, memory and confirmations over several readings.
+- **Never cover a stream** with a window (OCR reads the screen) and keep Edge hardware acceleration off.
+
+## Windows quirks
+
+- Source files use CRLF line endings. Multi-line Edit calls can fail to match; patch from a Python script (read bytes, replace, write bytes) instead. Write patch scripts to files rather than inline shell.
+- In Python strings `\b` is a backspace. Use raw strings or lookarounds in regexes.
+- Install `torch` and `torchvision` from the CUDA index first, and use `--no-deps` for packages that depend on them, or pip replaces them with CPU builds.
+- The bash `python` is a Microsoft Store stub; use `.venv\Scripts\python.exe`. In PowerShell, `git` may not be on PATH; use bash for git.
