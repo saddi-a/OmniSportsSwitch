@@ -14,7 +14,11 @@ from dataclasses import dataclass
 
 # A caption only counts when a whole OCR text item is exactly the keyword. Words inside a sentence do not
 # (an ad saying "ready for the half time?" must not mark the game as on a break).
-OVER_RE = re.compile(r"(FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|TERMIN[EÉ])", re.IGNORECASE)
+OVER_RE = re.compile(r"(FINA[LU1I](?:\s?[/|IlU1]?\s?\d?OT\d?)?|SCORE FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|MATCH TERMIN[EÉ]|TERMIN[EÉ])",
+                     re.IGNORECASE)   # also "FINAL/OT", "FINAL/2OT" as OCR mangles them (FINAUOT, FINALIOT)
+# Overtime (American football, basketball) has no game clock on the scoreboard, so a missing clock is not a break there.
+OVERTIME_RE = re.compile(r"(\d?OT|.*(OVERTIME|PROLONGATION|TEMPS SUPPL[EÉ]MENTAIRE).*)", re.IGNORECASE)
+OVERTIME_MEMORY_S = 30.0
 BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)", re.IGNORECASE)
 CAPTION_CONFIRMATIONS = 2  # a caption must show on this many consecutive readings
 KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long after it was last seen
@@ -62,6 +66,7 @@ class GameTracker:
         self._first_seen: float | None = None
         self._over_seen = float("-inf")
         self._break_seen = float("-inf")
+        self._overtime_seen = float("-inf")
         self._over_hits = 0
         self._break_hits = 0
         self._ad_hits = 0
@@ -80,6 +85,8 @@ class GameTracker:
         items = [re.sub(r"[^\w\s-]", "", t).strip() for t in texts]
         self._over_hits = self._over_hits + 1 if any(OVER_RE.fullmatch(t) for t in items) else 0
         self._break_hits = self._break_hits + 1 if any(BREAK_RE.fullmatch(t) for t in items) else 0
+        if any(OVERTIME_RE.fullmatch(t) for t in items):
+            self._overtime_seen = now
         if self._over_hits >= CAPTION_CONFIRMATIONS:
             self._over_seen = now
         if self._break_hits >= CAPTION_CONFIRMATIONS:
@@ -120,6 +127,8 @@ class GameTracker:
         elif clocks and self._clock_changed_at is not None:
             frozen_for = now - self._clock_changed_at
             self.state = "break" if frozen_for > self.profile.freeze_s else "live"
+        elif now - self._overtime_seen <= OVERTIME_MEMORY_S:
+            self.state = "live"   # overtime: no game clock to read
         elif self._last_clock_seen is not None and now - self._last_clock_seen <= self.profile.no_clock_s:
             pass  # clock briefly unreadable (overlay, OCR miss): keep the previous state
         else:

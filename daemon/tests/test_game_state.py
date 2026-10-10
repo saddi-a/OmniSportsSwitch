@@ -214,3 +214,56 @@ def test_dazn_promo_screens_count_as_a_break():
     states = [g.update(3.0 * i, texts, clocks) for i, (texts, clocks) in enumerate(promo)]
     assert states[0] == "live" and states[1:] == ["break", "break"]
     assert g.on_ad is True
+
+
+# ---- overtime and "FINAL/OT" (live log 01:19-01:21, Illinois at Michigan State) -------------------------------------
+
+OT_READINGS = [
+    ["GSJEFB", "ZN", "8", "OVERTIME", "1st & GOAL", "FS2", "CFB: Nevada at UTEP airing on FS2 and FOX One", "FS1"],
+    ["ZN", "4", "73", "OVERTIME", "FS2", "FS1"],
+    ["IlLINOIS", "2PT", "CONVERSIONS", "I/1", "OVERTIME", "23", "FS2", "FS1"],
+    ["ZN", "ILLINOIS", "OVERTIME", "15", "FS2", "FS1"],
+]
+
+
+def test_overtime_has_no_game_clock_and_is_not_a_break():
+    g = GameTracker("american football")
+    run(g, 0, 60, ticking)                                        # a normal game first, then overtime without a clock
+    state = None
+    for i in range(60):                                           # 3 minutes of overtime readings
+        state = g.update(60 + i * 3.0, list(OT_READINGS[i % 4]), [])
+    assert state == "live"
+
+
+def test_the_same_clockless_screen_without_the_overtime_banner_is_still_a_break():
+    g = GameTracker("american football")
+    run(g, 0, 60, ticking)
+    state = None
+    for i in range(60):
+        state = g.update(60 + i * 3.0, ["ZN", "FS2", "FS1"], [])
+    assert state == "break"
+
+
+def test_french_overtime_words_count_too():
+    for word in ("PROLONGATIONS", "PROLONGATION", "TEMPS SUPPLÉMENTAIRE", "2OT", "OT"):
+        g = GameTracker("american football")
+        run(g, 0, 60, ticking)
+        state = None
+        for i in range(60):
+            state = g.update(60 + i * 3.0, ["ZN", word, "FS1"], [])
+        assert state == "live", word
+
+
+def test_final_in_overtime_means_over_whatever_the_ocr_made_of_it():
+    for caption in ("FINAL/OT", "FINALOT", "FINAUOT", "FINALIOT", "FINAL/2OT", "FINAL OT", "FINAL/OT2"):
+        g = GameTracker("american football")
+        run(g, 0, 30, ticking)
+        assert g.update(100.0, [caption, "ILLINOIS"], ["00:30"]) != "over"          # one reading is not enough
+        assert g.update(103.0, [caption, "ILLINOIS"], ["00:33"]) == "over", caption
+
+
+def test_french_final_captions_mean_over():
+    for caption in ("FIN DU MATCH", "MATCH TERMINÉ", "TERMINÉ", "FINAL", "SCORE FINAL"):
+        g = GameTracker("football")
+        g.update(0.0, [caption], ["90:00"])
+        assert g.update(3.0, [caption], ["90:03"]) == "over", caption
