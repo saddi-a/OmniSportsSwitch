@@ -11,6 +11,7 @@ const workletReady = analysisCtx.audioWorklet.addModule("pcm-processor.js");
 const captures = new Map(); // tabId -> { stream, gain, node }
 let state = { roles: {}, weights: {}, labels: {}, favourites: [] }; // pushed by the service worker
 let socket = null;
+let frozen = false;
 
 function send(obj) {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(obj));
@@ -57,6 +58,7 @@ function connect() {
   socket.onopen = () => {
     // After a reconnect the daemon has forgotten us, so register every active tab again.
     for (const tabId of captures.keys()) register(tabId);
+    if (frozen) send({ type: "freeze", value: true });
   };
   socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -123,6 +125,10 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   }
   if (m.type === "start") startCapture(m).catch((e) => console.error("capture failed", e));
   if (m.type === "stop") stopCapture(m.tabId);
+  if (m.type === "freeze") {
+    frozen = !!m.value;
+    send({ type: "freeze", value: frozen });
+  }
   if (m.type === "resync") for (const tabId of captures.keys()) register(tabId);
   if (m.type === "state") {
     const before = state;

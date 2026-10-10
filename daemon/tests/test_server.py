@@ -162,3 +162,17 @@ def test_favourite_is_recognised_from_the_scoreboard_and_remembered_for_a_minute
     assert server.scorer.streams[6].favourite == 2
     server._update_favourite(6, 200.0)                                                # more than a minute later
     assert server.scorer.streams[6].favourite == 1.0
+
+
+def test_freeze_message_stops_swaps_and_tile_changes():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 9})
+    rects = [{"index": i, "audible": i == 0, "left": 0, "top": 0, "width": 700, "height": 480} for i in (0, 1, 2)]
+    server.handle_message({"type": "video_rect", "tab_id": 9, "rects": rects, "visible": True, "fullscreen": False})
+    now = time.monotonic()
+    server.event_at[(9, 2)] = now
+    server.handle_message({"type": "freeze", "value": True})
+    assert server.scorer.frozen is True
+    assert server._focus_commands(now) == []
+    server.handle_message({"type": "freeze", "value": False})
+    assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 9, "index": 2}]

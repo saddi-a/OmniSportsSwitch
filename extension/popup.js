@@ -14,7 +14,14 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
+async function showFreeze() {
+  const { frozen = false } = await chrome.storage.local.get("frozen");
+  $("freeze").classList.toggle("on", frozen);
+  $("freeze").textContent = frozen ? "FROZEN - click to resume (Ctrl+Shift+P)" : "Freeze MAIN (Ctrl+Shift+P)";
+}
+
 async function load() {
+  showFreeze();
   const { tracked = {}, weights = {}, windowRoles = {}, priorities = DEFAULT_PRIORITIES } =
     await chrome.storage.local.get();
   const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -134,6 +141,11 @@ $("addTeam").onclick = async () => {
   await update("priorities", DEFAULT_PRIORITIES, (p) => p.teams.push({ name, mult: Number($("newTeamMult").value) || 1 }));
   $("newTeam").value = "";
   load();
+};
+
+$("freeze").onclick = async () => {
+  chrome.runtime.sendMessage({ type: "toggle_freeze" });
+  setTimeout(showFreeze, 300);
 };
 
 $("reload").onclick = () => chrome.runtime.reload();

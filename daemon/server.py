@@ -119,6 +119,7 @@ class Server:
             self.scorer.set_weight(msg["tab_id"], float(msg["weight"]))
         elif kind == "freeze":
             self.scorer.frozen = bool(msg["value"])
+            log.info("freeze %s", "ON: no swaps or tile changes" if self.scorer.frozen else "OFF")
         else:
             log.warning("unknown message type: %r", kind)
 
@@ -226,6 +227,8 @@ class Server:
     def _focus_commands(self, now: float) -> list[dict]:
         """For multiview tabs: which tile should have the sound?"""
         commands = []
+        if self.scorer.frozen:
+            return commands
         for tab_id, info in self.rects.items():
             if not info["visible"] or len(info["rects"]) < 2:
                 continue

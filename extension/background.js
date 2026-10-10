@@ -136,6 +136,25 @@ function removeVideoReporter() {
   window.__omniReporter = null;
 }
 
+// Freeze: while on, the daemon makes no swaps and no tile changes. State lives in storage, the daemon is told via
+// the offscreen page, and every tracked tab's badge shows LOCK.
+async function setFrozen(frozen) {
+  await chrome.storage.local.set({ frozen });
+  if (await chrome.offscreen.hasDocument()) chrome.runtime.sendMessage({ type: "freeze", value: frozen }).catch(() => {});
+  const { tracked } = await getState();
+  await chrome.action.setBadgeBackgroundColor({ color: frozen ? "#c62828" : "#444444" });
+  for (const id of Object.keys(tracked)) chrome.action.setBadgeText({ tabId: Number(id), text: frozen ? "LOCK" : "ON" }).catch(() => {});
+}
+
+async function toggleFreeze() {
+  const { frozen = false } = await chrome.storage.local.get("frozen");
+  await setFrozen(!frozen);
+}
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "toggle-freeze") toggleFreeze();
+});
+
 async function trackTab(tabId) {
   const tab = await chrome.tabs.get(tabId);
   await ensureOffscreen();
@@ -154,7 +173,8 @@ async function trackTab(tabId) {
 
   chrome.runtime.sendMessage({ type: "start", tabId, streamId });
   chrome.scripting.executeScript({ target: { tabId }, func: installVideoReporter }).catch((e) => console.error("reporter failed", e));
-  chrome.action.setBadgeText({ tabId, text: "ON" });
+  const { frozen = false } = await chrome.storage.local.get("frozen");
+  chrome.action.setBadgeText({ tabId, text: frozen ? "LOCK" : "ON" });
   await pushState();
 }
 
@@ -193,12 +213,13 @@ async function reconcile() {
   const open = new Set((await chrome.windows.getAll()).map((w) => String(w.id)));
   const { windowRoles } = await getState();
   for (const id of Object.keys(windowRoles)) if (!open.has(id)) delete windowRoles[id];
-  await chrome.storage.local.set({ tracked: {}, weights: {}, windowRoles });
+  await chrome.storage.local.set({ tracked: {}, weights: {}, windowRoles, frozen: false });
 }
 chrome.runtime.onInstalled.addListener(reconcile);
 chrome.runtime.onStartup.addListener(reconcile);
 
 chrome.runtime.onMessage.addListener((m) => {
+  if (m.type === "toggle_freeze") toggleFreeze();
   if (m.type === "track") trackTab(m.tabId).catch((e) => console.error("track failed", e));
   if (m.type === "focus_tile") {
     expandTile(m.tab_id, m.index).catch((e) => {
