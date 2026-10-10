@@ -25,6 +25,13 @@ recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an a
 audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)
 big_play_strength = 0.7   # a big play (banner like TAKEAWAY!) counts this much of a goal (1.0 = same as a goal)
 ad_penalty = 0.5     # an ad in the picture scores -0.5 (music-only: half of it), so it is pushed down, not just ignored
+leverage_weight = 0.3   # closeness and time left: a late close game adds up to this to its score, a late blowout takes it away
+lev_us_football_close = 8.0     # points apart that count as close (one score) in American football...
+lev_us_football_blowout = 24.0  # ...and as a blowout (three scores)
+lev_basketball_close = 6.0
+lev_basketball_blowout = 20.0
+lev_soccer_close = 1.0
+lev_soccer_blowout = 3.0
 manual_hold_s = 600.0   # "Make Main" in the popup holds the stream on MAIN this long (seconds)
 hold_break_score = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
 

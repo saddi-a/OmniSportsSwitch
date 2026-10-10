@@ -359,3 +359,16 @@ def test_make_main_is_refused_by_the_slot_rules_and_main_stays():
     server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT", "allowed": ["LEFT"]})
     reply = asyncio.run(server.handle_control_message({"type": "force_main", "tab_id": 2}))
     assert "not allowed" in reply["error"] and server.scorer.main == 1 and reply["tab_id"] is None
+
+
+def test_a_late_close_game_gets_positive_leverage_and_a_late_blowout_negative():
+    server = Server(scorer=Scorer())
+    server.handle_message({"type": "register", "tab_id": 13, "sport": "American football"})
+    server.handle_message({"type": "register", "tab_id": 14, "sport": "American football"})
+    for i in range(6):
+        now = 100.0 + 3 * i
+        results = {(13, 0): {"texts": ["TEXAS", "24", "OKLAHOMA", "24", "4th", "3rd & 4"], "clocks": []},
+                   (14, 0): {"texts": ["MARYLAND", "16", "OHIO STATE", "45", "4th", "1st & 10"], "clocks": []}}
+        server._update_game_states(results, now)
+    assert server.scorer.streams[13].leverage == pytest.approx(1.0)      # tied, 4th quarter
+    assert server.scorer.streams[14].leverage < 0                         # 29 points apart, 4th quarter

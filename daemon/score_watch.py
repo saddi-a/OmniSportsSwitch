@@ -214,6 +214,11 @@ class ScoreWatcher:
         self._clock: tuple[int, float] | None = None   # last plausible game clock and when it was read
         self._alt: tuple[int, float] | None = None     # an implausible clock seen once, waiting for confirmation
 
+    @property
+    def score(self) -> tuple[int, int] | None:
+        """The score the watcher currently believes (voted over several readings), or None."""
+        return self._stable
+
     def _reset(self) -> None:
         self._history.clear()
         self._stable = self._peak = self._below_since = self._above_since = self._fired = None

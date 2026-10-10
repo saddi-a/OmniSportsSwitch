@@ -28,6 +28,7 @@ from websockets.asyncio.server import serve
 
 from daemon.arrange import plan_fix, plan_swap
 from daemon.favourites import match_multiplier, match_slots
+from daemon.leverage import tab_leverage
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
@@ -240,7 +241,7 @@ class Server:
                 log.info("  %s%s: warming up or no audio", tag, tab_id)
                 continue
             text = (f"{tag}{tab_id}: {'AD' if c['ad'] else c['status']} fav={c['fav']:.1f} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
-                    f"speech={c['speech']:.2f} music={c['music']:.2f}")
+                    f"speech={c['speech']:.2f} music={c['music']:.2f} lev={c['lev']:.1f}")
             probs = self.tags.get(tab_id)
             if probs is not None:
                 text += " top=" + ",".join(f"{n}:{p:.2f}" for n, p in self.classifier.top(probs, 3))
@@ -347,6 +348,15 @@ class Server:
             if stream is not None and stream.auto_state != state:
                 log.info("game state tab %s: %s -> %s", tab_id, stream.auto_state, state)
             self.scorer.set_auto_state(tab_id, state)
+            tiles = []   # closeness and time left of the best game in this tab
+            for (t, index), watcher in self.watchers.items():
+                if t != tab_id:
+                    continue
+                tracker = self.trackers.get((t, index))
+                sport = self.sports.get(t) or self.sport_seen.get((t, index))
+                tiles.append((sport, watcher.score, tracker.period if tracker else None,
+                              tracker.clock_minute if tracker else None))
+            self.scorer.set_leverage(tab_id, tab_leverage(tiles, self.scorer.config))
 
     def _focus_commands(self, now: float) -> list[dict]:
         """For multiview tabs: which tile should have the sound?"""
