@@ -267,3 +267,54 @@ def test_french_final_captions_mean_over():
         g = GameTracker("football")
         g.update(0.0, [caption], ["90:00"])
         assert g.update(3.0, [caption], ["90:03"]) == "over", caption
+
+
+# ---- down and distance proves the game is being played even when the clock is unreadable (live log, Texas-Oklahoma) ----
+
+DOWN_TEXTS = ["3rd & 4", "4th & 2", "Ath & 2", "Ist & GOAL", "2nd & 5", "3R0 & 10", "Znd & 7", "Isr & 10", "Jrd & 8", "2nD & GOAL", "1st & 10"]
+
+
+def clockless(texts_cycle, start=60, readings=60):
+    """A normal minute with a clock, then `readings` clock-less readings (the colon is lost: clocks=[])."""
+    g = GameTracker("american football")
+    run(g, 0, start, ticking)
+    state = None
+    for i in range(readings):
+        state = g.update(start + i * 3.0, list(texts_cycle(i)), [])
+    return state
+
+
+def test_down_and_distance_keeps_a_clockless_game_live():
+    for text in DOWN_TEXTS:
+        assert clockless(lambda i: ["TEXAS", "24", "OKLAHOMA", "24", text, "14848"]) == "live", text
+
+
+def test_down_and_distance_seen_now_and_then_is_enough():
+    assert clockless(lambda i: ["TEXAS", "24", "OKLAHOMA", "24", "4th & 2"] if i % 3 == 0 else ["TEXAS", "24", "OKLAHOMA", "24"]) == "live"
+
+
+def test_without_down_and_distance_a_clockless_scorebug_is_still_a_break():
+    assert clockless(lambda i: ["TEXAS", "24", "OKLAHOMA", "24", "14848"]) == "break"
+
+
+def test_stat_labels_with_ordinals_are_not_the_scorebug():
+    assert clockless(lambda i: ["3rd DOWNS", "2/10", "3RD DOWN CONVERSIONS", "0/7", "1st half", "and", "Best"]) == "break"
+
+
+def test_the_quarter_alone_on_the_scorebug_keeps_a_clockless_game_live():
+    # live log 01:17-01:18: ['TEXAS', '40', '24', 'Ath', '1605', '23', '24', '2-2', 'OKLAHOMA'] with clocks=[]
+    for quarter in ("Ath", "4th", "Ist", "2nd", "Znd", "3rd", "3R0", "Jrd"):
+        assert clockless(lambda i: ["TEXAS", "40", "24", quarter, "1605", "24", "2-2", "OKLAHOMA"]) == "live", quarter
+
+
+def test_a_break_caption_still_beats_down_and_distance():
+    g = GameTracker("american football")
+    run(g, 0, 60, ticking)
+    state = None
+    for i in range(6):
+        state = g.update(60 + i * 3.0, ["HALFTIME", "3rd & 4"], [])
+    assert state == "break"
+    over = None
+    for i in range(6):
+        over = g.update(100 + i * 3.0, ["FINAL", "3rd & 4"], [])
+    assert over == "over"

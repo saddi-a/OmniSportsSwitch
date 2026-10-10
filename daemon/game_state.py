@@ -19,6 +19,13 @@ OVER_RE = re.compile(r"(FINA[LU1I](?:\s?[/|IlU1]?\s?\d?OT\d?)?|SCORE FINAL|FULL[
 # Overtime (American football, basketball) has no game clock on the scoreboard, so a missing clock is not a break there.
 OVERTIME_RE = re.compile(r"(\d?OT|.*(OVERTIME|PROLONGATION|TEMPS SUPPL[EÉ]MENTAIRE).*)", re.IGNORECASE)
 OVERTIME_MEMORY_S = 30.0
+# American football down and distance on the scorebug ("3rd & 4", "Ath & 2", "Ist & GOAL" as OCR mangles them). Seen on the
+# scorebug it proves a game is being played even when the clock cannot be read (the colon is often lost: "14848"). Stat
+# labels ("3rd DOWNS", "3rd DOWN CONVERSIONS") have no "&" and do not match.
+DOWN_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*&\s*(\d{1,2}|goal|inches)", re.IGNORECASE)
+# The quarter on its own ("4th", read "Ath"; "1st", read "Ist") sits on the same scorebug: also proof that it is on screen.
+QUARTER_RE = re.compile(r"(1st|ist|isr|lst|2nd|znd|3rd|3r0|jrd|4th|ath)", re.IGNORECASE)
+DOWN_MEMORY_S = 20.0
 BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)", re.IGNORECASE)
 CAPTION_CONFIRMATIONS = 2  # a caption must show on this many consecutive readings
 KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long after it was last seen
@@ -67,6 +74,7 @@ class GameTracker:
         self._over_seen = float("-inf")
         self._break_seen = float("-inf")
         self._overtime_seen = float("-inf")
+        self._down_seen = float("-inf")
         self._over_hits = 0
         self._break_hits = 0
         self._ad_hits = 0
@@ -87,6 +95,8 @@ class GameTracker:
         self._break_hits = self._break_hits + 1 if any(BREAK_RE.fullmatch(t) for t in items) else 0
         if any(OVERTIME_RE.fullmatch(t) for t in items):
             self._overtime_seen = now
+        if any(DOWN_RE.fullmatch(t.strip()) or QUARTER_RE.fullmatch(t.strip()) for t in texts):
+            self._down_seen = now
         if self._over_hits >= CAPTION_CONFIRMATIONS:
             self._over_seen = now
         if self._break_hits >= CAPTION_CONFIRMATIONS:
@@ -129,6 +139,8 @@ class GameTracker:
             self.state = "break" if frozen_for > self.profile.freeze_s else "live"
         elif now - self._overtime_seen <= OVERTIME_MEMORY_S:
             self.state = "live"   # overtime: no game clock to read
+        elif now - self._down_seen <= DOWN_MEMORY_S:
+            self.state = "live"   # down and distance on the scorebug: the game is being played, whatever the clock OCR says
         elif self._last_clock_seen is not None and now - self._last_clock_seen <= self.profile.no_clock_s:
             pass  # clock briefly unreadable (overlay, OCR miss): keep the previous state
         else:
