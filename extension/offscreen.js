@@ -56,7 +56,7 @@ function connect() {
   };
   socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === "swap") chrome.runtime.sendMessage(msg); // service worker performs it
+    if (msg.type === "swap" || msg.type === "focus_tile") chrome.runtime.sendMessage(msg); // service worker performs it
   };
   socket.onclose = () => setTimeout(connect, RECONNECT_MS);
   socket.onerror = () => socket.close();

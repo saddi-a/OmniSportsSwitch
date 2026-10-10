@@ -160,6 +160,28 @@ def test_missing_classifier_tags_fall_back_to_loudness_only():
     assert c["score"] > 0
 
 
+def test_fresh_score_change_boosts_a_stream_and_fades():
+    s = make()
+    now = warm_up(s)
+    steady(s, 2, 0.05, now, 5)
+    s.set_event(2, now + 5)
+    fresh = s.components(2, now + 5)
+    assert fresh["event"] == pytest.approx(1.0) and fresh["score"] > 0.5
+    steady(s, 2, 0.05, now + 5, 30)
+    assert 0 < s.components(2, now + 35)["event"] < 0.5
+    steady(s, 2, 0.05, now + 35, 20)
+    assert s.components(2, now + 55)["event"] == 0.0
+
+
+def test_score_change_alone_can_trigger_a_swap():
+    s = make()
+    now = warm_up(s)
+    steady(s, 1, 0.05, now, 5)
+    steady(s, 2, 0.05, now, 5)
+    s.set_event(2, now + 4.5)
+    assert s.decide(now + 5).promote == 2
+
+
 def test_stream_detected_as_over_cannot_win():
     s = make()
     now = warm_up(s)

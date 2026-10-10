@@ -9,6 +9,7 @@ Extension -> daemon:
   {"type": "set_weight", "tab_id": 12, "weight": 1.5}
   {"type": "freeze",     "value": true}
   {"type": "video_rect", "tab_id": 12, "rects": [{"left":0,"top":0,"width":1920,"height":1080}], "visible": true, "fullscreen": false}
+  {"type": "focus_tile", "tab_id": 12, "index": 2}   (daemon -> extension: click that video tile)
   binary frame: 4-byte little-endian tab id + 32 kHz mono int16 samples (100 ms per frame)
 
 Daemon -> extension:
@@ -24,6 +25,8 @@ import numpy as np
 from websockets.asyncio.server import serve
 
 from daemon.game_state import GameTracker, combine
+from daemon.multiview import TileFocuser
+from daemon.score_watch import ScoreWatcher
 from daemon.screen_ocr import find_clocks, grab
 from daemon.scoring import Scorer
 
@@ -48,6 +51,9 @@ class Server:
         self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
         self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
         self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
+        self.watchers: dict[tuple[int, int], ScoreWatcher] = {}  # (tab id, video index) -> score-change detector
+        self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
+        self.focuser = TileFocuser()
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
         self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
@@ -69,7 +75,7 @@ class Server:
             self.scorer.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
-            for store in (self.ocr, self.trackers):
+            for store in (self.ocr, self.trackers, self.watchers, self.event_at):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
@@ -168,12 +174,45 @@ class Server:
         for (tab_id, index), r in results.items():
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id)))
             per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
+            if self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"]):
+                self.event_at[(tab_id, index)] = now
+                self.scorer.set_event(tab_id, now)
+                log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
         for tab_id, states in per_tab.items():
             state = combine(states)
             stream = self.scorer.streams.get(tab_id)
             if stream is not None and stream.auto_state != state:
                 log.info("game state tab %s: %s -> %s", tab_id, stream.auto_state, state)
             self.scorer.set_auto_state(tab_id, state)
+
+    def _focus_commands(self, now: float) -> list[dict]:
+        """For multiview tabs: which tile should have the sound?"""
+        commands = []
+        for tab_id, info in self.rects.items():
+            if not info["visible"] or len(info["rects"]) < 2:
+                continue
+            tiles = []
+            for pos, rect in enumerate(info["rects"][:4]):
+                index = rect.get("index", pos)
+                tracker = self.trackers.get((tab_id, index))
+                age = now - self.event_at.get((tab_id, index), float("-inf"))
+                tile = {"index": index, "audible": bool(rect.get("audible")),
+                        "state": tracker.state if tracker else "live",
+                        "event": max(0.0, 1.0 - age / self.scorer.config.event_s)}
+                if tile["audible"]:
+                    c = self.scorer.components(tab_id, now)
+                    tile["crowd"] = c["crowd"] if c else 0.0
+                tiles.append(tile)
+            target = self.focuser.decide(tab_id, now, tiles)
+            if target is not None:
+                log.info("focus tile: tab %s -> tile %s | %s", tab_id, target, tiles)
+                commands.append({"type": "focus_tile", "tab_id": tab_id, "index": target})
+        return commands
+
+    async def _broadcast(self, obj: dict) -> None:
+        text = json.dumps(obj)
+        for ws in list(self.clients):
+            await ws.send(text)
 
     async def _ocr_loop(self) -> None:
         while True:
@@ -182,7 +221,7 @@ class Server:
                 (tab_id, i, rect)
                 for tab_id, info in list(self.rects.items())
                 if info["visible"]
-                for i, rect in enumerate(info["rects"][:4])
+                for i, rect in ((r.get("index", pos), r) for pos, r in enumerate(info["rects"][:4]))
             ]
             if not jobs:
                 continue
@@ -193,6 +232,8 @@ class Server:
                 continue
             self.ocr.update(results)
             self._update_game_states(results, time.monotonic())
+            for command in self._focus_commands(time.monotonic()):
+                await self._broadcast(command)
             for (tab_id, i), r in results.items():
                 log.info("  ocr tab %s[%d]: clocks=%s texts=%s", tab_id, i, r["clocks"], r["texts"][:10])
 
@@ -207,9 +248,7 @@ class Server:
             swap = self.scorer.decide(now)
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
-                text = json.dumps({"type": "swap", "promote": swap.promote, "demote": swap.demote})
-                for ws in list(self.clients):
-                    await ws.send(text)
+                await self._broadcast({"type": "swap", "promote": swap.promote, "demote": swap.demote})
 
     async def run(self, host: str = HOST, port: int = PORT) -> None:
         async with serve(self._client, host, port):

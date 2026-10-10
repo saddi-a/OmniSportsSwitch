@@ -1,0 +1,52 @@
+from daemon.multiview import TileFocuser
+
+
+def tiles(**overrides):
+    base = [
+        {"index": 0, "audible": True, "state": "live", "event": 0.0, "crowd": 0.1},
+        {"index": 1, "audible": False, "state": "live", "event": 0.0},
+        {"index": 2, "audible": False, "state": "live", "event": 0.0},
+    ]
+    for index, changes in overrides.items():
+        base[int(index.lstrip("t"))].update(changes)
+    return base
+
+
+def test_quiet_multiview_leaves_focus_alone():
+    assert TileFocuser().decide(1, 100, tiles()) is None
+
+
+def test_fresh_score_change_on_another_tile_takes_focus():
+    assert TileFocuser().decide(1, 100, tiles(t2={"event": 1.0})) == 2
+
+
+def test_focused_tile_with_crowd_roar_keeps_focus():
+    f = TileFocuser()
+    assert f.decide(1, 100, tiles(t0={"crowd": 0.9}, t2={"event": 0.5})) is None
+
+
+def test_break_on_focused_tile_hands_focus_to_a_live_tile():
+    assert TileFocuser().decide(1, 100, tiles(t0={"state": "break", "crowd": 0.0})) in (1, 2)
+
+
+def test_over_tile_never_gets_focus():
+    f = TileFocuser()
+    assert f.decide(1, 100, tiles(t2={"state": "over", "event": 1.0})) is None
+
+
+def test_min_dwell_prevents_rapid_switching():
+    f = TileFocuser()
+    assert f.decide(1, 100, tiles(t2={"event": 1.0})) == 2
+    focused_now_2 = tiles(t0={"audible": False}, t2={"audible": True, "event": 0.0}, t1={"event": 1.0})
+    assert f.decide(1, 110, focused_now_2) is None   # 10 s after the last switch
+    assert f.decide(1, 140, focused_now_2) == 1      # 40 s after
+
+
+def test_dwell_is_tracked_per_tab():
+    f = TileFocuser()
+    assert f.decide(1, 100, tiles(t2={"event": 1.0})) == 2
+    assert f.decide(2, 101, tiles(t1={"event": 1.0})) == 1
+
+
+def test_single_video_is_not_multiview():
+    assert TileFocuser().decide(1, 100, tiles()[:1]) is None

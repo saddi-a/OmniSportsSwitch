@@ -77,15 +77,17 @@ async function pushState() {
 function installVideoReporter() {
   if (window.__omniReporter) return;
   window.__omniReporter = setInterval(() => {
+    // Page order is kept (not sorted by size) so a tile keeps the same index while it stays on the page.
     const candidates = [...document.querySelectorAll("video")]
-      .map((video) => ({ video, r: video.getBoundingClientRect() }))
-      .filter(({ video, r }) => r.width > 200 && r.height > 100 && video.videoWidth > 0 && !video.paused)
-      .sort((a, b) => b.r.width * b.r.height - a.r.width * a.r.height);
+      .map((video, index) => ({ video, index, r: video.getBoundingClientRect() }))
+      .filter(({ video, r }) => r.width > 200 && r.height > 100 && video.videoWidth > 0 && !video.paused);
     const dpr = window.devicePixelRatio;
     const border = (window.outerWidth - window.innerWidth) / 2; // window frame on each side
     const toolbar = window.outerHeight - window.innerHeight - border; // tab strip + address bar
-    // Every playing video, biggest first (DAZN multiview has several).
-    const rects = candidates.map(({ r }) => ({
+    // Every playing video (DAZN multiview has several); `audible` marks the one with sound.
+    const rects = candidates.map(({ video, index, r }) => ({
+      index,
+      audible: !video.muted && video.volume > 0,
       left: Math.round((window.screenX + border + r.left) * dpr),
       top: Math.round((window.screenY + toolbar + r.top) * dpr),
       width: Math.round(r.width * dpr),
@@ -95,6 +97,12 @@ function installVideoReporter() {
       .sendMessage({ type: "video-rect", rects, visible: document.visibilityState === "visible", fullscreen: !!document.fullscreenElement })
       .catch(() => {});
   }, 1000);
+}
+
+// Gives a multiview tile the sound, the same as clicking it. `index` is the page-order index reported above.
+function clickVideoTile(index) {
+  const video = document.querySelectorAll("video")[index];
+  if (video) video.click();
 }
 
 function removeVideoReporter() {
@@ -164,6 +172,11 @@ chrome.runtime.onStartup.addListener(reconcile);
 
 chrome.runtime.onMessage.addListener((m) => {
   if (m.type === "track") trackTab(m.tabId).catch((e) => console.error("track failed", e));
+  if (m.type === "focus_tile") {
+    chrome.scripting
+      .executeScript({ target: { tabId: m.tab_id }, func: clickVideoTile, args: [m.index] })
+      .catch((e) => console.error("focus_tile failed", e));
+  }
   if (m.type === "swap") performSwap(m.promote, m.demote).catch((e) => console.error("swap failed", e));
   if (m.type === "untrack") {
     chrome.runtime.sendMessage({ type: "stop", tabId: m.tabId }).catch(() => {}); // offscreen then reports "stopped"

@@ -88,3 +88,23 @@ def test_register_carries_sport_and_manual_status():
     assert server.scorer.streams[3].override == "break"
     server.handle_message({"type": "register", "tab_id": 3, "sport": "Football", "status": "auto"})
     assert server.scorer.streams[3].override is None
+
+
+def test_multiview_tab_gets_a_focus_command_for_the_tile_with_a_fresh_score_change():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 9})
+    rects = [{"index": i, "audible": i == 0, "left": 0, "top": 0, "width": 700, "height": 480} for i in (0, 1, 2, 3)]
+    server.handle_message({"type": "video_rect", "tab_id": 9, "rects": rects, "visible": True, "fullscreen": False})
+    now = time.monotonic()
+    assert server._focus_commands(now) == []
+    server.event_at[(9, 2)] = now
+    assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 9, "index": 2}]
+
+
+def test_single_video_tab_never_gets_focus_commands():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 9})
+    one = [{"index": 0, "audible": True, "left": 0, "top": 0, "width": 1280, "height": 720}]
+    server.handle_message({"type": "video_rect", "tab_id": 9, "rects": one, "visible": True, "fullscreen": False})
+    server.event_at[(9, 0)] = time.monotonic()
+    assert server._focus_commands(time.monotonic()) == []
