@@ -68,7 +68,7 @@ A single setup script that does all of this is on the to-do list.
 The exe is small (about 26 MB) because it does not contain the daemon: it starts this project's own `.venv`, so keep it inside the project folder (`dist\` is fine). Build it once, and again after changing `launcher\launcher.py`:
 
 ```powershell
-scriptsuild_launcher.ps1
+scripts\build_launcher.ps1
 ```
 
 `OmniSportsSwitch.exe --status` prints the daemon and Edge state and exits (useful for checks).
