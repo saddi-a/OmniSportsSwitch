@@ -19,7 +19,9 @@ SCORE_PAIR_RE = re.compile(r"^(\d{1,3})\s?[-–:]\s?(\d{1,3})$")  # "2-0"
 NUMBER_RE = re.compile(r"^\d{1,3}$")
 CLOCK_RE = re.compile(r"^\d{1,3}\s?[:.,]\s?\d{2}$")
 LOGO_RE = re.compile(r"^[A-Za-z]{0,2}\d\s?\+\s?\d$")  # channel logos such as "L1+3"
-TEAM_RE = re.compile(r"^[^\W\d_]{2,}$")                 # letters only, at least two ("PSG", "LMFC")
+TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, at least two ("PSG", "OHIO STATE")
+SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
+
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
 CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
@@ -46,11 +48,16 @@ def find_score(texts: list[str], clocks: list[str]) -> tuple[int, int] | None:
     items = _items(texts, clocks)
     is_team = [bool(TEAM_RE.match(t)) for t in items]
 
-    # 1. "TEAM a-b TEAM"
+    # 1. "TEAM a-b TEAM" (any size for "a/b": merged scores such as "10/20" are only trusted between team names,
+    #    because the same text shows passing stats elsewhere)
     for i, item in enumerate(items):
-        pair = _small_pair(item)
-        if pair and 0 < i < len(items) - 1 and is_team[i - 1] and is_team[i + 1]:
-            return pair
+        if 0 < i < len(items) - 1 and is_team[i - 1] and is_team[i + 1]:
+            pair = _small_pair(item)
+            if pair:
+                return pair
+            m = SLASH_PAIR_RE.match(item)
+            if m:
+                return int(m.group(1)), int(m.group(2))
 
     # 2. TEAM1, number, (up to 2 noise items), TEAM2, (up to 1 noise item), number
     for a in range(len(items)):

@@ -6,6 +6,8 @@ Rules (see PLAN.md):
   * text like FINAL / FULL TIME marks the game over, HALF TIME / MI-TEMPS marks a break, immediately
   * a game clock that has not changed for longer than the sport allows means a break
   * a scorebug with no readable clock for too long means a break (ad, studio segment, replay package)
+  * the player's own placeholder during an ad ("COMMERCIAL BREAK IN PROGRESS", "PUBLICITARIA EN CURSO" ...) means
+    a break at once, and the countdown timer it shows is not a game clock
 """
 import re
 from dataclasses import dataclass
@@ -16,6 +18,13 @@ OVER_RE = re.compile(r"(FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|TERMIN[EÉ])", re.I
 BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)", re.IGNORECASE)
 CAPTION_CONFIRMATIONS = 2  # a caption must show on this many consecutive readings
 KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long after it was last seen
+
+# Phrases a streaming player shows during an ad break (matched inside a longer text item, lower case).
+# Seen live: "COMMERCIAL BREAK IN PROGRESS", "PUBLICITARIA EN CURSO", "INTERVALO COMERCIAL", "PUBLICITE".
+AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite",
+              "ad break", "advertisement", "right back"]
+AD_CONFIRMATIONS = 2   # the phrase must show on this many consecutive readings
+AD_MEMORY_S = 8.0      # a break placeholder counts this long after it was last seen
 
 
 @dataclass(frozen=True)
@@ -50,6 +59,8 @@ class GameTracker:
         self._break_seen = float("-inf")
         self._over_hits = 0
         self._break_hits = 0
+        self._ad_hits = 0
+        self._ad_seen = float("-inf")
 
     def set_sport(self, sport: str | None) -> None:
         self.profile = profile_for(sport)
@@ -66,16 +77,24 @@ class GameTracker:
         if self._break_hits >= CAPTION_CONFIRMATIONS:
             self._break_seen = now
 
-        if clocks:
+        lowered = [t.casefold() for t in texts]
+        self._ad_hits = self._ad_hits + 1 if any(p in t for t in lowered for p in AD_PHRASES) else 0
+        if self._ad_hits >= AD_CONFIRMATIONS:
+            self._ad_seen = now
+        on_ad = now - self._ad_seen <= AD_MEMORY_S
+
+        if clocks and not on_ad:  # the countdown shown during an ad is not the game clock
             if clocks[0] != self._clock:
                 self._clock, self._clock_changed_at = clocks[0], now
             self._last_clock_seen = now
 
         if now - self._over_seen <= KEYWORD_MEMORY_S:
             self.state = "over"
+        elif on_ad:
+            self.state = "break"
         elif now - self._break_seen <= KEYWORD_MEMORY_S:
             self.state = "break"
-        elif clocks:
+        elif clocks and self._clock_changed_at is not None:
             frozen_for = now - self._clock_changed_at
             self.state = "break" if frozen_for > self.profile.freeze_s else "live"
         elif self._last_clock_seen is not None and now - self._last_clock_seen <= self.profile.no_clock_s:

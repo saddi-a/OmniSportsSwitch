@@ -302,7 +302,7 @@ class Server:
             for command in self._focus_commands(time.monotonic()):
                 await self._broadcast(command)
             for (tab_id, i), r in results.items():
-                log.info("  ocr tab %s[%d]: clocks=%s texts=%s", tab_id, i, r["clocks"], r["texts"][:10])
+                log.info("  ocr tab %s[%d]: clocks=%s texts=%s", tab_id, i, r["clocks"], r["texts"][:40])
 
     def _next_swap(self, now: float):
         """Normal swap into MAIN; while MAIN is frozen, a swap into the LEFT window instead."""

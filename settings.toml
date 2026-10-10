@@ -34,6 +34,11 @@ event_weight = 1.0
 crowd_weight = 1.0
 floor = 0.05         # every live tile has at least this much interest
 
+[banners]
+# Text a streaming player shows while an ad break is on (matched anywhere inside a text item, any case). It must
+# appear on two readings in a row. Add the wording your services use, in any language.
+break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "ad break", "advertisement", "right back"]
+
 # When does a stopped game clock mean a break?  freeze_s: clock unchanged this long.  no_clock_s: scoreboard
 # without a readable clock this long. Soccer's clock only stops at half-time; American football and basketball
 # stop it constantly, so they allow much longer.

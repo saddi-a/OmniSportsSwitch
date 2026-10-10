@@ -33,8 +33,32 @@ class ScreenReader:
     def read(self, image: np.ndarray) -> list[tuple[str, float]]:
         """Text found in the image, top-to-bottom then left-to-right, as (text, confidence)."""
         found = self.reader.readtext(image, detail=1, paragraph=False)
-        found.sort(key=lambda item: (round(item[0][0][1] / 40), item[0][0][0]))
-        return [(text.strip(), float(conf)) for _, text, conf in found if conf >= MIN_CONFIDENCE and text.strip()]
+        found = [item for item in found if item[2] >= MIN_CONFIDENCE and item[1].strip()]
+        return [(text.strip(), float(conf)) for _, text, conf in reading_order(found)]
+
+
+def reading_order(found: list) -> list:
+    """Sort EasyOCR results (box, text, confidence) into lines, top to bottom, then left to right inside a line.
+
+    Items belong to the same line when their vertical centres are closer than 60% of the item's height, so a
+    scoreboard's team names and scores stay in order even if their boxes are a few pixels apart.
+    """
+    def centre(item):
+        ys = [p[1] for p in item[0]]
+        return (min(ys) + max(ys)) / 2, max(ys) - min(ys), min(p[0] for p in item[0])
+
+    ordered = sorted(found, key=lambda item: centre(item)[0])
+    lines: list[list] = []
+    for item in ordered:
+        cy, height, _ = centre(item)
+        if lines:
+            last_cy = sum(centre(i)[0] for i in lines[-1]) / len(lines[-1])
+            last_h = max(centre(i)[1] for i in lines[-1])
+            if abs(cy - last_cy) < 0.6 * max(height, last_h):
+                lines[-1].append(item)
+                continue
+        lines.append([item])
+    return [item for line in lines for item in sorted(line, key=lambda i: centre(i)[2])]
 
 
 def find_clocks(texts: list[str]) -> list[str]:

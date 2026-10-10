@@ -97,3 +97,54 @@ def test_caption_must_appear_on_consecutive_readings():
     assert g.update(3, ["PSG"], ["00:04"]) == "live"  # appeared once only (e.g. a popup flashing past)
     g.update(6, ["FINAL"], ["00:07"])
     assert g.update(9, ["FINAL"], ["00:10"]) == "over"
+
+
+# ---- the commercial placeholder seen live on the Texas-Oklahoma stream ---------------------------------------
+
+AD_READINGS = [
+    (["PUBLICITARIA EN CURSO.", "0: 41"], ["0:41"]),
+    (["COMMERCIAL BREAK IN PROGRESS.", "0:37"], ["0:37"]),
+    (["COMMERCIAL BREAK IN PROGRESS", "0:34"], ["0:34"]),
+    (["EAK IN PROGRESS", "0:30"], ["0:30"]),
+    (["INTERVALO COMERCIAL.", "0:27"], ["0:27"]),
+    (["PAUSA PUBLICITARIA EN CURSO.", "0:18"], ["0:18"]),
+]
+SCOREBUG = (["TEXAS", "14", "1st & 10", "7", "OKLAHOMA"], ["18:58"])
+
+
+def test_commercial_placeholder_with_its_countdown_is_a_break():
+    g = GameTracker("American football")
+    t = 0.0
+    for i in range(10):                       # live play first
+        g.update(t, *SCOREBUG)
+        t += 3
+    states = []
+    for texts, clocks in AD_READINGS:
+        states.append(g.update(t, texts, clocks))
+        t += 3
+    assert states[0] == "live"                # one reading is not trusted yet
+    assert states[1:] == ["break"] * 5        # confirmed on the second reading, the countdown is ignored
+
+
+def test_a_single_ad_phrase_in_other_text_does_not_make_a_break():
+    g = GameTracker("football")
+    g.update(0, ["Right back after this?"], ["00:01"])           # seen once, e.g. a slogan or a flash of text
+    assert g.update(3, ["PSG", "LMFC"], ["00:04"]) == "live"
+    assert g.update(6, ["PSG", "LMFC"], ["00:07"]) == "live"
+
+
+def test_game_returns_to_live_a_few_seconds_after_the_placeholder_goes():
+    g = GameTracker("American football")
+    t = 0.0
+    for i in range(6):
+        g.update(t, *SCOREBUG)
+        t += 3
+    for texts, clocks in AD_READINGS:
+        g.update(t, texts, clocks)
+        t += 3
+    assert g.state == "break"
+    last = None
+    for i in range(6):                        # the scorebug is back, with a clock that moves again
+        last = g.update(t, ["TEXAS", "14", "1st & 10", "7", "OKLAHOMA"], [f"18:{50 - i * 3}"])
+        t += 3
+    assert last == "live"

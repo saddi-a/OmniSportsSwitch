@@ -145,3 +145,22 @@ def test_a_lone_kickoff_time_does_not_reset_the_baseline():
     assert timed(w, stray, 18) == []                                      # one odd clock reading
     goal = sequence("2-0", 31 * 60 + 21, 6)                               # the real clock carries on
     assert len(timed(w, goal, 21)) == 1
+
+
+# ---- Maryland at Ohio State: the scores were read as one item, "10/20", between the team names ---------------
+
+def test_merged_scores_between_the_team_names_are_a_score():
+    assert find_score(["M", "MARYLAND", "10/20", "OHIO STATE", "41", "2wo", "8.32", "16"], ["8:32"]) == (10, 20)
+
+
+def test_slash_numbers_elsewhere_are_not_a_score():
+    assert find_score(["QB", "10/20", "253 YDS", "JEREMIAH SMITH"], []) is None
+    assert find_score(["JEREMIAH SMITH", "10/20", "2 REC"], []) is None      # a name on one side only
+
+
+def test_a_touchdown_and_extra_point_are_detected_from_the_merged_reading():
+    w = ScoreWatcher()
+    before = [(["M", "MARYLAND", "10/20", "OHIO STATE", "41", "8.32"], ["8:32"])] * 5
+    after = [(["M", "MARYLAND", "10/27", "OHIO STATE", "41", "8.20"], ["8:20"])] * 4
+    assert feed(w, before) == []
+    assert len(feed(w, after)) == 1
