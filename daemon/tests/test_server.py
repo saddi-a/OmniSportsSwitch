@@ -233,3 +233,17 @@ def test_a_tab_whose_player_shows_the_ad_placeholder_gets_a_negative_score():
     for i in range(4):
         server._update_game_states(live, 120.0 + i * 3)
     assert server.scorer.streams[11].on_ad is False
+
+
+def test_a_takeaway_banner_boosts_the_stream_and_its_tile_by_the_big_play_strength():
+    config = Config(warmup_s=0)
+    server = Server(Scorer(config))
+    server.handle_message({"type": "register", "tab_id": 12})
+    now = time.monotonic()
+    for t in range(5):
+        server.scorer.add_audio(12, 0.05, now - 5 + t)
+    server._update_game_states({(12, 0): {"texts": ["TAKEAWAY!", "UCLA", "10", "6", "OREGON"], "clocks": []}}, now)
+    assert server.scorer.components(12, now)["event"] == pytest.approx(config.big_play_strength, abs=0.01)
+    assert (12, 0) in server.event_at
+    fresh = 1 - (now - server.event_at[(12, 0)]) / config.event_s
+    assert fresh == pytest.approx(config.big_play_strength, abs=0.01)

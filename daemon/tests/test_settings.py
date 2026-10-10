@@ -14,10 +14,12 @@ from daemon.settings import SETTINGS_PATH, load_settings
 def restore_profiles():
     saved = copy.deepcopy(game_state.PROFILES)
     saved_phrases = list(game_state.AD_PHRASES)
+    saved_big = list(game_state.BIG_PLAY_WORDS)
     yield
     game_state.PROFILES.clear()
     game_state.PROFILES.update(saved)
     game_state.AD_PHRASES[:] = saved_phrases
+    game_state.BIG_PLAY_WORDS[:] = saved_big
 
 
 def test_the_shipped_settings_file_equals_the_built_in_defaults():
@@ -29,6 +31,8 @@ def test_the_shipped_settings_file_equals_the_built_in_defaults():
     assert game_state.profile_for(None) == game_state.SportProfile(120, 60)
     assert game_state.AD_PHRASES == ["commercial break", "publicitaria", "intervalo comercial", "publicité",
                                      "publicite", "ad break", "advertisement", "right back"]
+    assert game_state.BIG_PLAY_WORDS == ["takeaway", "interception", "intercepted", "fumble", "sack", "red card",
+                                         "carton rouge", "penalty kick"]
 
 
 def test_missing_file_gives_defaults(tmp_path):

@@ -42,6 +42,7 @@ class Config:
     event_s: float = 45.0     # a score change counts for this long, fading linearly
     min_dwell_s: float = 20.0 # after a swap, wait this long before allowing another one
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
+    big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     idle_music: float = 0.5   # MAIN counts as idle (an ad) when music probability is at least this, or it is on a break/over
 
@@ -122,9 +123,12 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].on_ad = on_ad
 
-    def set_event(self, tab_id: int, now: float) -> None:
+    def set_event(self, tab_id: int, now: float, strength: float = 1.0) -> None:
+        """A goal (strength 1.0) or a weaker event such as a big play. The event fades linearly, so a weaker one is
+        a goal that already started to fade; the later start wins when events overlap."""
         if tab_id in self.streams:
-            self.streams[tab_id].event_at = now
+            candidate = now - (1.0 - min(max(strength, 0.0), 1.0)) * self.config.event_s
+            self.streams[tab_id].event_at = max(self.streams[tab_id].event_at, candidate)
 
     def set_status(self, tab_id: int, override: str | None) -> None:
         if tab_id in self.streams:

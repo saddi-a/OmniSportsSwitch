@@ -165,3 +165,42 @@ def test_on_ad_follows_the_placeholder():
         g.update(t, ["TEXAS", "14", "7", "OKLAHOMA"], [f"18:{50 - i * 3}"])
         t += 3
     assert g.on_ad is False
+
+
+# ---- big-play banners: "TAKEAWAY!" was read live after an interception -----------------------------------------
+
+def test_takeaway_banner_from_the_live_log_is_a_big_play_once():
+    g = GameTracker("American football")
+    g.update(0, ["UCLA", "10", "6", "OREGON", "0:21"], ["0:21"])
+    assert g.big_play == ""
+    g.update(3, ["TAKEAWAY!", "5", "UCLA", "10", "CBS | BIG TIME", "6", "[Ucla _", "0:21", "25", "4-0"], ["0:21"])
+    assert g.big_play == "takeaway"
+    g.update(6, ["TAKEAWAY!", "UCLA", "10", "6", "OREGON"], ["0:21"])
+    assert g.big_play == ""                       # the same banner lingering counts once
+
+
+def test_stat_labels_and_sentences_are_not_big_plays():
+    g = GameTracker("American football")
+    for t, texts in enumerate([["CBS SPORTS", "ZN", "TURNOVERS", "3", "21 UCLA", "10"],
+                               ["SACKS", "FUMBLES", "INTERCEPTIONS"],
+                               ["How to avoid a sack on third down in the red zone"],
+                               ["Hoosiers outlast Huskers"]]):
+        g.update(t * 30.0, texts, [])
+        assert g.big_play == ""
+
+
+def test_the_banner_counts_again_after_the_cooldown():
+    g = GameTracker("football")
+    g.update(0, ["RED CARD"], [])
+    assert g.big_play == "red card"
+    g.update(10, ["RED CARD"], [])
+    assert g.big_play == ""
+    g.update(30, ["RED CARD"], [])
+    assert g.big_play == "red card"
+
+
+def test_no_big_play_is_reported_during_an_ad_break():
+    g = GameTracker("football")
+    for t in (0, 3):
+        g.update(t, ["COMMERCIAL BREAK IN PROGRESS", "FUMBLE"], ["0:30"])
+    assert g.big_play == ""

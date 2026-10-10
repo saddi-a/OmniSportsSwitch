@@ -23,6 +23,11 @@ KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long aft
 # Seen live: "COMMERCIAL BREAK IN PROGRESS", "PUBLICITARIA EN CURSO", "INTERVALO COMERCIAL", "PUBLICITE".
 AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite",
               "ad break", "advertisement", "right back"]
+# Banners the broadcast flashes for a big play. A text item counts only if it is (nearly) just that phrase, so
+# sentences and stat labels ("TURNOVERS") do not. Seen live: "TAKEAWAY!" after an interception.
+BIG_PLAY_WORDS = ["takeaway", "interception", "intercepted", "fumble", "sack", "red card", "carton rouge", "penalty kick"]
+BIG_PLAY_SLACK = 10     # extra characters allowed around the phrase in the same text item
+BIG_PLAY_COOLDOWN_S = 20.0   # the same banner lingering on screen counts once
 AD_CONFIRMATIONS = 2   # the phrase must show on this many consecutive readings
 AD_MEMORY_S = 8.0      # a break placeholder counts this long after it was last seen
 
@@ -62,6 +67,8 @@ class GameTracker:
         self._ad_hits = 0
         self._ad_seen = float("-inf")
         self.on_ad = False   # True while the player's ad placeholder is showing
+        self.big_play = ""   # set on the one reading where a new big-play banner appears (else "")
+        self._big_play_at = float("-inf")
 
     def set_sport(self, sport: str | None) -> None:
         self.profile = profile_for(sport)
@@ -84,6 +91,20 @@ class GameTracker:
             self._ad_seen = now
         on_ad = now - self._ad_seen <= AD_MEMORY_S
         self.on_ad = on_ad
+
+        self.big_play = ""
+        if not on_ad and now - self._big_play_at >= BIG_PLAY_COOLDOWN_S:
+            for text in texts:
+                words = re.sub(r"[^a-zà-ÿ ]", "", text.casefold()).strip()
+                hit = ""
+                for phrase in BIG_PLAY_WORDS:
+                    whole_word = re.search("(?<![a-zà-ÿ])" + re.escape(phrase) + "(?![a-zà-ÿ])", words)
+                    if whole_word and len(words) <= len(phrase) + BIG_PLAY_SLACK:
+                        hit = phrase
+                        break
+                if hit:
+                    self.big_play, self._big_play_at = hit, now
+                    break
 
         if clocks and not on_ad:  # the countdown shown during an ad is not the game clock
             if clocks[0] != self._clock:

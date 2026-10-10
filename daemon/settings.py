@@ -63,12 +63,13 @@ def load_settings(path: pathlib.Path = SETTINGS_PATH) -> Settings:
                 log.warning("settings: unknown key [sports.%s] %s ignored", name, k)
         game_state.PROFILES[key] = edited
     banners = data.get("banners", {})
-    phrases = banners.get("break_phrases")
-    if isinstance(phrases, list) and all(isinstance(p, str) and p.strip() for p in phrases):
-        game_state.AD_PHRASES[:] = [p.strip().casefold() for p in phrases]
-    elif phrases is not None:
-        log.warning("settings: [banners] break_phrases must be a list of non-empty strings, ignored")
-    for key in set(banners) - {"break_phrases"}:
+    for key, target in (("break_phrases", game_state.AD_PHRASES), ("big_play_words", game_state.BIG_PLAY_WORDS)):
+        phrases = banners.get(key)
+        if isinstance(phrases, list) and all(isinstance(p, str) and p.strip() for p in phrases):
+            target[:] = [p.strip().casefold() for p in phrases]
+        elif phrases is not None:
+            log.warning("settings: [banners] %s must be a list of non-empty strings, ignored", key)
+    for key in set(banners) - {"break_phrases", "big_play_words"}:
         log.warning("settings: unknown key [banners] %s ignored", key)
     known_unknown = set(data) - {"scoring", "weights", "multiview", "sports", "banners"}
     for section in known_unknown:

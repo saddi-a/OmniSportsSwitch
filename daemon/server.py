@@ -221,6 +221,12 @@ class Server:
                 self.sport_seen[(tab_id, index)] = detected
             per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
             ads.setdefault(tab_id, []).append(tracker.on_ad)
+            if tracker.big_play:
+                strength = self.scorer.config.big_play_strength
+                self.event_at[(tab_id, index)] = max(self.event_at.get((tab_id, index), float("-inf")),
+                                                     now - (1.0 - strength) * self.scorer.config.event_s)
+                self.scorer.set_event(tab_id, now, strength)
+                log.info("big play tab %s tile %s: %s", tab_id, index, tracker.big_play)
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
                 self.fav_seen[(tab_id, index)] = (seen, now)

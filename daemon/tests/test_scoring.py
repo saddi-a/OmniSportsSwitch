@@ -431,3 +431,50 @@ def test_main_on_an_ad_gives_way_to_a_quiet_live_stream():
     swap = s.decide(now + 5)
     assert swap is not None and swap.promote == 2
     assert s.components(1, now + 5)["score"] < 0
+
+
+# ---- weaker events: big plays -------------------------------------------------------------------------
+
+def test_a_big_play_counts_as_two_thirds_to_three_quarters_of_a_goal():
+    s = make()
+    now = warm_up(s)
+    steady(s, 2, 0.05, now, 5)
+    steady(s, 3, 0.05, now, 5)
+    s.set_event(2, now + 5, 1.0)       # a goal
+    s.set_event(3, now + 5, s.config.big_play_strength)
+    goal, big = s.components(2, now + 5)["event"], s.components(3, now + 5)["event"]
+    assert goal == pytest.approx(1.0) and big == pytest.approx(0.7)
+    assert 0.66 <= big / goal <= 0.75
+
+
+def test_a_big_play_can_win_a_swap_on_its_own_but_by_less_than_a_goal():
+    s = make()
+    now = warm_up(s)
+    for tab in (1, 2):
+        steady(s, tab, 0.05, now, 5)
+    s.set_event(2, now + 4.5, 0.7)
+    swap = s.decide(now + 5)
+    assert swap is not None and swap.promote == 2
+    assert 0.5 < s.components(2, now + 5)["score"] < 0.8      # a goal would give about 0.8
+
+
+def test_a_goal_after_a_big_play_takes_over_at_full_strength_and_a_later_big_play_does_not_weaken_it():
+    s = make()
+    now = warm_up(s)
+    steady(s, 2, 0.05, now, 5)
+    s.set_event(2, now + 5, 0.7)
+    s.set_event(2, now + 6, 1.0)
+    assert s.components(2, now + 6)["event"] == pytest.approx(1.0)
+    s.set_event(2, now + 7, 0.7)                                # weaker, later: must not reduce the goal's boost
+    assert s.components(2, now + 7)["event"] >= 1.0 - 1 / 45 - 1e-9
+
+
+def test_a_big_play_fades_faster_than_a_goal():
+    s = make()
+    now = warm_up(s)
+    steady(s, 2, 0.05, now, 40)
+    steady(s, 3, 0.05, now, 40)
+    s.set_event(2, now, 1.0)
+    s.set_event(3, now, 0.7)
+    assert s.components(3, now + 31.5)["event"] == pytest.approx(0.0, abs=0.01)
+    assert s.components(2, now + 31.5)["event"] > 0.25
