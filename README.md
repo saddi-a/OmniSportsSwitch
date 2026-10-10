@@ -37,27 +37,34 @@ The daemon understands English and French scoreboards and banners.
 
 ## Setup
 
-Run these from the repository folder in PowerShell.
+Run this once from the repository folder in PowerShell (it needs Python 3.10 to 3.13 and an NVIDIA driver):
 
-1. Create the environment and install PyTorch first, from the CUDA index (otherwise pip may install a CPU-only build):
+```powershell
+scripts\setup.ps1
+```
 
-   ```powershell
-   python -m venv .venv
-   .venv\Scripts\python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-   ```
+It creates the `.venv`, installs PyTorch from the CUDA index first (otherwise pip may install a CPU-only build), installs the other packages, downloads the models (the PANNs audio checkpoint, about 330 MB, into `models\panns\`, and the English and French OCR models into `models\easyocr\`), then runs the tests. Every step is skipped when it is already done, so you can run it again. Useful switches:
 
-2. Install the rest. `panns-inference` is installed without its dependencies, because only its model definition is used:
+| Switch | What it does |
+|---|---|
+| `-CheckOnly` | Only reports what is missing; changes nothing. |
+| `-SkipModels` | Does not download the models. |
+| `-BuildLauncher` | Also builds `dist\OmniSportsSwitch.exe` at the end. |
 
-   ```powershell
-   .venv\Scripts\python -m pip install websockets numpy mss pillow easyocr torchlibrosa matplotlib pytest pytest-asyncio
-   .venv\Scripts\python -m pip install --no-deps panns-inference
-   ```
+If Windows says "running scripts is disabled": `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1`.
 
-   See `requirements.txt` for the exact versions.
+<details>
+<summary>The same steps by hand</summary>
 
-3. Download the audio model into `models\panns\`: the PANNs `Cnn14_mAP=0.431.pth` checkpoint and `class_labels_indices.csv` (AudioSet labels). The OCR models download themselves into `models\easyocr\` on first run.
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+.venv\Scripts\python -m pip install websockets numpy mss pillow easyocr torchlibrosa matplotlib pytest pytest-asyncio
+.venv\Scripts\python -m pip install --no-deps panns-inference
+```
 
-A single setup script that does all of this is on the to-do list.
+`panns-inference` is installed without its dependencies because they would replace the GPU PyTorch with a CPU one; only its model definition is used. See `requirements.txt` for the exact versions. The audio model files are `Cnn14_mAP=0.431.pth` and `class_labels_indices.csv` (AudioSet labels), both from the PANNs release on Zenodo and Google's AudioSet; the script has the links.
+</details>
 
 ## Running it
 
@@ -81,7 +88,7 @@ scripts\build_launcher.ps1
    scripts\start_all.ps1
    ```
 
-   If Windows says "running scripts is disabled", run it like this instead (same for the other scripts):
+   If Windows says "running scripts is disabled", run it like this instead (same for the other scripts). `scripts\start_all.ps1 -NoEdge` starts only the daemon (for your own Edge profile), and `scripts\stop_all.ps1 -Edge` also closes the Edge test profile:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\start_all.ps1
