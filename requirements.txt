@@ -1,6 +1,13 @@
-mss==10.2.0
-pillow==12.3.0
-pytest==9.1.1
-pytest-asyncio==1.4.0
+# Install PyTorch FIRST from the CUDA index, otherwise pip may pull a CPU-only build:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# Then install the rest. Never let another package upgrade torch/torchvision (use --no-deps if needed).
 websockets==17.2
 numpy==2.5.3
+mss==10.2.0
+pillow==12.3.0
+easyocr==1.7.2
+torchlibrosa
+matplotlib
+panns-inference  # install with --no-deps; the daemon only imports its model definition
+pytest==9.1.1
+pytest-asyncio==1.4.0

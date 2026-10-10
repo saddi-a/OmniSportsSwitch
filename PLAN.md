@@ -101,7 +101,7 @@ $$\text{Excitement Score} = (\text{Audio RMS} \times \text{Priority Weight}) + f
   * **Layouts:** equal grid vs. main+sidebar changes tile sizes; tile rectangles must come from the page, not fixed regions.
   * **Decision (user): option C.** Tab-level swapping between windows stays as it is, and in addition a DAZN multiview tab gets automatic tile focus inside the tab: when another tile becomes more exciting, the extension clicks that tile so it gets audio focus. Each tile is scored as its own stream.
   * **Verified on a live multiview tab:** 4 `<video>` elements, each with its own rectangle; only the focused tile has sound (the others are muted, volume 0).
-  * **Still open (decide once OCR works):** how to score tiles we cannot hear. Default assumption is picture only (OCR score changes and game clock), plus crowd sound from the focused tile. Alternative: briefly rotate focus to sample each tile's audio (muted for the user by our gain node), at the cost of constantly clicking the page.
+  * **Decision (user): tiles we cannot hear are scored from the picture only** (OCR score changes and game clock), plus crowd sound from the focused tile. Rotating focus to sample audio was considered and rejected (constant clicking, flickering focus highlight, possible layout changes).
   * **Needs:** OCR per tile rectangle (the video-area reporter already lists all playing videos), then a tile-click action in the extension and tile-level streams in the scorer.
 
 ## 7. Known Risks & Open Questions
