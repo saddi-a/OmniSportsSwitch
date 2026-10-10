@@ -18,6 +18,7 @@ confirm_s = 2.0      # a challenger must keep qualifying this long before it tak
 min_dwell_s = 20.0   # minimum time between two swaps
 stale_s = 5.0        # a stream with no audio for this long is ignored
 idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this
+audio_ad_margin = 0.15  # ...and music must exceed speech by this much (music under commentary is not an ad)
 audio_ad_votes = 3     # a music-only ad needs this many music readings...
 audio_ad_window = 5    # ...among the last this many (a single reading is never enough)
 recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)

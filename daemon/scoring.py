@@ -48,6 +48,7 @@ class Config:
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
+    audio_ad_margin: float = 0.15  # ...and music must exceed speech by this much (stadium music under commentary is not an ad)
     audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...
     audio_ad_window: float = 5.0  # ...among the last this many (one reading is never enough: arena music, jingles)
 
@@ -120,7 +121,8 @@ class Scorer:
         stream = self.streams.get(tab_id)
         if stream is not None:
             stream.tags, stream.tags_at = (crowd, speech, music), now
-            stream.music_hits.append(music >= self.config.idle_music and crowd < 0.1)
+            stream.music_hits.append(music >= self.config.idle_music and crowd < 0.1
+                                         and music - speech >= self.config.audio_ad_margin)
             del stream.music_hits[: -int(self.config.audio_ad_window)]
             if sum(stream.music_hits) >= self.config.audio_ad_votes:
                 stream.audio_ad_at = stream.ad_at = now

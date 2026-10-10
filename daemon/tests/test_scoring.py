@@ -484,11 +484,11 @@ def test_a_big_play_fades_faster_than_a_goal():
 # ---- the FIFA+ ad on the UCLA-Oregon multiview: the music probability flickered and one dip let it take over ----
 
 def flicker(s, tab_id, start, levels, step=1.0):
-    """Feed one reading per `step` seconds: loud speech with these music probabilities, no crowd."""
+    """Feed one reading per `step` seconds: little speech (an ad: music well above speech) with these music probabilities, no crowd."""
     t = start
     for m in levels:
         s.add_audio(tab_id, 0.1, t)
-        s.set_tags(tab_id, 0.02, 0.8, m, t)
+        s.set_tags(tab_id, 0.02, 0.2, m, t)
         t += step
     return t
 
@@ -551,7 +551,7 @@ def test_music_in_most_recent_readings_still_flags_an_ad():
     t = now
     for music in (0.8, 0.1, 0.8, 0.8, 0.8):        # flickering but mostly music
         s.add_audio(1, 0.12, t)
-        s.set_tags(1, 0.0, 0.8, music, t)
+        s.set_tags(1, 0.0, 0.2, music, t)
         t += 1.0
     assert s.components(1, t)["ad"]
 
@@ -703,3 +703,40 @@ def test_a_quiet_main_that_is_not_on_an_ad_is_kept_during_warmup():
     s = make(warmup_s=20)
     now = started(s)
     assert s.decide(now) is None
+
+
+# ---- commentary over stadium music is not an ad (live log 01:12-01:16: a live Texas game was flagged AD 76% of the time) ----
+
+def commentary_over_music(s, tab_id, start, seconds=8, music=0.8, speech=0.76):
+    t = start
+    while t < start + seconds:
+        s.add_audio(tab_id, 0.06, t)
+        s.set_tags(tab_id, 0.02, speech, music, t)
+        t += 1.0
+    return t
+
+
+def test_music_under_loud_commentary_is_not_an_ad():
+    s = make()
+    now = warm_up(s)
+    t = commentary_over_music(s, 1, now)
+    assert not s.components(1, t)["ad"]
+
+
+def test_music_clearly_louder_than_speech_is_still_an_ad():
+    s = make()
+    now = warm_up(s)
+    t = now
+    for _ in range(8):
+        s.add_audio(1, 0.12, t)
+        s.set_tags(1, 0.0, 0.3, 0.9, t)
+        t += 1.0
+    assert s.components(1, t)["ad"]
+
+
+def test_a_live_stream_with_stadium_music_does_not_trigger_idle_handover():
+    s = make()
+    now = warm_up(s)
+    commentary_over_music(s, 1, now)
+    quiet_play(s, 2, now)
+    assert s.decide(now + 8) is None
