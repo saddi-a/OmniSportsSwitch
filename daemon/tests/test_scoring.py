@@ -1,10 +1,13 @@
+import pytest
+
 from daemon.scoring import Config, Scorer
 
 
-def feed(scorer, tab_id, rms, start, seconds, step=0.5):
+def steady(scorer, tab_id, level, start, seconds, step=0.5):
+    """Feed constant loudness; returns the time after the last sample."""
     t = start
     while t < start + seconds:
-        scorer.add_audio(tab_id, rms, t)
+        scorer.add_audio(tab_id, level, t)
         t += step
     return t
 
@@ -17,93 +20,141 @@ def make(**cfg):
     return s
 
 
-def test_no_swap_when_challenger_not_loud_enough():
-    s = make()
-    feed(s, 1, 0.10, 0, 10)
-    feed(s, 2, 0.13, 0, 10)  # only +30%
-    assert s.decide(10) is None
+def warm_up(s, level=0.05, seconds=60):
+    for tab in (1, 2, 3):
+        steady(s, tab, level, 0, seconds)
+    return seconds
 
 
-def test_swap_when_challenger_beats_threshold():
+def roar(s, tab_id, start, seconds=5, level=0.15, crowd=0.8, speech=0.1, music=0.0):
+    """A crowd roar: louder than normal and crowd-like."""
+    t = start
+    while t < start + seconds:
+        s.add_audio(tab_id, level, t)
+        s.set_tags(tab_id, crowd, speech, music, t)
+        t += 0.5
+    return t
+
+
+def test_steady_streams_of_different_loudness_never_swap():
     s = make()
-    feed(s, 1, 0.10, 0, 10)
-    feed(s, 2, 0.15, 0, 10)  # +50%
-    swap = s.decide(10)
+    steady(s, 1, 0.05, 0, 90)
+    steady(s, 2, 0.30, 0, 90)  # much louder stream, but always at its own normal level
+    assert s.decide(90) is None
+
+
+def test_crowd_roar_on_a_challenger_triggers_swap_with_reason():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    steady(s, 1, 0.05, 60, 5)
+    swap = s.decide(now)
     assert (swap.promote, swap.demote) == (2, 1)
-    assert s.main == 2
+    assert "crowd=" in swap.reason and s.main == 2
+
+
+def test_loud_ad_with_music_does_not_win():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now, level=0.15, crowd=0.0, speech=0.4, music=0.9)  # loud, but music and no crowd
+    steady(s, 1, 0.05, 60, 5)
+    assert s.decide(now) is None
+
+
+def test_loud_commentary_alone_does_not_win():
+    s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now, level=0.12, crowd=0.02, speech=0.9, music=0.0)
+    steady(s, 1, 0.05, 60, 5)
+    assert s.decide(now) is None
+
+
+def test_no_swap_during_warmup():
+    s = make(warmup_s=20)
+    now = roar(s, 2, 0, seconds=5)
+    steady(s, 1, 0.05, 0, 5)
+    assert s.decide(now) is None
 
 
 def test_priority_weight_changes_outcome():
     s = make()
-    s.set_weight(2, 2.0)
-    feed(s, 1, 0.10, 0, 10)
-    feed(s, 2, 0.08, 0, 10)  # quieter, but weighted x2 = 0.16
-    assert s.decide(10).promote == 2
+    s.set_weight(2, 3.0)
+    now = warm_up(s)
+    now = roar(s, 2, now, level=0.06, crowd=0.25)  # mild crowd noise, weighted x3
+    steady(s, 1, 0.05, 60, 5)
+    assert s.decide(now).promote == 2
 
 
-def test_picks_loudest_challenger():
+def test_picks_the_strongest_challenger():
     s = make()
-    feed(s, 1, 0.05, 0, 10)
-    feed(s, 2, 0.10, 0, 10)
-    feed(s, 3, 0.20, 0, 10)
-    assert s.decide(10).promote == 3
+    now = warm_up(s)
+    roar(s, 2, now, crowd=0.4)
+    now = roar(s, 3, now, crowd=0.9)
+    steady(s, 1, 0.05, 60, 5)
+    assert s.decide(now).promote == 3
+
+
+def test_both_streams_roaring_does_not_swap():
+    s = make()
+    now = warm_up(s)
+    roar(s, 1, now, crowd=0.8)
+    now = roar(s, 2, now, crowd=0.85)  # barely different: margin not met
+    assert s.decide(now) is None
 
 
 def test_min_dwell_blocks_immediate_second_swap():
     s = make(min_dwell_s=20)
-    feed(s, 1, 0.10, 0, 10)
-    feed(s, 2, 0.20, 0, 10)
-    assert s.decide(10) is not None
-    feed(s, 1, 0.50, 10, 5)  # old main now very loud
-    assert s.decide(15) is None
-    feed(s, 1, 0.50, 15, 10)
-    assert s.decide(25) is None  # only 15s since the swap at t=10
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    assert s.decide(now) is not None
+    now = roar(s, 1, now, seconds=5)
+    assert s.decide(now) is None  # only 5 s since the swap
 
 
-def test_dwell_expires():
+def test_second_swap_allowed_after_dwell():
     s = make(min_dwell_s=20)
-    feed(s, 1, 0.10, 0, 10)
-    feed(s, 2, 0.20, 0, 10)
-    s.decide(10)
-    feed(s, 2, 0.05, 10, 25)
-    feed(s, 1, 0.50, 10, 25)
-    assert s.decide(35).promote == 1
-
-
-def test_single_spike_is_smoothed_out():
-    s = make(window_s=3.0)
-    feed(s, 1, 0.10, 0, 10)
-    feed(s, 2, 0.05, 0, 9)
-    s.add_audio(2, 0.30, 9.5)  # one loud blip
-    assert s.decide(10) is None
-
-
-def test_silent_challenger_never_wins():
-    s = make(min_score=0.01)
-    feed(s, 1, 0.0, 0, 10)
-    feed(s, 2, 0.005, 0, 10)
-    assert s.decide(10) is None
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    s.decide(now)
+    for tab in (1, 2, 3):
+        steady(s, tab, 0.05, now, 25)
+    now += 25
+    now = roar(s, 1, now)
+    assert s.decide(now).promote == 1
 
 
 def test_stale_stream_is_ignored():
     s = make(stale_s=5.0)
-    feed(s, 1, 0.10, 0, 20)
-    feed(s, 2, 0.50, 0, 5)  # went silent/disconnected at t=5
-    assert s.decide(20) is None
+    now = warm_up(s)
+    roar(s, 2, now)  # stream 2 stops sending after this
+    steady(s, 1, 0.05, now, 30)
+    assert s.decide(now + 30) is None
 
 
 def test_freeze_blocks_swaps():
     s = make()
+    now = warm_up(s)
+    now = roar(s, 2, now)
+    steady(s, 1, 0.05, 60, 5)
     s.frozen = True
-    feed(s, 1, 0.10, 0, 10)
-    feed(s, 2, 0.50, 0, 10)
-    assert s.decide(10) is None
+    assert s.decide(now) is None
     s.frozen = False
-    assert s.decide(10) is not None
+    assert s.decide(now) is not None
 
 
 def test_no_main_registered_means_no_swap():
     s = Scorer()
     s.register(2)
-    feed(s, 2, 0.5, 0, 10)
-    assert s.decide(10) is None
+    now = steady(s, 2, 0.05, 0, 60)
+    now = roar(s, 2, now)
+    assert s.decide(now) is None
+
+
+def test_missing_classifier_tags_fall_back_to_loudness_only():
+    s = make()
+    now = warm_up(s)
+    steady(s, 2, 0.20, now, 5)  # 4x louder than normal, no tags at all
+    c = s.components(2, now + 5)
+    assert c["crowd"] == 0.0
+    assert 2.0 < c["surge"] <= 3.0  # baseline drifts up a little while the stream stays loud
+    assert c["score"] > 0

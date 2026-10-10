@@ -30,7 +30,7 @@ SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
 SAMPLE_RATE = 32000
 CLASSIFY_WINDOW = 3 * SAMPLE_RATE  # classify the last 3 seconds of each tab
-LOGGED_CLASSES = ["Cheering", "Crowd", "Applause", "Speech", "Music"]
+CROWD_CLASSES = ["Cheering", "Crowd", "Applause"]
 
 log = logging.getLogger("daemon")
 
@@ -92,18 +92,18 @@ class Server:
             log.info("extension disconnected")
 
     def _log_scores(self, now: float) -> None:
-        parts = []
         for tab_id in self.scorer.streams:
-            score = self.scorer.score(tab_id, now)
             tag = "MAIN " if tab_id == self.scorer.main else ""
-            text = f"{tag}{tab_id}: level={'-' if score is None else f'{score:.4f}'}"
+            c = self.scorer.components(tab_id, now)
+            if c is None:
+                log.info("  %s%s: warming up or no audio", tag, tab_id)
+                continue
+            text = (f"{tag}{tab_id}: score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
+                    f"speech={c['speech']:.2f} music={c['music']:.2f}")
             probs = self.tags.get(tab_id)
             if probs is not None:
-                text += " " + " ".join(f"{n.lower()}={probs[self.classifier.index[n]]:.2f}" for n in LOGGED_CLASSES)
                 text += " top=" + ",".join(f"{n}:{p:.2f}" for n, p in self.classifier.top(probs, 3))
-            parts.append(text)
-        for part in parts:
-            log.info("  %s", part)
+            log.info("  %s", text)
 
     async def _classify_loop(self) -> None:
         while True:
@@ -113,8 +113,12 @@ class Server:
                 continue
             batch = np.stack([self.buffers[t] for t in ready])
             probs = await asyncio.to_thread(self.classifier.predict, batch)
+            idx = self.classifier.index
+            now = time.monotonic()
             for tab_id, p in zip(ready, probs):
                 self.tags[tab_id] = p
+                crowd = float(max(p[idx[name]] for name in CROWD_CLASSES))
+                self.scorer.set_tags(tab_id, crowd, float(p[idx["Speech"]]), float(p[idx["Music"]]), now)
 
     async def _decide_loop(self) -> None:
         last_log = 0.0
@@ -126,7 +130,7 @@ class Server:
                 last_log = now
             swap = self.scorer.decide(now)
             if swap:
-                log.info("swap: promote tab %d, demote tab %d", swap.promote, swap.demote)
+                log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
                 text = json.dumps({"type": "swap", "promote": swap.promote, "demote": swap.demote})
                 for ws in list(self.clients):
                     await ws.send(text)

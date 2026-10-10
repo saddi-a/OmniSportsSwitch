@@ -2,30 +2,58 @@
 
 Pure logic: no network, no clock of its own (callers pass `now` in seconds), so it is easy to test.
 Streams are keyed by tab id, so a stream's weight follows it when tabs move between screen slots.
+
+Score of a stream = priority * max(0, sum of weighted signals):
+  surge   how far recent loudness is above this stream's own long-term average (0 = normal)
+  crowd   0..1 probability of cheering / crowd / applause
+  speech  0..1 probability of speech (commentary)
+  music   0..1 probability of music (ads, jingles)
 """
+import math
 from collections import deque
 from dataclasses import dataclass, field
+
+MIN_BASELINE = 0.002  # floor so near-silence cannot make the surge explode
+
+
+@dataclass
+class Weights:
+    surge: float = 0.3
+    crowd: float = 1.0
+    speech: float = -0.2
+    music: float = -0.5
 
 
 @dataclass
 class Config:
-    threshold: float = 0.40   # challenger must beat main by this fraction (0.40 = +40%)
-    window_s: float = 3.0     # audio is averaged over this many seconds to ignore single blips
+    weights: Weights = field(default_factory=Weights)
+    threshold: float = 0.40   # challenger must beat main by this fraction...
+    min_gap: float = 0.15     # ...and by at least this much in absolute score
+    min_score: float = 0.20   # a challenger scoring below this never wins
+    window_s: float = 3.0     # loudness is averaged over this many seconds
+    baseline_s: float = 60.0  # time constant of each stream's long-term loudness average
+    warmup_s: float = 20.0    # a stream cannot win until its baseline has had this long to settle
+    surge_cap: float = 3.0    # limit on the surge signal
     min_dwell_s: float = 20.0 # after a swap, wait this long before allowing another one
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
-    min_score: float = 0.01   # a challenger quieter than this never wins (avoids swapping on silence)
 
 
 @dataclass
 class Swap:
     promote: int  # tab id moving to the main slot
     demote: int   # tab id leaving the main slot
+    reason: str = ""
 
 
 @dataclass
 class _Stream:
     weight: float = 1.0
-    samples: deque = field(default_factory=deque)  # (time, rms)
+    samples: deque = field(default_factory=deque)  # (time, level)
+    baseline: float | None = None
+    first_seen: float | None = None
+    last_sample: float | None = None
+    tags: tuple[float, float, float] = (0.0, 0.0, 0.0)  # crowd, speech, music
+    tags_at: float = float("-inf")
 
 
 class Scorer:
@@ -50,23 +78,49 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].weight = weight
 
-    def add_audio(self, tab_id: int, rms: float, now: float) -> None:
+    def add_audio(self, tab_id: int, level: float, now: float) -> None:
         stream = self.streams.get(tab_id)
         if stream is None:
             return
-        stream.samples.append((now, rms))
+        stream.samples.append((now, level))
         self._trim(stream, now)
+        if stream.baseline is None:
+            stream.baseline, stream.first_seen = level, now
+        else:
+            alpha = 1 - math.exp(-(now - stream.last_sample) / self.config.baseline_s)
+            stream.baseline += alpha * (level - stream.baseline)
+        stream.last_sample = now
 
-    def score(self, tab_id: int, now: float) -> float | None:
-        """Weighted average RMS over the window, or None if the stream has no recent audio."""
+    def set_tags(self, tab_id: int, crowd: float, speech: float, music: float, now: float) -> None:
+        stream = self.streams.get(tab_id)
+        if stream is not None:
+            stream.tags, stream.tags_at = (crowd, speech, music), now
+
+    def components(self, tab_id: int, now: float) -> dict | None:
+        """The signals and final score of a stream, or None if it has no recent audio or is still warming up."""
+        cfg = self.config
         stream = self.streams.get(tab_id)
         if stream is None:
             return None
         self._trim(stream, now)
-        if not stream.samples or now - stream.samples[-1][0] > self.config.stale_s:
+        if not stream.samples or now - stream.last_sample > cfg.stale_s:
             return None
-        mean = sum(r for _, r in stream.samples) / len(stream.samples)
-        return mean * stream.weight
+        if now - stream.first_seen < cfg.warmup_s:
+            return None
+
+        level = sum(v for _, v in stream.samples) / len(stream.samples)
+        surge = min(max(level / max(stream.baseline, MIN_BASELINE) - 1.0, 0.0), cfg.surge_cap)
+        fresh = now - stream.tags_at <= cfg.stale_s
+        crowd, speech, music = stream.tags if fresh else (0.0, 0.0, 0.0)
+
+        w = cfg.weights
+        raw = w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music
+        return {"score": max(raw, 0.0) * stream.weight, "surge": surge, "crowd": crowd,
+                "speech": speech, "music": music, "level": level}
+
+    def score(self, tab_id: int, now: float) -> float | None:
+        c = self.components(tab_id, now)
+        return None if c is None else c["score"]
 
     def decide(self, now: float) -> Swap | None:
         cfg = self.config
@@ -75,21 +129,24 @@ class Scorer:
         if now - self._last_swap < cfg.min_dwell_s:
             return None
 
-        main_score = self.score(self.main, now) or 0.0
-        best_id, best_score = None, 0.0
+        main_c = self.components(self.main, now)
+        main_score = main_c["score"] if main_c else 0.0
+        best_id, best_c = None, None
         for tab_id in self.streams:
             if tab_id == self.main:
                 continue
-            s = self.score(tab_id, now)
-            if s is not None and s > best_score:
-                best_id, best_score = tab_id, s
+            c = self.components(tab_id, now)
+            if c is not None and (best_c is None or c["score"] > best_c["score"]):
+                best_id, best_c = tab_id, c
 
-        if best_id is None or best_score < cfg.min_score:
+        if best_c is None or best_c["score"] < cfg.min_score:
             return None
-        if best_score <= main_score * (1 + cfg.threshold):
+        if best_c["score"] < max(main_score * (1 + cfg.threshold), main_score + cfg.min_gap):
             return None
 
-        swap = Swap(promote=best_id, demote=self.main)
+        fmt = lambda c: " ".join(f"{k}={c[k]:.2f}" for k in ("score", "surge", "crowd", "speech", "music"))
+        reason = f"challenger [{fmt(best_c)}] vs main [{fmt(main_c) if main_c else 'no data'}]"
+        swap = Swap(promote=best_id, demote=self.main, reason=reason)
         self.main = best_id
         self._last_swap = now
         return swap
