@@ -63,65 +63,62 @@ OTT web streaming services (Disney+/ESPN, DAZN, Canal+) lag 20–60 seconds behi
 
 ### The Solution: Stream-Synchronized Local Telemetry
 The system relies exclusively on local browser data that matches the exact video stream buffer:
-1. **Audio RMS Peak Detection:** real-time crowd/commentary decibel spikes captured directly from the tab's audio pipeline via `chrome.tabCapture` and the Web Audio API.
-2. **Local CUDA OCR:** periodic frame grabs from the video element, processed locally on the RTX 3080 via EasyOCR, to read the scorebug synchronously with the stream.
+1. **Tab audio:** captured per tab with `chrome.tabCapture`, streamed to the daemon as 32 kHz audio. The daemon measures loudness and classifies the sound (cheering, crowd, speech, music) with a PANNs model on the GPU.
+2. **Local CUDA OCR:** the daemon screenshots the screen area where each video plays (page-level frame capture is blocked by DRM) and reads the scorebug with EasyOCR on the RTX 3080.
 
 ```
 ┌──────────────────────────────────────┐          ┌──────────────────────────────────────┐
 │     MICROSOFT EDGE EXTENSION         │          │   LOCAL PYTHON DAEMON (CUDA / CPU)   │
 │                                      │          │                                      │
 │ ┌──────────────────────────────────┐ │  Web-    │ ┌──────────────────────────────────┐ │
-│ │ Tab Audio RMS & Canvas Capture   │ │  Socket  │ │ PyTorch / CUDA OCR Engine        │ │
-│ │ (Extracts frames & audio volume) │ ├─────────►│ │ (EasyOCR / PaddleOCR on RTX 3080)│ │
+│ │ Tab audio + video-area reporter  │ │  Socket  │ │ PANNs audio + EasyOCR (RTX 3080) │ │
+│ │ (32 kHz audio, tile positions)   │ ├─────────►│ │ (screen capture of video areas)  │ │
 │ └──────────────────────────────────┘ │ (ws://)  │ └─────────────────┬────────────────┘ │
 │                                      │          │                   │                  │
 │ ┌──────────────────────────────────┐ │          │ ┌─────────────────┬────────────────┐ │
-│ │ Window Swapper Controller        │ │◄─────────┤ │ Scoring Logic (9800X3D Multi-Th) │ │
-│ │ (Executes chrome.tabs.move)      │ │  Events  │ │ (Audio dB + Game Clock/Score Delta)│ │
+│ │ Arranger + tile expander         │ │◄─────────┤ │ Scoring Logic (9800X3D Multi-Th) │ │
+│ │ (tabs.move, debugger click)      │ │  Events  │ │ (crowd, surge, score, game state)│ │
 │ └──────────────────────────────────┘ │          │ └──────────────────────────────────┘ │
 └──────────────────────────────────────┘          └──────────────────────────────────────┘
 ```
 
-## 5. Scoring Logic
+## 5. Scoring Logic (as built)
 
-Excitement combines audio intensity with an OCR-derived "momentum" signal:
+Score of a stream = `priority × max(0, 0.3·surge + 1.0·crowd − 0.2·speech − 0.5·music + 0.8·event) × status`
 
-$$\text{Excitement Score} = (\text{Audio RMS} \times \text{Priority Weight}) + f(\text{OCR score delta}, \text{OCR clock remaining})$$
+* **surge:** recent loudness (3 s average) relative to that stream's own long-term average (60 s), so streams of different loudness are comparable and steady commentary scores zero.
+* **crowd / speech / music:** classifier probabilities (cheering, crowd, applause / speech / music). Ads and jingles are suppressed by the music term, commentary by the speech term.
+* **event:** a confirmed score change read by OCR (a score pair that rises by 1 to 10 on two consecutive readings), fading over 45 s. A stat graphic or a lone number does not count.
+* **status:** live 1.0, break 0.25, over 0. Detected from the picture (`Auto`) or set by hand (`Live / Break / Over` override). Rules per sport: soccer clock frozen 20 s, American football 4 min, basketball 3 min, generic 2 min; "no readable clock" for 45–90 s; standalone repeated captions such as FINAL, FULL TIME, HALF TIME, MI-TEMPS.
+* **priority:** tab weight × sport weight × best favourite-team bonus (set in the popup).
+* **Swap rule:** a challenger must beat `MAIN` by +40% and by at least 0.15, score at least 0.20, have finished a 20 s warm-up, and 20 s must have passed since the last swap. Every swap logs the signals behind it. Weights and thresholds are settings in `daemon/scoring.py`.
+* **Allowed slots:** a tab can be restricted to some slots (for example PSG only on MAIN or LEFT). The daemon plans the arrangement (`daemon/arrange.py`): a straight trade if allowed, otherwise a three-way rotation through an allowed slot, otherwise the swap is refused. A stream not allowed on MAIN is never promoted.
+* **Audio:** only the `MAIN` window is audible; the other tabs are muted with Web Audio gain nodes (measured before the gain, players do not pause).
+* **Swap mechanics:** roles belong to windows; a swap moves tabs between fixed windows with `chrome.tabs.move`, keeping a spare tab in each window so none closes.
 
-* The exact weighting of the OCR term is TBD pending the Phase 0 feasibility spike (§8) — if frame capture doesn't work on DRM-protected players, the OCR term is dropped and scoring falls back to audio-only (`Audio RMS × Priority Weight`).
-* **Trigger rule:** if a secondary slot's score exceeds `MAIN`'s score by a safety threshold (e.g. +40%), the daemon commands the extension to execute a swap.
-* **Audio management:** auto-unmutes the active `MAIN` stream while muting secondary streams via Web Audio gain nodes (muting via gain rather than `video.muted` avoids pausing DRM-protected HTML5 players that pause on mute).
-* **Window-swap semantics:** `chrome.tabs.move()` moves tabs between/within windows; it does not reposition or resize OS-level windows. "Promoting to MAIN" means moving the winning tab into the window assigned to the `MAIN` role (and relocating the bumped tab to the role the promoted tab vacated), not changing window geometry.
+## 6. DAZN multiview (built, needs real-world confirmation)
 
-## 6. Planned later (must not be forgotten)
+* The extension reports every playing `<video>` (a tile) with its position and whether it has sound; the daemon reads each tile separately (OCR, game state, score changes).
+* **Tiles are scored from the picture only** (score change, game state), plus crowd sound for the tile that has audio focus. Rotating focus to sample other tiles' audio was rejected.
+* **Tile focus:** if another tile has a fresher score change (and is not on a break), the daemon asks the extension to expand it. Minimum 30 s between changes per tab.
+* **Expanding needs a genuine mouse click.** A scripted click only moves the sound. The extension therefore uses Edge's debugging API (`debugger` permission) to hover and click, then detaches; Edge shows its "debugging this browser" bar for a moment. A script click remains as a fallback.
+* **Slots swap streams.** In the main + sidebar layout, expanding a tile moves its stream into the big slot and the old main stream into the clicked slot, so the daemon swaps its per-tile records the same way.
+* Not yet seen on a real goal (it cannot be triggered on demand).
 
-* **DAZN multiview** (up to 4 sub-streams tiled inside one DAZN tab, with click-to-focus audio per tile and two layout modes: equal grid vs. main+sidebar). The user wants this supported eventually. Today every tab, DAZN included, is treated as a single stream. Findings so far:
-  * **Picture:** screen capture reads every tile (verified: main tile and both side tiles returned real pixels, scorebug readable). So OCR and the image-based priority work per tile once the video-area step can report each tile's rectangle (several `<video>` elements, not just the biggest one).
-  * **Audio:** `tabCapture` hears only the tile that currently has sound (the others are muted inside the page). Per-tile loudness and crowd detection is not possible with the current approach; tiles other than the focused one would have to be scored from the picture only (score changes, clock), or the extension would click tiles to rotate audio focus.
-  * **Layouts:** equal grid vs. main+sidebar changes tile sizes; tile rectangles must come from the page, not fixed regions.
-  * **Decision (user): option C.** Tab-level swapping between windows stays as it is, and in addition a DAZN multiview tab gets automatic tile focus inside the tab: when another tile becomes more exciting, the extension clicks that tile so it gets audio focus. Each tile is scored as its own stream.
-  * **Verified on a live multiview tab:** 4 `<video>` elements, each with its own rectangle; only the focused tile has sound (the others are muted, volume 0).
-  * **Decision (user): tiles we cannot hear are scored from the picture only** (OCR score changes and game clock), plus crowd sound from the focused tile. Rotating focus to sample audio was considered and rejected (constant clicking, flickering focus highlight, possible layout changes).
-  * **Needs:** OCR per tile rectangle (the video-area reporter already lists all playing videos), then a tile-click action in the extension and tile-level streams in the scorer.
+## 7. Known risks & open items
 
-## 7. Known Risks & Open Questions
+1. **Hardware acceleration must stay off in Edge** (the user's setting). With it on, screen capture of DRM video may go black. Re-check if it ever changes.
+2. **Per-session setup:** after a reload, windows have new ids, so window roles are set again and tabs are tracked again (one click per tab; Edge requires the click). A restart of Edge or the extension drops all tracking.
+3. **OCR reads everything in the video area**, including ad boards, popups and graphics. Mitigations in place (standalone repeated captions, score pairs, thresholds), but false readings can still happen. Watch the daemon log (`score change`, `game state`, `focus tile`).
+4. **Not built yet:** teams and sport detected from the picture (the sport dropdown and teams field are still manual; the sport must be set for the per-sport break rules), freeze hotkey (`Ctrl+Shift+P`), remembering window roles across Edge restarts, a settings file for the scoring thresholds.
+5. **Unverified in live use:** the three-way rotation for allowed slots, a goal moving tile focus, and break detection on American football (set the sport on the tab).
+6. **Publishing later:** create a new public repo with a single clean commit (no history). Models (`models/`) and the venv are not tracked.
 
-1. **DRM frame capture (resolved for DAZN and Canal+, not yet for Disney+/ESPN).** Reading frames from the page via canvas is blocked by DRM, so OCR uses screen capture instead. Remaining consequences: a window covered by another window can't be read, and the whole approach relies on **hardware acceleration staying disabled in Edge** (the user's normal setting). Re-check if that ever changes.
-2. **`tabCapture` on unfocused/background tabs.** Needs confirmation that Edge allows simultaneous audio capture from up to 5 tabs that aren't the focused tab/window.
-3. **Scorebug is not proof of live play (deferred, low priority).** Scorebugs stay on screen during breaks, half-time and studio segments, and may show a different match than the picture (seen on Canal+). OCR scoring must use score changes and a running game clock, not just the presence of a score. Design to be decided later.
-4. **Sport-type assignment and priority weight defaults.** Not yet decided whether these are set manually per tab via the popup UI (current assumption, matching the original roadmap) or inferred automatically.
+## 8. Roadmap and status
 
-## 8. Implementation Roadmap
-
-* **Phase 0 — DRM feasibility spike (scripts in `spike/`).**
-  * **Status: complete.** All tests ran with hardware acceleration off (the user's normal setting).
-  * **Video:** page-level frame capture (`drawImage`) returns blank frames on **DAZN, Canal+ and Disney+**. Screen capture of the Edge window returns real pixels with a readable scorebug on all three. ESPN-specific not tested separately (Disney+ carries the ESPN content).
-  * **Audio:** `chrome.tabCapture` measures audio RMS on all three DRM services, including when the stream tab is hidden behind another tab. The measurement stays accurate with the output muted.
-  * **Muting (decision 2, validated):** a Web Audio gain node set to 0 silences the tab, RMS (measured before the gain) keeps reading, and the players do not pause.
-  * **Constraints found:** (1) the user must click the extension icon once on each tab to start capture (browser requirement, probably again after a reload); (2) a hidden tab renders nothing on screen, so OCR can only read streams in visible windows, which fits the 5-window layout; (3) the extension cannot see tabs it hasn't been clicked on.
-  * *Test setup:* a separate Edge profile launched with `--remote-debugging-port=9222` (Edge ignores that flag on the default profile), the throwaway extension in `spike/tabcapture_test/`, and helper scripts in `spike/`.
-* **Phase 1 — Python daemon skeleton. Done (audio-only).** One async process (`daemon/server.py`, WebSocket on `ws://127.0.0.1:8765`) wrapping a pure, tested scoring module (`daemon/scoring.py`). Scoring averages each stream's audio over a 3 s window, applies its priority weight, and promotes a challenger that beats `MAIN` by +40%, with a 20 s minimum gap between swaps, a silence floor, stale-stream handling and a freeze flag (all configurable). Streams are keyed by tab id so weights follow tabs between slots. Message formats are documented at the top of `server.py`. 13 tests pass (`pytest daemon/tests`). The OCR inputs (score change, game clock) are not wired in yet and arrive with Phase 2.
-* **Phase 2 — OCR pipeline.** EasyOCR on the RTX 3080; per-service region-of-interest cropping (scorebug position differs across ESPN/DAZN/Canal+), validated against saved screenshots before live capture.
-* **Phase 3 — Edge extension skeleton.** Plain JS/HTML, no build step: `manifest.json` (permissions: `tabs`, `tabCapture`, `offscreen`, `storage`), `service-worker.js`, offscreen document for `tabCapture` + Web Audio RMS, popup UI for assigning the 5 slot roles and priority weights.
-* **Phase 4 — Integration.** Extension streams audio RMS to the daemon over WebSocket (frames come from the daemon's own screen capture, not the extension); daemon scores and emits swap commands; extension executes `chrome.tabs.move()` plus mute/unmute gain-node logic, following the slot fill order from §3.
-* **Phase 5 — Safeguards.** Manual override/freeze hotkey (`Ctrl+Shift+P`) to lock `MAIN`; persist slot role mappings and priority weights in `chrome.storage.local`.
+* **Phase 0 — DRM feasibility spike: done.** Page frame capture is blocked on DAZN, Canal+ and Disney+; screen capture works; `tabCapture` audio works on all three, also from hidden tabs; gain-node muting works. Scripts in `spike/`.
+* **Phase 1 — Daemon and scoring: done.** `daemon/` (async WebSocket server, pure tested modules: `scoring`, `game_state`, `score_watch`, `multiview`, `arrange`, `screen_ocr`, `audio_classifier`). 74 tests.
+* **Phase 2 — Audio classification and OCR: done.** PANNs CNN14 and EasyOCR run locally on the RTX 3080 (about 5 ms and 0.2 s per pass).
+* **Phase 3 — Extension: done.** Popup (window role, tracking, status, sport, teams, weight, allowed slots, priorities, reload), offscreen page (audio, WebSocket), service worker (tracking, arrange, tile expand).
+* **Phase 4 — Integration: done and running.** Audio, OCR, scoring, window swaps, muting and multiview focus work together.
+* **Phase 5 — Safeguards and polish: open.** Freeze hotkey, persistence across restarts, teams and sport from the picture, settings file, a one-command launcher (scripts exist: `scripts/start_test_edge.ps1`, `scripts/start_daemon.ps1`).
