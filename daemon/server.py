@@ -327,7 +327,9 @@ class Server:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    from daemon.logsetup import setup_logging
+
+    setup_logging()
     from daemon.audio_classifier import AudioClassifier
 
     from daemon.screen_ocr import ScreenReader
