@@ -1,33 +1,78 @@
 """Spots a score change (goal, touchdown, basket) from the numbers OCR reads off a scorebug.
 
-OCR output is noisy (clocks, logos, stat graphics, down-and-distance), so:
-  * only a *pair* of numbers counts as a score: written as "2-0", next to each other, or with one
-    text item (a team name) between them. Numbers scattered across a graphic are ignored.
-  * a change must be seen on two consecutive readings, the total must rise by 1 to MAX_RISE, and
-    neither number may go down.
-Anything else just resets the baseline.
+OCR output is noisy: clocks misread with a dash ("31-56"), channel logos ("1+3" read as "13"), stat graphics,
+down-and-distance. So:
+  * a score is found by anchoring to team names ("NAP 2-0 FRO", "PSG 1 [noise] LMFC 1"), with "a-b" pairs
+    only accepted for small values (a misread clock like "31-56" is not a score), or as two numbers next
+    to each other ("INDIANA 20 17 NEBRASKA");
+  * each side's score is the value most of the last few readings agree on (a vote), so one or two bad
+    frames cannot flip it;
+  * a goal is a stable change in which at least one side rose by 1 to MAX_RISE. The other side may have
+    changed because of noise and is not checked.
 """
 import re
+from collections import Counter, deque
 
 SCORE_PAIR_RE = re.compile(r"^(\d{1,3})\s?[-–:]\s?(\d{1,3})$")  # "2-0"
 NUMBER_RE = re.compile(r"^\d{1,3}$")
 CLOCK_RE = re.compile(r"^\d{1,3}\s?[:.,]\s?\d{2}$")
 LOGO_RE = re.compile(r"^[A-Za-z]{0,2}\d\s?\+\s?\d$")  # channel logos such as "L1+3"
+TEAM_RE = re.compile(r"^[^\W\d_]{2,}$")                 # letters only, at least two ("PSG", "LMFC")
+MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
+HISTORY = 5          # readings that vote
+NEEDED = 3           # votes a value needs to count
+
+
+def _items(texts: list[str], clocks: list[str]) -> list[str]:
+    skip = set(clocks)
+    return [t.strip() for t in texts
+            if t.strip() and t.strip() not in skip and not CLOCK_RE.match(t.strip()) and not LOGO_RE.match(t.strip())]
+
+
+def _small_pair(item: str) -> tuple[int, int] | None:
+    m = SCORE_PAIR_RE.match(item)
+    if m and max(int(m.group(1)), int(m.group(2))) <= MAX_PAIR_VALUE:
+        return int(m.group(1)), int(m.group(2))
+    return None
 
 
 def find_score(texts: list[str], clocks: list[str]) -> tuple[int, int] | None:
-    """The first (left, right) score pair found in the OCR text items, or None."""
-    skip = set(clocks)
-    items = [t.strip() for t in texts
-             if t.strip() and t.strip() not in skip and not CLOCK_RE.match(t.strip()) and not LOGO_RE.match(t.strip())]
+    """The (left, right) score found in the OCR text items, or None."""
+    items = _items(texts, clocks)
+    is_team = [bool(TEAM_RE.match(t)) for t in items]
+
+    # 1. "TEAM a-b TEAM"
     for i, item in enumerate(items):
-        pair = SCORE_PAIR_RE.match(item)
+        pair = _small_pair(item)
+        if pair and 0 < i < len(items) - 1 and is_team[i - 1] and is_team[i + 1]:
+            return pair
+
+    # 2. TEAM1, number, (up to 2 noise items), TEAM2, (up to 1 noise item), number
+    for a in range(len(items)):
+        if not is_team[a]:
+            continue
+        n1 = next((k for k in range(a + 1, min(a + 3, len(items))) if NUMBER_RE.match(items[k])), None)
+        if n1 is None:
+            continue
+        for b in range(n1 + 1, min(n1 + 4, len(items))):
+            if not is_team[b]:
+                continue
+            n2 = next((k for k in range(b + 1, min(b + 3, len(items))) if NUMBER_RE.match(items[k])), None)
+            if n2 is not None:
+                return int(items[n1]), int(items[n2])
+
+    # 3. any small "a-b" token
+    for item in items:
+        pair = _small_pair(item)
         if pair:
-            return int(pair.group(1)), int(pair.group(2))
+            return pair
+
+    # 4. two numbers next to each other, or with up to two text items between them
+    for i, item in enumerate(items):
         if not NUMBER_RE.match(item):
             continue
-        for j in (i + 1, i + 2, i + 3):  # directly next, or with up to two text items (team name, noise) between
+        for j in (i + 1, i + 2, i + 3):
             if j >= len(items) or not NUMBER_RE.match(items[j]):
                 continue
             if all(not NUMBER_RE.match(x) for x in items[i + 1 : j]):
@@ -35,24 +80,31 @@ def find_score(texts: list[str], clocks: list[str]) -> tuple[int, int] | None:
     return None
 
 
+def _vote(values) -> int | None:
+    value, count = Counter(values).most_common(1)[0]
+    return value if count >= NEEDED else None
+
+
 class ScoreWatcher:
-    """Follows one video area. `update` returns True on the reading where a score change is confirmed."""
+    """Follows one video area. `update` returns True on the reading where a score change becomes stable."""
 
     def __init__(self):
-        self._baseline: tuple[int, int] | None = None
-        self._candidate: tuple[int, int] | None = None
+        self._history: deque[tuple[int, int]] = deque(maxlen=HISTORY)
+        self._stable: tuple[int, int] | None = None
 
     def update(self, texts: list[str], clocks: list[str]) -> bool:
         score = find_score(texts, clocks)
         if score is None:
             return False
-        if score != self._candidate:
-            self._candidate = score  # needs to be seen twice in a row before it is trusted
+        self._history.append(score)
+        left, right = _vote(p[0] for p in self._history), _vote(p[1] for p in self._history)
+        if left is None or right is None:
             return False
-        if self._baseline is None or score == self._baseline:
-            self._baseline = score
+        current = (left, right)
+        if self._stable is None:
+            self._stable = current
             return False
-
-        old, new = self._baseline, score
-        self._baseline = new
-        return all(n >= o for o, n in zip(old, new)) and 1 <= sum(new) - sum(old) <= MAX_RISE
+        if current == self._stable:
+            return False
+        old, self._stable = self._stable, current
+        return any(1 <= n - o <= MAX_RISE for o, n in zip(old, current))
