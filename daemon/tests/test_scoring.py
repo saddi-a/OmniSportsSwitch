@@ -591,3 +591,65 @@ def test_a_challenger_that_keeps_qualifying_wins_after_the_confirmation_time():
         swaps.append((now, s.decide(now)))
     first = next(t for t, swap in swaps if swap)
     assert first - swaps[0][0] >= 2.0 - 0.5          # not on the first qualifying reading
+
+
+# ---- MAIN must not hop back to the stream it just left because of an ad (live log: 45 of 75 idle swaps) -------------
+
+def test_a_stream_that_was_on_an_ad_a_few_seconds_ago_is_not_promoted():
+    s = make(min_dwell_s=20, recent_ad_s=45)
+    now = warm_up(s)
+    ad(s, 1, now)
+    quiet_play(s, 2, now)
+    assert s.decide(now + 5).promote == 2          # 1 is on an ad: MAIN goes to 2
+    t = now + 5
+    for step in range(30):                         # 25 s later: 1's ad is over (and forgotten), 2 gets an ad
+        t += 1.0
+        if t < now + 12:
+            ad(s, 1, t, seconds=1)
+        else:
+            quiet_play(s, 1, t, seconds=1)
+        if t < now + 20:
+            quiet_play(s, 2, t, seconds=1)
+        else:
+            ad(s, 2, t, seconds=1)
+    assert s.decide(t) is None                     # 3 is silent/absent and 1 was on an ad 20 s ago: stay
+
+
+def test_after_the_hold_off_the_stream_can_be_promoted_again():
+    s = make(min_dwell_s=20, recent_ad_s=45)
+    now = warm_up(s)
+    ad(s, 1, now)
+    quiet_play(s, 2, now)
+    s.decide(now + 5)
+    t = now + 5
+    for _ in range(80):
+        t += 1.0
+        quiet_play(s, 1, t, seconds=1)
+        ad(s, 2, t, seconds=1)
+    assert s.decide(t).promote == 1
+
+
+def test_another_live_stream_is_preferred_over_one_that_just_had_an_ad():
+    s = make(min_dwell_s=20, recent_ad_s=45)
+    now = warm_up(s)
+    ad(s, 2, now)                                   # 2 has an ad right now
+    quiet_play(s, 3, now)
+    ad(s, 1, now)
+    t = now + 14
+    for _ in range(14):
+        t += 1.0
+        quiet_play(s, 2, t, seconds=1)              # 2's ad ended (memory forgot it)
+        quiet_play(s, 3, t, seconds=1)
+        ad(s, 1, t, seconds=1)
+    assert s.decide(t).promote == 3
+
+
+def test_the_picture_ad_marks_the_stream_too():
+    s = make(min_dwell_s=20, recent_ad_s=45)
+    now = warm_up(s)
+    s.set_on_ad(2, True, now)
+    s.set_on_ad(2, False, now + 5)
+    ad(s, 1, now + 10)
+    for tab in (2,):
+        quiet_play(s, tab, now + 10)
+    assert s.decide(now + 15) is None

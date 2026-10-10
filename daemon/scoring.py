@@ -46,6 +46,7 @@ class Config:
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
+    recent_ad_s: float = 45.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
     audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...
     audio_ad_window: float = 5.0  # ...among the last this many (one reading is never enough: arena music, jingles)
@@ -71,6 +72,7 @@ class _Stream:
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
     on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
     audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
+    ad_at: float = float("-inf")        # when the stream was last seen on an ad (picture or sound)
     music_hits: list = field(default_factory=list)  # recent readings: did each one look like an ad?
     favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
@@ -121,7 +123,7 @@ class Scorer:
             stream.music_hits.append(music >= self.config.idle_music and crowd < 0.1)
             del stream.music_hits[: -int(self.config.audio_ad_window)]
             if sum(stream.music_hits) >= self.config.audio_ad_votes:
-                stream.audio_ad_at = now
+                stream.audio_ad_at = stream.ad_at = now
 
     def set_can_main(self, tab_id: int, can_main: bool) -> None:
         if tab_id in self.streams:
@@ -131,9 +133,11 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
 
-    def set_on_ad(self, tab_id: int, on_ad: bool) -> None:
+    def set_on_ad(self, tab_id: int, on_ad: bool, now: float | None = None) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].on_ad = on_ad
+            if on_ad and now is not None:
+                self.streams[tab_id].ad_at = now
 
     def set_event(self, tab_id: int, now: float, strength: float = 1.0) -> None:
         """A goal (strength 1.0) or a weaker event such as a big play. The event fades linearly, so a weaker one is
@@ -213,8 +217,9 @@ class Scorer:
             c = self.components(tab_id, now)
             if c is None:
                 continue
-            if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music):
-                continue
+            if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music
+                         or now - self.streams[tab_id].ad_at < cfg.recent_ad_s):
+                continue   # not an ad, and not one that was on an ad a moment ago (the ad flag forgets after a few seconds)
             if best_c is None or c["score"] > best_c["score"]:
                 best_id, best_c = tab_id, c
 

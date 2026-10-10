@@ -287,7 +287,7 @@ class Server:
                 log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
         for tab_id, states in per_tab.items():
             self._update_favourite(tab_id, now)
-            self.scorer.set_on_ad(tab_id, all(ads.get(tab_id, [False])))   # the whole tab is on an ad
+            self.scorer.set_on_ad(tab_id, all(ads.get(tab_id, [False])), now)   # the whole tab is on an ad
             state = combine(states)
             stream = self.scorer.streams.get(tab_id)
             if stream is not None and stream.auto_state != state:
