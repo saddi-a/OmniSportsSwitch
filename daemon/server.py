@@ -3,7 +3,8 @@
 Messages are JSON, one object per message.
 
 Extension -> daemon:
-  {"type": "register",   "tab_id": 12, "weight": 1.0, "is_main": false, "sport": "Football", "status": "auto|live|break|over", "role": "LEFT", "allowed": ["MAIN", "LEFT"]|null}
+  {"type": "register",   "tab_id": 12, "weight": 1.0, "is_main": false, "sport": "Football", "status": "auto|live|break|over", "role": "LEFT", "allowed": ["MAIN", "LEFT"]|null,
+                "teams": "Paris SG vs Lyon", "favourites": [{"name": "PSG", "mult": 2}]}
   {"type": "unregister", "tab_id": 12}
   {"type": "audio",      "tab_id": 12, "rms": 0.031}   (simple loudness-only form)
   {"type": "set_weight", "tab_id": 12, "weight": 1.5}
@@ -26,6 +27,7 @@ import numpy as np
 from websockets.asyncio.server import serve
 
 from daemon.arrange import plan_swap
+from daemon.favourites import match_multiplier
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher
@@ -37,6 +39,7 @@ DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
+FAVOURITE_MEMORY_S = 60.0  # a favourite read on screen keeps counting for this long
 OCR_MIN_WIDTH = 900  # smaller areas (multiview tiles) are enlarged before reading
 SAMPLE_RATE = 32000
 CLASSIFY_WINDOW = 3 * SAMPLE_RATE  # classify the last 3 seconds of each tab
@@ -52,6 +55,9 @@ class Server:
         self.screen_reader = screen_reader
         self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
         self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
+        self.favourites: list[dict] = []            # user's favourite teams [{name, mult}]
+        self.team_text: dict[int, str] = {}         # tab id -> teams typed in the popup
+        self.fav_seen: dict[tuple[int, int], tuple[float, float]] = {}  # (tab, video) -> (multiplier, when seen on screen)
         self.roles: dict[int, str] = {}             # tab id -> slot its window currently has
         self.allowed: dict[int, set[str] | None] = {}  # tab id -> slots it may use (None = any)
         self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
@@ -76,6 +82,10 @@ class Server:
             self.allowed[tab_id] = set(allowed) if allowed else None
             self.scorer.set_can_main(tab_id, self.allowed[tab_id] is None or "MAIN" in self.allowed[tab_id])
             self.sports[tab_id] = msg.get("sport") or None
+            if isinstance(msg.get("favourites"), list):
+                self.favourites = msg["favourites"]
+            self.team_text[tab_id] = msg.get("teams") or ""
+            self._update_favourite(tab_id, time.monotonic())
             status = msg.get("status", "auto")
             self.scorer.set_status(tab_id, None if status == "auto" else status)
             for (t, _), tracker in self.trackers.items():
@@ -90,6 +100,9 @@ class Server:
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
+            self.team_text.pop(msg["tab_id"], None)
+            for key in [k for k in self.fav_seen if k[0] == msg["tab_id"]]:
+                del self.fav_seen[key]
             self.roles.pop(msg["tab_id"], None)
             self.allowed.pop(msg["tab_id"], None)
             self.tags.pop(msg["tab_id"], None)
@@ -145,7 +158,7 @@ class Server:
             if c is None:
                 log.info("  %s%s: warming up or no audio", tag, tab_id)
                 continue
-            text = (f"{tag}{tab_id}: {c['status']} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
+            text = (f"{tag}{tab_id}: {c['status']} fav={c['fav']:.1f} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
                     f"speech={c['speech']:.2f} music={c['music']:.2f}")
             probs = self.tags.get(tab_id)
             if probs is not None:
@@ -182,16 +195,28 @@ class Server:
             results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts)}
         return results
 
+    def _update_favourite(self, tab_id: int, now: float) -> None:
+        """A favourite counts if its name is in the tab's teams field or was read on screen in the last minute."""
+        mult = match_multiplier([self.team_text.get(tab_id, "")], self.favourites)
+        for (t, _), (m, seen_at) in self.fav_seen.items():
+            if t == tab_id and now - seen_at <= FAVOURITE_MEMORY_S:
+                mult = max(mult, m)
+        self.scorer.set_favourite(tab_id, mult)
+
     def _update_game_states(self, results: dict, now: float) -> None:
         per_tab: dict[int, list[str]] = {}
         for (tab_id, index), r in results.items():
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id)))
             per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
+            seen = match_multiplier(r["texts"], self.favourites)
+            if seen > 1.0:
+                self.fav_seen[(tab_id, index)] = (seen, now)
             if self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now):
                 self.event_at[(tab_id, index)] = now
                 self.scorer.set_event(tab_id, now)
                 log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
         for tab_id, states in per_tab.items():
+            self._update_favourite(tab_id, now)
             state = combine(states)
             stream = self.scorer.streams.get(tab_id)
             if stream is not None and stream.auto_state != state:

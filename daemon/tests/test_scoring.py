@@ -303,3 +303,64 @@ def test_idle_handover_still_respects_the_minimum_gap_between_swaps():
     ad(s, 2, now + 5)                      # the new MAIN gets an ad right away
     quiet_play(s, 1, now + 5)
     assert s.decide(now + 10) is None      # too soon after the last swap
+
+
+# ---- favourite teams -------------------------------------------------------------------------------------
+
+def test_a_favourite_on_a_side_screen_takes_main_from_a_quiet_stream():
+    s = make()
+    now = warm_up(s)
+    s.set_favourite(2, 2.0)
+    for tab in (1, 2, 3):
+        quiet_play(s, tab, now)
+    swap = s.decide(now + 5)
+    assert swap is not None and swap.promote == 2
+
+
+def test_a_favourite_on_main_stays_while_nothing_exciting_happens():
+    s = make()
+    now = warm_up(s)
+    s.set_favourite(1, 2.0)
+    for tab in (1, 2, 3):
+        quiet_play(s, tab, now)
+    assert s.decide(now + 5) is None
+
+
+def test_a_goal_elsewhere_drops_the_favourite_from_main():
+    s = make()
+    now = warm_up(s)
+    s.set_favourite(1, 2.0)
+    quiet_play(s, 1, now)
+    quiet_play(s, 3, now)
+    s.set_event(2, now + 4.5)           # a goal in another game
+    quiet_play(s, 2, now)
+    swap = s.decide(now + 5)
+    assert swap is not None and swap.promote == 2
+
+
+def test_a_weak_moment_elsewhere_does_not_drop_the_favourite():
+    s = make()
+    now = warm_up(s)
+    s.set_favourite(1, 2.0)
+    quiet_play(s, 1, now)
+    steady(s, 2, 0.12, now, 5)          # louder than usual, no crowd, no score change
+    assert s.decide(now + 5) is None
+
+
+def test_a_favourite_on_a_break_does_not_hold_main():
+    s = make()
+    now = warm_up(s)
+    s.set_favourite(1, 2.0)
+    quiet_play(s, 1, now)
+    quiet_play(s, 2, now)
+    s.set_auto_state(1, "break")
+    assert s.decide(now + 5).promote == 2
+
+
+def test_no_favourite_means_no_bonus():
+    s = make()
+    now = warm_up(s)
+    quiet_play(s, 1, now)
+    assert s.components(1, now + 5)["fav"] == 1.0
+    s.set_favourite(1, 0.3)             # anything below 1 is treated as no bonus
+    assert s.components(1, now + 5)["fav"] == 1.0

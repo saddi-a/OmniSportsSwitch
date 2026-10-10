@@ -9,7 +9,7 @@ const analysisCtx = new AudioContext({ sampleRate: ANALYSIS_RATE }); // separate
 const workletReady = analysisCtx.audioWorklet.addModule("pcm-processor.js");
 
 const captures = new Map(); // tabId -> { stream, gain, node }
-let state = { roles: {}, weights: {}, labels: {} }; // pushed by the service worker
+let state = { roles: {}, weights: {}, labels: {}, favourites: [] }; // pushed by the service worker
 let socket = null;
 
 function send(obj) {
@@ -39,6 +39,8 @@ function register(tabId) {
     status: state.labels[tabId]?.status ?? "auto",
     role: state.roles[tabId] ?? "",
     allowed: state.labels[tabId]?.allowed ?? null,
+    teams: state.labels[tabId]?.teams ?? "",
+    favourites: state.favourites,
   });
 }
 
@@ -124,13 +126,14 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === "resync") for (const tabId of captures.keys()) register(tabId);
   if (m.type === "state") {
     const before = state;
-    state = { roles: m.roles, weights: m.weights, labels: m.labels ?? {} };
+    const favouritesChanged = JSON.stringify(before.favourites) !== JSON.stringify(m.favourites ?? []);
+    state = { roles: m.roles, weights: m.weights, labels: m.labels ?? {}, favourites: m.favourites ?? [] };
     for (const tabId of captures.keys()) {
       const changed =
         before.roles[tabId] !== state.roles[tabId] ||
         before.weights[tabId] !== state.weights[tabId] ||
         JSON.stringify(before.labels[tabId]) !== JSON.stringify(state.labels[tabId]);
-      if (changed) register(tabId); // re-sending register updates weight and main flag on the daemon
+      if (changed || favouritesChanged) register(tabId); // re-sending register updates weight and main flag on the daemon
     }
     applyMute();
   }

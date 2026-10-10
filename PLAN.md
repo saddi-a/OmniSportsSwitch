@@ -84,13 +84,14 @@ The system relies exclusively on local browser data that matches the exact video
 
 ## 5. Scoring Logic (as built)
 
-Score of a stream = `priority × max(0, 0.3·surge + 1.0·crowd − 0.2·speech − 0.5·music + 0.8·event) × status`
+Score of a stream = `priority × (max(0, 0.3·surge + 1.0·crowd − 0.2·speech − 0.5·music + 0.8·event) + 0.4·(favourite − 1)) × status`
 
 * **surge:** recent loudness (3 s average) relative to that stream's own long-term average (60 s), so streams of different loudness are comparable and steady commentary scores zero.
 * **crowd / speech / music:** classifier probabilities (cheering, crowd, applause / speech / music). Ads and jingles are suppressed by the music term, commentary by the speech term.
 * **event:** a confirmed score change read by OCR, fading over 45 s. The score is found next to the team names (or as a small `a-b` token; a clock misread as `31-56` is ignored), each side's value is voted over the last 5 readings (3 must agree), and a goal is a stable change where a side rose by 1 to 10. Logo noise such as `1+3` read as `13`, stat graphics and lone numbers do not count. If the game clock jumps more than the elapsed time allows (a different game moved into the slot, or a rewind; confirmed on two readings so a stray kickoff time does not count), the baseline is thrown away. Tested by replaying real readings from the Napoli and PSG goals.
 * **status:** live 1.0, break 0.25, over 0. Detected from the picture (`Auto`) or set by hand (`Live / Break / Over` override). Rules per sport: soccer clock frozen 20 s, American football 4 min, basketball 3 min, generic 2 min; "no readable clock" for 45–90 s; standalone repeated captions such as FINAL, FULL TIME, HALF TIME, MI-TEMPS.
-* **priority:** tab weight × sport weight × best favourite-team bonus (set in the popup).
+* **priority:** tab weight × sport weight (set in the popup).
+* **Favourite teams:** a live stream with a favourite team gets a steady bonus of 0.4 per extra ×1 of the multiplier, so a ×2 favourite is on `MAIN` by default and keeps it while nothing exciting happens elsewhere. A goal (0.8) or a real crowd roar on another stream beats it, and a break or end of game removes the bonus (status multiplier). A favourite is recognised from the scoreboard text read by OCR (enter the short name shown on screen, e.g. PSG) or from the tab's teams field, and counts for 60 s after it was last read.
 * **Swap rule:** a challenger must beat `MAIN` by +40% and by at least 0.15, score at least 0.35 (loudness alone, capped at +0.3, is never enough), have finished a 20 s warm-up, and `MAIN` must not be warming up itself, and 20 s must have passed since the last swap. Every swap logs the signals behind it. Weights and thresholds are settings in `daemon/scoring.py`.
 * **Idle MAIN:** if `MAIN` is on an ad (music probability 0.5 or more) or is on a break or over, the best live stream without music takes over, even if nothing exciting is happening (the 20 s gap between swaps still applies). Ads on every stream mean no swap.
 * **Allowed slots:** a tab can be restricted to some slots (for example PSG only on MAIN or LEFT). The daemon plans the arrangement (`daemon/arrange.py`): a straight trade if allowed, otherwise a three-way rotation through an allowed slot, otherwise the swap is refused. A stream not allowed on MAIN is never promoted.

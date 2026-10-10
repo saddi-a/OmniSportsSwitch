@@ -14,17 +14,12 @@ const FILL_ORDER = ["LEFT", "RIGHT_BOT", "RIGHT_MID", "RIGHT_TOP"]; // used once
 const getState = () =>
   chrome.storage.local.get({ tracked: {}, weights: {}, windowRoles: {}, priorities: DEFAULT_PRIORITIES });
 
-// Final weight sent to the daemon = tab weight x sport weight x best matching favourite-team bonus.
+// Weight sent to the daemon = tab weight x sport weight. Favourite teams are matched by the daemon.
 function effectiveWeights({ tracked, weights, priorities }) {
   const out = {};
   for (const [id, info] of Object.entries(tracked)) {
     const sportWeight = priorities.sports[info.sport] ?? 1;
-    const labels = (info.teams ?? "").toLowerCase();
-    let teamMult = 1;
-    for (const team of priorities.teams) {
-      if (team.name && labels.includes(team.name.toLowerCase())) teamMult = Math.max(teamMult, team.mult);
-    }
-    out[id] = (weights[id] ?? 1) * sportWeight * teamMult; // game status is handled by the daemon
+    out[id] = (weights[id] ?? 1) * sportWeight; // game status and favourite teams are handled by the daemon
   }
   return out;
 }
@@ -67,9 +62,11 @@ async function computeTabRoles() {
 async function pushState() {
   if (!(await chrome.offscreen.hasDocument())) return;
   const weights = effectiveWeights(await getState());
-  const { tracked } = await getState();
-  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status, allowed: t.allowed ?? null }]));
-  chrome.runtime.sendMessage({ type: "state", roles: await computeTabRoles(), weights, labels }).catch(() => {});
+  const { tracked, priorities } = await getState();
+  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status, allowed: t.allowed ?? null, teams: t.teams ?? "" }]));
+  chrome.runtime
+    .sendMessage({ type: "state", roles: await computeTabRoles(), weights, labels, favourites: priorities.teams })
+    .catch(() => {});
 }
 
 // Runs inside the stream page: once a second, reports where the playing video sits on the screen

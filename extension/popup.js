@@ -117,7 +117,7 @@ async function load() {
   });
 
   $("hint").textContent =
-    "Final weight = tab weight x sport weight x favourite-team bonus. Status Auto is detected from the picture; Live / Break / Over overrides it (Break counts 0.25, Over 0).";
+    "Weight = tab weight x sport weight. Favourite teams add a steady bonus. Status Auto is detected from the picture; Live / Break / Over overrides it (Break counts 0.25, Over 0).";
 }
 
 $("addSport").onclick = async () => {

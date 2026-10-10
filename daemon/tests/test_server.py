@@ -141,3 +141,24 @@ def test_stream_not_allowed_on_main_is_never_promoted():
     server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT", "allowed": None})
     assert server.scorer.streams[2].can_main is True
     assert server.allowed[2] is None and server.roles[2] == "LEFT"
+
+
+def test_favourite_is_recognised_from_the_teams_field():
+    server = Server()
+    favs = [{"name": "PSG", "mult": 2}]
+    server.handle_message({"type": "register", "tab_id": 4, "teams": "PSG vs Lyon", "favourites": favs})
+    assert server.scorer.streams[4].favourite == 2
+    server.handle_message({"type": "register", "tab_id": 5, "teams": "Napoli vs Roma", "favourites": favs})
+    assert server.scorer.streams[5].favourite == 1.0
+
+
+def test_favourite_is_recognised_from_the_scoreboard_and_remembered_for_a_minute():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 6, "favourites": [{"name": "PSG", "mult": 2}]})
+    results = {(6, 0): {"texts": ["PSG", "1", "LMFC", "0"], "clocks": []}}
+    server._update_game_states(results, 100.0)
+    assert server.scorer.streams[6].favourite == 2
+    server._update_game_states({(6, 0): {"texts": ["1+3"], "clocks": []}}, 130.0)   # scorebug briefly gone
+    assert server.scorer.streams[6].favourite == 2
+    server._update_favourite(6, 200.0)                                                # more than a minute later
+    assert server.scorer.streams[6].favourite == 1.0

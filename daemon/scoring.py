@@ -9,6 +9,7 @@ Score of a stream = priority * max(0, sum of weighted signals):
   speech  0..1 probability of speech (commentary)
   music   0..1 probability of music (ads, jingles)
   event   0..1 freshness of a score change read from the picture (1 = just now)
+  fav     a favourite team's steady bonus: a live favourite holds MAIN against quiet streams
 """
 import math
 from collections import deque
@@ -25,6 +26,7 @@ class Weights:
     speech: float = -0.2
     music: float = -0.5
     event: float = 0.8    # a fresh score change (goal, touchdown) read from the picture
+    favourite: float = 0.4  # steady bonus per +1 of a favourite team's multiplier (x2 favourite = +0.4)
 
 
 @dataclass
@@ -61,6 +63,7 @@ class _Stream:
     tags_at: float = float("-inf")
     event_at: float = float("-inf")  # when a score change was last seen
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
+    favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
     auto_state: str = "live"     # status detected from the picture
 
@@ -109,6 +112,10 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].can_main = can_main
 
+    def set_favourite(self, tab_id: int, multiplier: float) -> None:
+        if tab_id in self.streams:
+            self.streams[tab_id].favourite = max(1.0, multiplier)
+
     def set_event(self, tab_id: int, now: float) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].event_at = now
@@ -140,10 +147,11 @@ class Scorer:
 
         event = max(0.0, 1.0 - (now - stream.event_at) / cfg.event_s)
         w = cfg.weights
-        raw = w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.event * event
+        excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.event * event)
+        raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
         status = stream.override or stream.auto_state
         return {"score": max(raw, 0.0) * stream.weight * STATUS_MULT[status], "surge": surge, "crowd": crowd,
-                "speech": speech, "music": music, "event": event, "level": level, "status": status}
+                "speech": speech, "music": music, "event": event, "fav": stream.favourite, "level": level, "status": status}
 
     def score(self, tab_id: int, now: float) -> float | None:
         c = self.components(tab_id, now)
