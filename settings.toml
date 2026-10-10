@@ -16,6 +16,8 @@ event_s = 45.0       # how long a goal / touchdown boosts a stream (fading)
 min_dwell_s = 20.0   # minimum time between two swaps
 stale_s = 5.0        # a stream with no audio for this long is ignored
 idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this
+audio_ad_votes = 3     # a music-only ad needs this many music readings...
+audio_ad_window = 5    # ...among the last this many (a single reading is never enough)
 audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)
 big_play_strength = 0.7   # a big play (banner like TAKEAWAY!) counts this much of a goal (1.0 = same as a goal)
 ad_penalty = 0.5     # an ad in the picture scores -0.5 (music-only: half of it), so it is pushed down, not just ignored

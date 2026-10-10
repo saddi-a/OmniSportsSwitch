@@ -529,3 +529,36 @@ def test_nothing_is_evicted_while_frozen_or_when_main_is_allowed():
     s.set_can_main(1, False)
     s.frozen = True
     assert s.evict_main(t) is None
+
+
+# ---- music-only "ads" must be sustained (found in the live log: three basketball/football streams took turns
+# ---- being flagged AD from single music readings, so MAIN changed hands every 20 s) --------------------------
+
+def test_one_music_blip_does_not_flag_an_ad():
+    s = make()
+    now = warm_up(s)
+    quiet_play(s, 1, now, seconds=4)
+    s.set_tags(1, 0.0, 0.8, 0.8, now + 4)          # a single reading: arena music under the commentary
+    quiet_play(s, 1, now + 4.5, seconds=1)
+    c = s.components(1, now + 5.5)
+    assert not c["ad"] and c["score"] >= 0.0
+
+
+def test_music_in_most_recent_readings_still_flags_an_ad():
+    s = make()
+    now = warm_up(s)
+    t = now
+    for music in (0.8, 0.1, 0.8, 0.8, 0.8):        # flickering but mostly music
+        s.add_audio(1, 0.12, t)
+        s.set_tags(1, 0.0, 0.8, music, t)
+        t += 1.0
+    assert s.components(1, t)["ad"]
+
+
+def test_a_stream_with_a_blip_is_not_replaced_when_main_and_others_are_quiet():
+    s = make()
+    now = warm_up(s)
+    for tab in (1, 2, 3):
+        quiet_play(s, tab, now)
+    s.set_tags(1, 0.0, 0.8, 0.8, now + 5)
+    assert s.decide(now + 5.5) is None

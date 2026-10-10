@@ -23,6 +23,7 @@ TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, a
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
+STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversion|receptions|leaders|half\s?time|mi-temps", re.I)   # overlays full of numbers
 NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", "period", "round", "set", "game", "shots",
               "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
@@ -212,6 +213,8 @@ class ScoreWatcher:
     def update(self, texts: list[str], clocks: list[str], now: float | None = None, items: list[dict] | None = None) -> bool:
         if now is not None and self._clock_jumped(clocks, now):
             self._reset()
+        if any(STAT_GRAPHIC_RE.search(t) for t in texts):
+            return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
         score = (find_score_geo(items, clocks) if items else None) or find_score(texts, clocks)
         if score is None:
             return False

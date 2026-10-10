@@ -183,3 +183,36 @@ def test_a_number_before_the_name_is_a_ranking_not_a_score():
 
 def test_the_same_team_twice_is_not_a_score():
     assert find_score(["NAVY 58", "NAVY 58"], []) is None
+
+
+# ---- stat graphics read as goals (found in the live log) ----------------------------------------------------
+
+def boxes(rows):
+    """OCR items from (text, height, x0, y0) rows, as logged in logs/boxes.log (width estimated from the text)."""
+    return [{"text": t, "x0": x, "y0": y, "x1": x + h * 0.6 * len(t), "y1": y + h} for t, h, x, y in rows]
+
+
+BOARD = boxes([("HOUSTON", 30, 100, 800), ("31", 60, 330, 790), ("17", 60, 430, 790), ("K-STATE", 30, 520, 800), ("2nd", 30, 700, 800)])
+RUSHING = boxes([("RUSHING COMPARISON", 52, 225, 366), ("RUSHES", 20, 583, 427), ("YARDS", 20, 755, 427), ("HOUSTON", 44, 279, 451),
+                 ("33", 42, 583, 455), ("187", 42, 749, 455), ("K-STATE", 44, 279, 503), ("19", 40, 587, 507), ("95", 42, 753, 505)])
+POSSESSION = boxes([("28:13", 30, 630, 770), ("TIME OF POSSESSION", 30, 820, 770), ("12:59", 30, 1200, 770), ("UCLA", 24, 574, 806),
+                    ("10", 100, 716, 804), ("6", 84, 1116, 816), ("0", 90, 1261, 821), ("OREGON", 24, 1272, 806)])
+HALFTIME = boxes([("10", 88, 60, 100), ("ohio state", 30, 200, 120), ("37", 80, 500, 100), ("HALFTIME", 30, 700, 110),
+                  ("NORTHWESTERN def BALL STATE", 24, 900, 300), ("45-14", 24, 1300, 300)])
+
+
+def feed_items(w, readings, repeat=1):
+    fired = []
+    for n, items in enumerate(readings * repeat):
+        texts = [it["text"] for it in items]
+        if w.update(texts, [t for t in texts if ":" in t and len(t) <= 5], items=items):
+            fired.append(n)
+    return fired
+
+
+def test_stat_graphics_do_not_fire_an_event_or_change_the_remembered_score():
+    w = ScoreWatcher()
+    assert feed_items(w, [BOARD], 5) == []
+    assert feed_items(w, [RUSHING] * 5 + [POSSESSION] * 5 + [HALFTIME] * 5) == []
+    assert feed_items(w, [BOARD], 4) == []        # back to the real board: still 31-17, nothing happened
+    assert w._stable == (31, 17)

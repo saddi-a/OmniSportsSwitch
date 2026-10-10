@@ -45,7 +45,9 @@ class Config:
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
-    idle_music: float = 0.5   # MAIN counts as idle (an ad) when music probability is at least this, or it is on a break/over
+    idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
+    audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...
+    audio_ad_window: float = 5.0  # ...among the last this many (one reading is never enough: arena music, jingles)
 
 
 @dataclass
@@ -67,7 +69,8 @@ class _Stream:
     event_at: float = float("-inf")  # when a score change was last seen
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
     on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
-    audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd)
+    audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
+    music_hits: list = field(default_factory=list)  # recent readings: did each one look like an ad?
     favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
     auto_state: str = "live"     # status detected from the picture
@@ -113,7 +116,9 @@ class Scorer:
         stream = self.streams.get(tab_id)
         if stream is not None:
             stream.tags, stream.tags_at = (crowd, speech, music), now
-            if music >= self.config.idle_music and crowd < 0.1:
+            stream.music_hits.append(music >= self.config.idle_music and crowd < 0.1)
+            del stream.music_hits[: -int(self.config.audio_ad_window)]
+            if sum(stream.music_hits) >= self.config.audio_ad_votes:
                 stream.audio_ad_at = now
 
     def set_can_main(self, tab_id: int, can_main: bool) -> None:
@@ -198,7 +203,7 @@ class Scorer:
             return None  # still warming up: nothing fair to compare against yet
         current_score = current_c["score"] if current_c else 0.0
         # An ad (music) or a break / over: any live stream without music is better than that.
-        idle = current_c is not None and (current_c["ad"] or current_c["music"] >= cfg.idle_music or current_c["status"] != "live")
+        idle = current_c is not None and (current_c["ad"] or current_c["status"] != "live")
         best_id, best_c = None, None
         for tab_id in self.streams:
             if tab_id in (self.main, replaced) or not self.streams[tab_id].can_main:
