@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { font: 13px system-ui, sans-serif; width: 340px; margin: 0; padding: 10px; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  .row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .row button { width: auto; margin: 0; }
+  .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  input[type=number] { width: 52px; }
+  button { width: 100%; margin-bottom: 8px; }
+  .hint { color: #666; margin-top: 6px; }
+</style>
+<h1>OmniSportsSwitch</h1>
+<div class="row"><span>This window is</span><select id="windowRole"></select><span></span><span></span></div>
+<button id="track" hidden>Track this tab</button>
+<div id="list"></div>
+<div class="hint" id="hint"></div>
+<button id="reload" style="margin-top:8px">Reload extension (drops all tracking)</button>
+<script src="popup.js"></script>

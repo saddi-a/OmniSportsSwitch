@@ -1,5 +1,14 @@
-// Service worker: handles browser-only actions (icon clicks, tab events). It can be shut down by the
-// browser at any time, so it keeps no state. The long-lived work lives in offscreen.js.
+// Service worker: browser-only actions (tracking a tab, moving tabs between windows).
+// The browser can shut it down at any time, so all state lives in chrome.storage.local:
+//   tracked:     { tabId: { title } }
+//   weights:     { tabId: number }
+//   windowRoles: { windowId: "MAIN" | "LEFT" | ... }   <- roles belong to windows (screen slots)
+// A tab's role is simply the role of the window it is currently in.
+// Long-lived work (audio capture, daemon connection) lives in offscreen.js.
+
+const FILL_ORDER = ["LEFT", "RIGHT_BOT", "RIGHT_MID", "RIGHT_TOP"]; // used once MAIN is taken
+
+const getState = () => chrome.storage.local.get({ tracked: {}, weights: {}, windowRoles: {} });
 
 async function ensureOffscreen() {
   if (await chrome.offscreen.hasDocument()) return;
@@ -21,18 +30,110 @@ async function ensureOffscreen() {
   await ready;
 }
 
-chrome.action.onClicked.addListener(async (tab) => {
+// Role of every tracked tab, derived from the window it is currently in.
+async function computeTabRoles() {
+  const { tracked, windowRoles } = await getState();
+  const roles = {};
+  for (const id of Object.keys(tracked)) {
+    try {
+      const tab = await chrome.tabs.get(Number(id));
+      if (windowRoles[tab.windowId]) roles[id] = windowRoles[tab.windowId];
+    } catch {
+      // tab is gone; its "stopped" message will clean it up
+    }
+  }
+  return roles;
+}
+
+async function pushState() {
+  if (!(await chrome.offscreen.hasDocument())) return;
+  const { weights } = await getState();
+  chrome.runtime.sendMessage({ type: "state", roles: await computeTabRoles(), weights }).catch(() => {});
+}
+
+async function trackTab(tabId) {
+  const tab = await chrome.tabs.get(tabId);
   await ensureOffscreen();
-  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
-  chrome.runtime.sendMessage({ type: "start", tabId: tab.id, streamId, title: tab.title });
-  chrome.action.setBadgeText({ tabId: tab.id, text: "ON" });
+  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+
+  const { tracked, weights, windowRoles } = await getState();
+  tracked[tabId] = { title: tab.title };
+  weights[tabId] ??= 1;
+  if (!windowRoles[tab.windowId]) {
+    // First tracked window becomes MAIN; later ones fill the other slots in order.
+    const taken = new Set(Object.values(windowRoles));
+    windowRoles[tab.windowId] = !taken.has("MAIN") ? "MAIN" : (FILL_ORDER.find((r) => !taken.has(r)) ?? null);
+    if (!windowRoles[tab.windowId]) delete windowRoles[tab.windowId];
+  }
+  await chrome.storage.local.set({ tracked, weights, windowRoles });
+
+  chrome.runtime.sendMessage({ type: "start", tabId, streamId });
+  chrome.action.setBadgeText({ tabId, text: "ON" });
+  await pushState();
+}
+
+async function forgetTab(tabId) {
+  const { tracked, weights } = await getState();
+  delete tracked[tabId];
+  delete weights[tabId];
+  await chrome.storage.local.set({ tracked, weights });
+}
+
+// A window with a single tab closes when that tab leaves it, so make sure each slot window keeps a spare tab.
+async function ensureSpareTab(windowId) {
+  const tabs = await chrome.tabs.query({ windowId });
+  if (tabs.length < 2) await chrome.tabs.create({ windowId, active: false, url: "about:blank" });
+}
+
+// Window roles stay put; the two tabs trade windows, so their roles trade automatically.
+async function performSwap(promoteId, demoteId) {
+  const [promote, demote] = await Promise.all([chrome.tabs.get(promoteId), chrome.tabs.get(demoteId)]);
+  await ensureSpareTab(promote.windowId);
+  await ensureSpareTab(demote.windowId);
+
+  await chrome.tabs.move(promoteId, { windowId: demote.windowId, index: -1 });
+  await chrome.tabs.update(promoteId, { active: true });
+  await chrome.tabs.move(demoteId, { windowId: promote.windowId, index: -1 });
+  await chrome.tabs.update(demoteId, { active: true });
+  await pushState();
+}
+
+// Audio captures do not survive an extension reload or browser restart, so forget tracked tabs and
+// drop roles of windows that no longer exist.
+async function reconcile() {
+  const open = new Set((await chrome.windows.getAll()).map((w) => String(w.id)));
+  const { windowRoles } = await getState();
+  for (const id of Object.keys(windowRoles)) if (!open.has(id)) delete windowRoles[id];
+  await chrome.storage.local.set({ tracked: {}, weights: {}, windowRoles });
+}
+chrome.runtime.onInstalled.addListener(reconcile);
+chrome.runtime.onStartup.addListener(reconcile);
+
+chrome.runtime.onMessage.addListener((m) => {
+  if (m.type === "track") trackTab(m.tabId).catch((e) => console.error("track failed", e));
+  if (m.type === "swap") performSwap(m.promote, m.demote).catch((e) => console.error("swap failed", e));
+  if (m.type === "untrack") {
+    chrome.runtime.sendMessage({ type: "stop", tabId: m.tabId }).catch(() => {}); // offscreen then reports "stopped"
+    chrome.action.setBadgeText({ tabId: m.tabId, text: "" }).catch(() => {});
+  }
+  if (m.type === "stopped") forgetTab(m.tabId);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.runtime.sendMessage({ type: "stop", tabId }).catch(() => {});
 });
 
-chrome.runtime.onMessage.addListener((m) => {
-  if (m.type === "swap") console.log("swap requested", m); // executed in a later step
-  if (m.type === "stopped") chrome.action.setBadgeText({ tabId: m.tabId, text: "" }).catch(() => {});
+chrome.tabs.onAttached.addListener(() => pushState());
+
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const { windowRoles } = await getState();
+  if (windowRoles[windowId]) {
+    delete windowRoles[windowId];
+    await chrome.storage.local.set({ windowRoles });
+  }
+});
+
+// The popup edits window roles and weights by writing storage; forward the change to the offscreen page.
+chrome.storage.onChanged.addListener((_, area) => {
+  if (area === "local") pushState();
 });

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "OmniSportsSwitch",
-  "version": "0.1.0",
-  "description": "Measures stream audio per tab and sends it to the local OmniSportsSwitch daemon.",
-  "permissions": ["tabCapture", "offscreen", "activeTab", "tabs"],
+  "version": "0.2.0",
+  "description": "Measures stream audio per tab, sends it to the local OmniSportsSwitch daemon, and swaps tabs between windows on its command.",
+  "permissions": ["tabCapture", "offscreen", "activeTab", "tabs", "storage"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_title": "Start tracking this tab" }
+  "action": { "default_title": "OmniSportsSwitch", "default_popup": "popup.html" }
 }
