@@ -27,14 +27,21 @@ from daemon.scoring import Scorer
 HOST, PORT = "127.0.0.1", 8765
 DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
+CLASSIFY_INTERVAL_S = 1.0
+SAMPLE_RATE = 32000
+CLASSIFY_WINDOW = 3 * SAMPLE_RATE  # classify the last 3 seconds of each tab
+LOGGED_CLASSES = ["Cheering", "Crowd", "Applause", "Speech", "Music"]
 
 log = logging.getLogger("daemon")
 
 
 class Server:
-    def __init__(self, scorer: Scorer | None = None):
+    def __init__(self, scorer: Scorer | None = None, classifier=None):
         self.scorer = scorer or Scorer()
+        self.classifier = classifier
         self.clients = set()
+        self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
+        self.tags: dict[int, np.ndarray] = {}     # tab id -> latest classifier probabilities
 
     def handle_message(self, msg: dict) -> None:
         kind = msg.get("type")
@@ -43,6 +50,8 @@ class Server:
             log.info("registered tab %s", msg["tab_id"])
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
+            self.buffers.pop(msg["tab_id"], None)
+            self.tags.pop(msg["tab_id"], None)
             log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
             self.scorer.add_audio(msg["tab_id"], float(msg["rms"]), time.monotonic())
@@ -61,6 +70,10 @@ class Server:
             return
         rms = float(np.sqrt(np.mean(samples * samples)))
         self.scorer.add_audio(tab_id, rms, time.monotonic())
+        if self.classifier is not None:
+            old = self.buffers.get(tab_id)
+            buf = samples if old is None else np.concatenate([old, samples])
+            self.buffers[tab_id] = buf[-CLASSIFY_WINDOW:]
 
     async def _client(self, ws) -> None:
         self.clients.add(ws)
@@ -83,9 +96,25 @@ class Server:
         for tab_id in self.scorer.streams:
             score = self.scorer.score(tab_id, now)
             tag = "MAIN " if tab_id == self.scorer.main else ""
-            parts.append(f"{tag}{tab_id}={'-' if score is None else f'{score:.4f}'}")
-        if parts:
-            log.info("scores: %s", "  ".join(parts))
+            text = f"{tag}{tab_id}: level={'-' if score is None else f'{score:.4f}'}"
+            probs = self.tags.get(tab_id)
+            if probs is not None:
+                text += " " + " ".join(f"{n.lower()}={probs[self.classifier.index[n]]:.2f}" for n in LOGGED_CLASSES)
+                text += " top=" + ",".join(f"{n}:{p:.2f}" for n, p in self.classifier.top(probs, 3))
+            parts.append(text)
+        for part in parts:
+            log.info("  %s", part)
+
+    async def _classify_loop(self) -> None:
+        while True:
+            await asyncio.sleep(CLASSIFY_INTERVAL_S)
+            ready = [t for t, b in self.buffers.items() if len(b) >= CLASSIFY_WINDOW]
+            if not ready:
+                continue
+            batch = np.stack([self.buffers[t] for t in ready])
+            probs = await asyncio.to_thread(self.classifier.predict, batch)
+            for tab_id, p in zip(ready, probs):
+                self.tags[tab_id] = p
 
     async def _decide_loop(self) -> None:
         last_log = 0.0
@@ -105,12 +134,19 @@ class Server:
     async def run(self, host: str = HOST, port: int = PORT) -> None:
         async with serve(self._client, host, port):
             log.info("listening on ws://%s:%d", host, port)
-            await self._decide_loop()
+            loops = [self._decide_loop()]
+            if self.classifier is not None:
+                loops.append(self._classify_loop())
+            await asyncio.gather(*loops)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    from daemon.audio_classifier import AudioClassifier
+
+    classifier = AudioClassifier()
+    log.info("audio classifier ready on %s", classifier.device)
     try:
-        asyncio.run(Server().run())
+        asyncio.run(Server(classifier=classifier).run())
     except KeyboardInterrupt:
         pass
