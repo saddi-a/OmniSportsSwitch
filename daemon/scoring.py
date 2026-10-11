@@ -35,6 +35,8 @@ class Weights:
     cue_review_low: float = 0.10    # ...with no subject known
     cue_chance: float = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
     cue_minor: float = 0.10         # corner, free kick, flag, 4th down, big gain, added time, timeout...
+    cue_zone_far: float = 0.15      # American football: a goal-to-go / yard line cue with the ball ~10 yards from the end zone
+    cue_zone_near: float = 0.40     # ...and 1-3 yards from it (or a 4th down at the goal line); no distance read = cue_chance
     favourite: float = 0.4  # steady bonus per +1 of a favourite team's multiplier (x2 favourite = +0.4)
 
 
@@ -72,6 +74,8 @@ class Config:
     cue_support: float = 0.10      # crowd + surge + shouting + score change worth this much lift that cap
     cue_leverage_gain: float = 0.5  # a cue is worth x(1 + gain * leverage): up to x1.5 in a late close game, down to x0.5 in a late blowout
     cue_speech_window_s: float = 20.0   # commentary heard this recently tells what a bare review is about
+    cue_zone_near_yd: float = 3.0       # at this many yards from the end zone or closer a cue has its highest weight
+    cue_zone_far_yd: float = 10.0       # at this many or more it has its lowest
     anticipation_cooldown_s: float = 30.0   # the same cue is not reported again this soon
     anticipation_big_gain_yd: float = 20.0  # a "+NN YDS" graphic counts as a cue from this many yards
     anticipation_goal_yd: float = 10.0      # a yard line graphic counts as a cue up to this many yards, beside a down text

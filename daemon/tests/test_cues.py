@@ -116,3 +116,57 @@ def test_a_memory_with_no_subject_stays_empty():
     m = SpeechMemory(window_s=20.0)
     m.record(1, ["replay", "corner", "post"], "au ralenti", SOCCER, now=0.0)
     assert m.tier(1, 1.0) is None
+
+
+# ---- the distance to the end zone (American football): a graded chance cue --------------------------------------------------------------------------
+
+from daemon.cues import end_zone_factor, zone_weight        # noqa: E402
+from daemon.scoring import Config                           # noqa: E402
+
+
+def test_the_factor_is_highest_near_the_goal_line_and_lowest_around_the_ten():
+    cfg = Config()
+    assert end_zone_factor(1, 1, True, cfg) == 1.0
+    assert end_zone_factor(3, 2, True, cfg) == 1.0                    # 1 to 3 yards: the top
+    assert end_zone_factor(10, 1, True, cfg) == 0.0                   # around the 10: the bottom of the scale
+    assert end_zone_factor(25, 1, False, cfg) == 0.0
+    factors = [end_zone_factor(y, 1, True, cfg) for y in range(1, 12)]
+    assert factors == sorted(factors, reverse=True)                   # never rises with the distance
+    assert 0.0 < end_zone_factor(6, 1, True, cfg) < 1.0
+
+
+def test_the_fourth_down_at_the_goal_line_is_the_top_whatever_the_settings():
+    cfg = Config(cue_zone_near_yd=0.5)
+    assert end_zone_factor(1, 4, True, cfg) == 1.0
+    assert end_zone_factor(1, 3, True, cfg) < 1.0
+
+
+def test_an_unknown_distance_gives_none_so_the_caller_falls_back_to_the_plain_cue():
+    cfg = Config()
+    assert end_zone_factor(None, 1, True, cfg) is None
+    assert end_zone_factor(None, None, False, cfg) is None
+    assert end_zone_factor(-2, 1, True, cfg) is None                  # nonsense
+
+
+def test_the_zone_weight_runs_from_far_to_near_and_the_plain_cue_is_kept_without_a_distance():
+    w, cfg = Weights(), Config()
+    assert zone_weight("goal to go", None, w) == w.cue_chance                       # today's yes/no cue
+    assert zone_weight("goal to go", 1.0, w) == w.cue_zone_near
+    assert zone_weight("yard line", 0.0, w) == w.cue_zone_far
+    assert w.cue_zone_far < w.cue_chance < w.cue_zone_near
+    assert zone_weight("red zone", 0.5, w) == pytest.approx((w.cue_zone_far + w.cue_zone_near) / 2)
+    assert zone_weight("field goal", 1.0, w) == w.cue_chance                        # only the end-zone cues are graded
+    assert zone_weight("corner", 1.0, w) == w.cue_minor
+
+
+def test_the_strongest_end_zone_cue_alone_stays_under_the_minimum_score():
+    from daemon.scoring import Scorer
+    from daemon.tests.test_scoring import warm_up
+    s = Scorer(Config(confirm_s=0.0))
+    s.register(1, is_main=True)
+    s.register(2)
+    t = warm_up(s)
+    s.set_leverage(2, 1.0)
+    s.set_anticipation(2, t, zone_weight("goal to go", 1.0, s.config.weights))
+    c = s.components(2, t)
+    assert c["cue"] > 0 and c["score"] < s.config.min_score

@@ -16,6 +16,9 @@ CHANCE_CUES = frozenset({"red zone", "goal to go", "yard line", "field goal", "f
 PENALTY_KICK_CUES = frozenset({"penalty", "pénalty", "penalti", "pênalti"})   # a chance in soccer; in American football a flag (minor)
 AMERICAN_FOOTBALL = "american football"
 
+ZONE_CUES = frozenset({"goal to go", "yard line", "red zone"})   # the cues graded by the distance to the end zone (American football)
+GOAL_LINE_YD = 3.0   # a 4th down this close to the end zone is the strongest cue there is
+
 TIER_ORDER = ("top", "high", "mid")
 # Subject words on a banner (English, French, Spanish, Portuguese). Whole words, any case.
 _TOP = r"goal|but|buts|touchdown|td|gol|golo|red card|carton rouge|tarjeta roja|cart[aã]o vermelho|penalty|p[ée]nalty|penalti|p[êe]nalti"
@@ -89,9 +92,34 @@ class SpeechMemory:
         return next((tier for tier in TIER_ORDER if tier in recent), None)   # the highest: contradictory commentary counts for its biggest subject
 
 
-def cue_weight(cue: str, banner: str, speech_tier: str | None, sport: str | None, weights) -> float:
+def end_zone_factor(yards: float | None, down: int | None, goal_to_go: bool, cfg) -> float | None:
+    """0..1: how close to the end zone the ball is, from a distance in yards from ANY source (the scorebug's yard line graphic, the feed).
+    1.0 at `cfg.cue_zone_near_yd` yards or less (and for a 4th down within 3 yards of the goal line whatever the setting), 0.0 at
+    `cfg.cue_zone_far_yd` or more, linear between. None when the distance is not known: the caller keeps today's plain cue.
+    `goal_to_go` is informational (the feed knows it too): the factor depends on the distance and the 4th down only."""
+    if yards is None or yards < 0:
+        return None
+    if down == 4 and yards <= GOAL_LINE_YD:
+        return 1.0
+    near, far = cfg.cue_zone_near_yd, cfg.cue_zone_far_yd
+    if far <= near:
+        return 1.0 if yards <= near else 0.0
+    return min(max((far - yards) / (far - near), 0.0), 1.0)
+
+
+def zone_weight(cue: str, factor: float | None, weights) -> float:
+    """The weight of a chance cue; the end-zone cues run from `cue_zone_far` to `cue_zone_near` with the factor, or keep the plain
+    `cue_chance` when the distance is unknown (`factor` None)."""
+    if cue in ZONE_CUES and factor is not None:
+        return weights.cue_zone_far + (weights.cue_zone_near - weights.cue_zone_far) * factor
+    return weights.cue_chance if cue in ZONE_CUES or group_of(cue, None) == "chance" else weights.cue_minor
+
+
+def cue_weight(cue: str, banner: str, speech_tier: str | None, sport: str | None, weights, zone: float | None = None) -> float:
     """The weight of one cue (before leverage and the master scale). `banner` is the text on screen, `speech_tier` what `SpeechMemory.tier` says."""
     group = group_of(cue, sport)
+    if cue in ZONE_CUES and _is_american_football(sport):
+        return zone_weight(cue, zone, weights)   # `zone` = end_zone_factor(...) or None
     if group == "chance":
         return weights.cue_chance
     if group == "minor":

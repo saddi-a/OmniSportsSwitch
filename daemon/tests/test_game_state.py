@@ -928,3 +928,48 @@ def test_a_review_of_a_big_play_is_a_review_cue_not_a_big_play():
             plays.append(g.big_play)
         assert plays == ["", ""], text
         assert g.anticipation and g.anticipation_text, text
+
+
+# ---- the distance to the end zone read from the scorebug (American football) ----------------------------------------------------------------------------
+# tab 485660207 at 18:37:55 (boxes.log): '1st & GOAL' with no distance: the plain goal-to-go cue stays, no yard read.
+
+GOAL_LINE = ["2-2", "PHI| 14", "3-1", "JAX} 10", "Ath", "Ist & GOAL"]
+
+
+def yards_of(texts, sport="American football", clock="8:15"):
+    g = GameTracker(sport)
+    for i in range(3):
+        g.update(i * 2.0, list(texts), [clock])
+    return g
+
+
+def test_goal_to_go_with_no_distance_has_no_yards_and_keeps_the_plain_cue():
+    g = GameTracker("American football")
+    out = cues_over(g, 0, GOAL_LINE, "8:15")
+    assert [c for _, c in out] == ["goal to go"]
+    assert g.end_zone_yards is None and g.goal_to_go is True and g.down == 1
+
+
+def test_a_yard_line_graphic_beside_a_down_gives_the_distance():
+    g = yards_of(GOAL_LINE + ["5 YD"])
+    assert g.end_zone_yards == 5 and g.down == 1 and g.goal_to_go is True
+    g = yards_of(["PHI", "14", "JAX", "10", "3RD", "2nD & 7", "8 YDS"])
+    assert g.end_zone_yards == 8 and g.goal_to_go is False and g.down == 2
+
+
+def test_stats_are_not_read_as_a_position():
+    for extra in (["+22 YDS"], ["GAME LEADERS", "8 YDS"], ["TE", "85", "BRENTON STRANGE", "7 REC, 68 YDS", "8 YDS"], ["RECEIVER COMPARISON", "9 YDS"]):
+        assert yards_of(GOAL_LINE + extra).end_zone_yards is None, extra
+
+
+def test_no_position_without_a_down_text_and_not_in_other_sports():
+    assert yards_of(["PHI", "14", "JAX", "10", "5 YD"]).end_zone_yards is None
+    assert yards_of(GOAL_LINE + ["5 YD"], sport="football").end_zone_yards is None
+    assert yards_of(GOAL_LINE + ["45 YD"]).end_zone_yards is None          # beyond the red zone it says nothing about the end zone
+
+
+def test_the_fourth_down_is_read_and_the_distance_goes_away_with_the_graphic():
+    g = yards_of(["PHI", "14", "JAX", "10", "4TH & GOAL", "1 YD"])
+    assert g.down == 4 and g.end_zone_yards == 1
+    g.update(10.0, ["PHI", "14", "JAX", "10", "4TH & GOAL"], ["8:10"])
+    assert g.end_zone_yards is None

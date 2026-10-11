@@ -79,6 +79,10 @@ ANTICIPATION_CONFIRMATIONS = 2   # a cue must show on this many consecutive read
 FOURTH_DOWN_RE = re.compile(r"(4th|ath)\s*&\s*(\d{1,2}|goal|inches)", re.IGNORECASE)   # "Ath" is how OCR reads "4th"
 GOAL_DOWN_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*&\s*goal", re.IGNORECASE)
 YARDS_RE = re.compile(r"(\d{1,2})\s?yds?", re.IGNORECASE)
+DOWN_NUMBER_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*&\s*(\d{1,2}|goal|inches)", re.IGNORECASE)   # "Ist & GOAL", "2nD & 7"
+DOWN_OF_SUFFIX = {"st": 1, "sr": 1, "nd": 2, "rd": 3, "r0": 3, "th": 4}
+STAT_LINE_RE = re.compile(r"\d+\s?(rec|car|att|tds?)\b|\brec\b,?|\bcomp\b", re.IGNORECASE)   # "7 REC, 68 YDS": a stat line, not a position
+END_ZONE_MAX_YD = 25   # a yard line graphic beyond the red zone says nothing about the end zone
 GAIN_RE = re.compile(r"\+\s?(\d{1,3})\s?yds?", re.IGNORECASE)
 ADDED_TIME_RE = re.compile(r"\+\s?\d{1,2}")
 ADDED_TIME_MINUTES = (range(45, 51), range(90, 101))   # a "+3" beside a soccer clock reading these minutes is added time
@@ -176,6 +180,9 @@ class GameTracker:
         self._clock_replay_start: float | None = None   # when the clock replay in progress was detected
         self.anticipation: list[str] = []   # cues reported on this reading
         self.anticipation_text: dict[str, str] = {}   # ...and the banner text each came from (the subject of a review)
+        self.down: int | None = None            # American football: the down on the scorebug (1-4), else None
+        self.goal_to_go = False                 # ...and whether it says "& GOAL"
+        self.end_zone_yards: int | None = None  # ...and the distance to the end zone when a yard line graphic gives it (beside a down text)
         self._cue_texts: dict[str, str] = {}
         self._cue_hits: dict[str, int] = {}
         self._cue_at: dict[str, float] = {}
@@ -297,6 +304,7 @@ class GameTracker:
             since = self._last_clock_seen if self._last_clock_seen is not None else self._first_seen
             self.state = "break" if now - since > self.profile.no_clock_s else "live"
         self._note_hidden_scorebug(now, on_ad)
+        self._read_position(texts)
         self._note_anticipation(now, texts, on_ad)
         return self.state
 
@@ -397,6 +405,26 @@ class GameTracker:
                 found.append(cue)
                 self._cue_texts.setdefault(cue, t)
         return list(dict.fromkeys(found))
+
+    def _read_position(self, texts: list[str]) -> None:
+        """American football: the down, "& GOAL" and, when a yard line graphic ("5 YD") shows beside a down text, the distance to the end
+        zone. Nothing is read in a stats graphic (a stat line "7 REC, 68 YDS", GAME LEADERS...) or in other sports."""
+        self.down, self.goal_to_go, self.end_zone_yards = None, False, None
+        if self.sport != "american football":
+            return
+        items = [t.strip() for t in texts]
+        for t in items:
+            m = DOWN_NUMBER_RE.fullmatch(t)
+            if m:
+                self.down, self.goal_to_go = DOWN_OF_SUFFIX.get(m.group(1).casefold()), m.group(2).casefold() == "goal"
+                break
+        if self.down is None or any(STAT_GRAPHIC_RE.search(t) or STAT_LINE_RE.search(t) for t in items):
+            return
+        for t in items:
+            m = YARDS_RE.fullmatch(t)
+            if m and int(m.group(1)) <= END_ZONE_MAX_YD:
+                self.end_zone_yards = int(m.group(1))
+                break
 
     def _review_banner(self, text: str) -> str:
         """"var" or "review" when the text is a short review banner naming a subject (see REVIEW_BANNER_RE), else ""."""
