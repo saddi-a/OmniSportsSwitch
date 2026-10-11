@@ -16,6 +16,7 @@ Edge Manifest V3 extension in plain JavaScript, **no build step, no npm**. It do
 
 ## Things to know
 
+- **Page information.** Every 5 s the video reporter (`installVideoReporter` in `background.js`) also sends `info` with the video-area message: `document.title`, the media-session metadata, and up to 12 short visible texts near the top of the playing video (the player header). `offscreen.js` forwards it, `Server._page_info` stores it (`logs`: "page info tab ..."); it feeds the feed mapper when the popup has no teams, and `sport_from_title` reads its league words. Only strings of at most 120 characters leave the page, and only to the local daemon. Needs a **Reload extension** to take effect.
 - **Reloading the extension drops all tracking** (Edge requires a user click to start tab capture). The user must press "Track this tab" on every stream tab again. Tell them before asking for a reload, and never reload just to fix one tab (use `Ctrl+Shift+Y`).
 - `chrome.tabCapture.getMediaStreamId` needs a user gesture (a click or a keyboard command counts).
 - The page canvas cannot be captured (DRM). The daemon reads the screen instead, so the extension reports where the video sits on screen (`video-rect`) and nothing may cover it.

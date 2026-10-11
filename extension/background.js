@@ -75,6 +75,40 @@ async function pushState() {
 // (physical pixels), so the daemon knows which part of the screen to read. Reading position is not blocked by DRM.
 function installVideoReporter() {
   if (window.__omniReporter) return;
+  // What the page itself says about the game: the title, the browser's media-session data (many players fill it in), and the
+  // visible text near the top of the playing video (the player header, e.g. "LIVERPOOL / MANCHESTER CITY - Premier League").
+  // Plain page text is not blocked by DRM. Only short text strings leave the page, and only to the local daemon.
+  function pageInfo() {
+    const info = { title: document.title, media: null, texts: [] };
+    try {
+      const m = navigator.mediaSession && navigator.mediaSession.metadata;
+      if (m) info.media = { title: m.title, artist: m.artist, album: m.album };
+    } catch (e) {}
+    try {
+      const video = [...document.querySelectorAll("video")].find((v) => v.videoWidth > 0 && !v.paused);
+      if (video) {
+        const vr = video.getBoundingClientRect();
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        const seen = new Set();
+        let visited = 0;
+        while (walker.nextNode() && visited++ < 4000 && info.texts.length < 12) {
+          const text = walker.currentNode.nodeValue.trim().replace(/\s+/g, " ");
+          if (text.length < 3 || text.length > 120 || seen.has(text)) continue;
+          const el = walker.currentNode.parentElement;
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          if (r.top < vr.top - 80 || r.top > vr.top + vr.height * 0.45 || r.right < vr.left || r.left > vr.right) continue;
+          const style = getComputedStyle(el);
+          if (style.visibility === "hidden" || style.display === "none") continue;
+          seen.add(text);
+          info.texts.push(text);
+        }
+      }
+    } catch (e) {}
+    return info;
+  }
+  let tick = 0;
   window.__omniReporter = setInterval(() => {
     // Page order is kept (not sorted by size) so a tile keeps the same index while it stays on the page.
     const candidates = [...document.querySelectorAll("video")]
@@ -93,7 +127,8 @@ function installVideoReporter() {
       height: Math.round(r.height * dpr),
     }));
     chrome.runtime
-      .sendMessage({ type: "video-rect", rects, visible: document.visibilityState === "visible", fullscreen: !!document.fullscreenElement })
+      .sendMessage({ type: "video-rect", rects, visible: document.visibilityState === "visible", fullscreen: !!document.fullscreenElement,
+                    info: tick++ % 5 === 0 ? pageInfo() : undefined })
       .catch(() => {});
   }, 1000);
 }

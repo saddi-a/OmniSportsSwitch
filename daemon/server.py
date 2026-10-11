@@ -96,6 +96,7 @@ class Server:
         self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
         self.favourites: list[dict] = []            # user's favourite teams [{name, mult}]
         self.team_text: dict[int, str] = {}         # tab id -> teams typed in the popup
+        self.page_text: dict[int, str] = {}         # tab id -> what the page says about the game (media session, player header text)
         self.fav_seen: dict[tuple[int, int], tuple[float, float]] = {}  # (tab, video) -> (multiplier, when seen on screen)
         self.roles: dict[int, str] = {}             # tab id -> slot its window currently has
         self.allowed: dict[int, set[str] | None] = {}  # tab id -> slots it may use (None = any), as ticked on the tab
@@ -142,7 +143,7 @@ class Server:
                 self.favourites = msg["favourites"]
             self.team_text[tab_id] = msg.get("teams") or ""
             self.tab_titles[tab_id] = msg.get("title") or ""
-            self.feed_map.set_text(tab_id, self.team_text[tab_id])
+            self.feed_map.set_text(tab_id, self._feed_text(tab_id))
             self._update_favourite(tab_id, time.monotonic())
             status = msg.get("status", "auto")
             self.scorer.set_status(tab_id, None if status == "auto" else status)
@@ -161,6 +162,7 @@ class Server:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
             self.team_text.pop(msg["tab_id"], None)
+            self.page_text.pop(msg["tab_id"], None)
             self.feed_map.forget(msg["tab_id"])
             for key in [k for k in self.unconfirmed if k[0] == msg["tab_id"]]:
                 del self.unconfirmed[key]
@@ -184,6 +186,8 @@ class Server:
             if self.rects.get(tab_id) != info:
                 log.info("video area tab %s: %s", tab_id, info)
             self.rects[tab_id] = info
+            if isinstance(msg.get("info"), dict):
+                self._page_info(tab_id, msg["info"])
             self._check_expand(tab_id, info)
         elif kind == "set_weight":
             self.scorer.set_weight(msg["tab_id"], float(msg["weight"]))
@@ -405,6 +409,22 @@ class Server:
                         self.speech_cue_at[(tab_id, cue)] = now
                         log.info("speech cue %s tab %s: %s", cue, tab_id, text)
 
+    def _feed_text(self, tab_id: int) -> str:
+        """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says."""
+        return self.team_text.get(tab_id) or self.page_text.get(tab_id, "")
+
+    def _page_info(self, tab_id: int, info: dict) -> None:
+        """The page's own words about the game (title, media session, player header). Weak evidence: it feeds the team mapping when the
+        popup has no teams, and the sport by its league words. Every string is cut short."""
+        media = info.get("media") if isinstance(info.get("media"), dict) else {}
+        parts = [str(media.get(k) or "")[:120] for k in ("title", "artist", "album")]
+        parts += [str(t)[:120] for t in (info.get("texts") or [])[:12] if isinstance(t, str)]
+        text = " | ".join(p for p in parts if p)
+        if text != self.page_text.get(tab_id, ""):
+            self.page_text[tab_id] = text
+            log.info("page info tab %s: title=%r media=%r texts=%r", tab_id, str(info.get("title") or "")[:80], media, (info.get("texts") or [])[:12])
+            self.feed_map.set_text(tab_id, self._feed_text(tab_id))
+
     def _tab_sport(self, tab_id: int) -> str | None:
         """The sport of a tab, lowercase: the popup choice, else the first one detected on any of its tiles."""
         sport = self.sports.get(tab_id) or next((s for (t, _), s in self.sport_seen.items() if t == tab_id and s), None)
@@ -500,7 +520,7 @@ class Server:
             mapping = self.feed_map.mapping(tab_id, index)
             feed_sport = sport_from_feed(LEAGUES[mapping.league][0]) if mapping and mapping.league in LEAGUES else None
             # popup choice > hard cue > feed league > tab title (stage C) > league words on screen > remembered sport
-            sport, source = choose_sport(popup=self.sports.get(tab_id), hard=detected, feed=feed_sport, title=sport_from_title(self.tab_titles.get(tab_id)),
+            sport, source = choose_sport(popup=self.sports.get(tab_id), hard=detected, feed=feed_sport, title=sport_from_title(self.tab_titles.get(tab_id)) or sport_from_title(self.page_text.get(tab_id)),
                                          weak=det.weak_sport, memory=self.sport_memory.get(tab_id, now_wall))
             tracker.set_sport(sport)
             if source in ("hard", "feed"):   # only reliable sources are remembered
