@@ -391,6 +391,10 @@ class FeedSession:
         self.summary_at: dict[str, float] = {}
         self.summary_done: set[str] = set()
         self.messages: list[str] = []     # warnings for the log (league switched off, errors)
+        self.by_league: dict[str, list[Snapshot]] = {}   # the latest snapshots of each league
+
+    def games(self) -> list[Snapshot]:
+        return [s for snaps in list(self.by_league.values()) for s in snaps]
 
     def step(self, now: float, wall: datetime.datetime) -> list[Note]:
         self.poller.poll_s = max(self.config.feed_poll_s, 5.0)
@@ -407,6 +411,7 @@ class FeedSession:
                 continue
             snaps = parse_scoreboard(data, league)
             self.poller.done(league, now, snaps, utc)
+            self.by_league[league] = snaps
             found = self.tracker.update(snaps)
             notes += found
             if self.recorder:

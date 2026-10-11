@@ -30,6 +30,7 @@ from websockets.asyncio.server import serve
 from daemon.arrange import plan_fix, plan_swap
 from daemon.favourites import match_multiplier, match_slots
 from daemon.feed import FeedRecorder, FeedSession
+from daemon.feed_map import FeedMapper
 from daemon.logsetup import LOG_DIR
 from daemon.leverage import tab_leverage
 from daemon.game_state import GameTracker, combine
@@ -80,6 +81,7 @@ class Server:
         self.speech_cue_at: dict[tuple[int, str], float] = {}  # (tab, cue) -> when it was last logged
         self.settings = settings  # daemon.settings.Settings; the popup edits it live
         self.feed: FeedSession | None = None   # outside game data (measuring only); started by run() when feed_mode > 0
+        self.feed_map = FeedMapper()   # which feed game each tab/tile shows (measuring only)
         self.ui_clients = set()   # sockets of the popup: they get settings replies, not arrange commands
         self.classifier = classifier
         self.screen_reader = screen_reader
@@ -123,6 +125,7 @@ class Server:
             if isinstance(msg.get("favourites"), list):
                 self.favourites = msg["favourites"]
             self.team_text[tab_id] = msg.get("teams") or ""
+            self.feed_map.set_text(tab_id, self.team_text[tab_id])
             self._update_favourite(tab_id, time.monotonic())
             status = msg.get("status", "auto")
             self.scorer.set_status(tab_id, None if status == "auto" else status)
@@ -141,6 +144,7 @@ class Server:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
             self.team_text.pop(msg["tab_id"], None)
+            self.feed_map.forget(msg["tab_id"])
             self.digit_found = {k for k in self.digit_found if k[0] != msg["tab_id"]}
             self.zoom_found = {k for k in self.zoom_found if k[0] != msg["tab_id"]}
             for seen in (self.fav_seen, self.rule_seen, self.digit_try_at):
@@ -309,6 +313,10 @@ class Server:
             for message in self.feed.messages:
                 log.warning("%s", message)
             self.feed.messages.clear()
+            try:
+                self.feed_map.set_games(self.feed.games())
+            except Exception as e:   # mapping is measuring only too
+                log.warning("feed map update failed: %s: %s", type(e).__name__, e)
             for n in notes:
                 log.info("feed %s %s %s [%s] %s", n.kind, n.snap.league, n.snap.label, n.snap.display or n.snap.status,
                          f"{n.event.kind} {n.event.display} {n.event.team}: {n.event.text}" if n.event else n.text)
@@ -442,6 +450,8 @@ class Server:
             watcher = self.watchers.setdefault((tab_id, index), ScoreWatcher(self.scorer.config))
             changed = watcher.update(r["texts"], r["clocks"], now, r.get("items"), replay=tracker.replay,
                                      sport=self.sports.get(tab_id) or self.sport_seen.get((tab_id, index)))
+            for line in self.feed_map.observe(tab_id, index, r["texts"], watcher.score, r["clocks"]):
+                log.info("%s", line)
             if changed and per_tab[tab_id][-1] != "live":
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
             elif changed:
