@@ -25,6 +25,8 @@ classifier_target_rms = 0.0   # above 0: the sound is levelled to this normal lo
 classifier_max_gain = 8.0     # ...by at most this factor up or down
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event
+scorebug_hidden_s = 6.0   # measuring only: a scorebug missing this long is logged as 'scorebug hidden' (DAZN hides it in replays)
+scorebug_memory_s = 60.0  # ...if it was seen within this long before the gap
 replay_dampen = 0.3     # during a replay inside a live game, crowd noise and loudness count this much (the replay's old cheers)
 recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)
 audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)

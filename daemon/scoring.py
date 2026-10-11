@@ -60,6 +60,8 @@ class Config:
     lev_soccer_blowout: float = 3.0
     field_goal_strength: float = 0.6  # American football: a field goal or safety counts this much of a touchdown
     extra_point_s: float = 30.0  # an extra point / two-point conversion this soon after a touchdown is not a new event
+    scorebug_hidden_s: float = 6.0   # measuring only: a scorebug missing this long (seen a moment before) is logged as hidden
+    scorebug_memory_s: float = 60.0  # ...if it was seen within this long before; a later first sight of the gap is stale and not logged
     replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad

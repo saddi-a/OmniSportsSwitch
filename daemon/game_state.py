@@ -12,6 +12,8 @@ Rules (see PLAN.md):
 import re
 from dataclasses import dataclass
 
+from daemon.scoring import Config
+
 # A caption only counts when a whole OCR text item is exactly the keyword. Words inside a sentence do not
 # (an ad saying "ready for the half time?" must not mark the game as on a break).
 OVER_RE = re.compile(r"(FINA[LU1I](?:\s?[/|IlU1]?\s?\d?OT\d?)?|SCORE FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|MATCH TERMIN[EÉ]|TERMIN[EÉ]|COUP DE SIFFLET FINAL"
@@ -105,8 +107,9 @@ def has_scoreboard_text(texts: list[str], clocks: list[str]) -> bool:
 class GameTracker:
     """Follows one video area (a whole stream, or one multiview tile) over time."""
 
-    def __init__(self, sport: str | None = None):
+    def __init__(self, sport: str | None = None, config: Config | None = None):
         self.profile = profile_for(sport)
+        self.config = config or Config()   # shared with the scorer, so popup edits apply at once
         self.state = "live"          # optimistic until proven otherwise
         self._clock: str | None = None
         self._clock_changed_at: float | None = None
@@ -131,6 +134,10 @@ class GameTracker:
         self._replay_hits = 0
         self._replay_seen = float("-inf")
         self._scorebug_seen = float("-inf")
+        self.scorebug_note: tuple[str, float] | None = None   # set on the reading where a hidden scorebug is reported (measuring only)
+        self._gap_start: float | None = None   # when the scorebug was last seen before the current gap
+        self._gap_announced = False
+        self._gap_dead = False                 # the gap was an ad / break / stale: never reported
         self.big_play = ""   # set on the one reading where a new big-play banner appears (else "")
         self._big_play_at = float("-inf")
 
@@ -228,7 +235,32 @@ class GameTracker:
         else:
             since = self._last_clock_seen if self._last_clock_seen is not None else self._first_seen
             self.state = "break" if now - since > self.profile.no_clock_s else "live"
+        self._note_hidden_scorebug(now, on_ad)
         return self.state
+
+    def _note_hidden_scorebug(self, now: float, on_ad: bool) -> None:
+        """Measuring only (nothing reads the result but a log line): DAZN hides the scorebug during replays. Reports ("hidden", s) on the
+        reading where a scorebug seen a moment ago has been missing `scorebug_hidden_s`, then ("back", s) when it returns, or
+        ("cancelled", s) when an ad / break / the end ended the gap instead. Gaps of ads and breaks are never reported."""
+        cfg = self.config
+        self.scorebug_note = None
+        if self._scorebug_seen == now:   # the scorebug is on screen
+            if self._gap_announced:
+                self.scorebug_note = ("back", now - self._gap_start)
+            self._gap_start, self._gap_announced, self._gap_dead = None, False, False
+            return
+        if self._scorebug_seen == float("-inf") or self._gap_dead:
+            return
+        if self._gap_start is None:
+            self._gap_start = self._scorebug_seen
+        gap = now - self._gap_start
+        if on_ad or self.state != "live":
+            if self._gap_announced:
+                self.scorebug_note = ("cancelled", gap)
+            self._gap_announced, self._gap_dead = False, True
+        elif not self._gap_announced and cfg.scorebug_hidden_s <= gap <= cfg.scorebug_memory_s:
+            self._gap_announced = True
+            self.scorebug_note = ("hidden", gap)
 
 
 def combine(states: list[str]) -> str:
