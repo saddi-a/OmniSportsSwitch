@@ -114,6 +114,7 @@ class Server:
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
         self.cue_speech = SpeechMemory(self.scorer.config.cue_speech_window_s)   # review subjects the commentary named lately, per tab
         self.tab_titles: dict[int, str] = {}   # tab id -> page title sent by the extension (league words are weak evidence of the sport)
+        self.fed: dict[tuple[int, int], float] = {}   # (tab, tile) -> when a feed goal was counted there
         self.unconfirmed: dict[tuple[int, int], tuple[float, float]] = {}   # (tab, tile) -> (full strength, when): OCR score changes the feed has not confirmed
         self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
@@ -338,6 +339,11 @@ class Server:
                 full = self.unconfirmed.pop((tab_id, tile), None)
                 if full is not None:
                     self.scorer.set_event(tab_id, now, full[0])
+            weight = self.scorer.config.feed_event_weight   # 0 = the feed only logs; above 0 a released feed goal counts like a score change
+            for f in self.feed_gate.drain_fired():
+                if weight > 0:
+                    self.scorer.set_event(f.tab, now, f.strength * weight)
+                    self.fed[(f.tab, f.tile)] = now
             for key in [k for k, (_, at) in self.unconfirmed.items() if now - at > self.scorer.config.feed_confirm_s]:
                 del self.unconfirmed[key]
             for line in self.feed_gate.messages:
@@ -552,9 +558,12 @@ class Server:
                 if change.verdict == "ocr-only" and factor < 1.0:   # mapped game, no feed event first: counts less until the feed confirms
                     self.unconfirmed[(tab_id, index)] = (strength, now)
                     strength *= factor
-                self.event_at[(tab_id, index)] = now - (1.0 - strength) * self.scorer.config.event_s
-                self.scorer.set_event(tab_id, now, strength)
-                log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
+                if change.counted and self.scorer.config.feed_event_weight > 0:   # the feed already counted this goal
+                    log.info("score change tab %s tile %s counted by the feed already: %s", tab_id, index, r["texts"][:8])
+                else:
+                    self.event_at[(tab_id, index)] = now - (1.0 - strength) * self.scorer.config.event_s
+                    self.scorer.set_event(tab_id, now, strength)
+                    log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
         for tab_id, states in per_tab.items():
             self._update_favourite(tab_id, now)
             self.scorer.set_on_ad(tab_id, all(ads.get(tab_id, [False])), now)   # the whole tab is on an ad
