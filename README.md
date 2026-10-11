@@ -169,7 +169,7 @@ If a shortcut does nothing, check `edge://extensions/shortcuts`.
 
 ## How a swap is decided
 
-Every two seconds each stream gets a score: crowd noise, loudness above its own normal, a fresh score change, a favourite team's bonus, closeness and time left, minus commentary and music. A stream on an ad scores below zero. A challenger takes Main when it beats the stream there by 40% (and by a minimum gap), has a score high enough that loudness alone cannot do it, has qualified for two seconds, has been watched for 20 seconds, and the last swap is at least 20 seconds old. When Main shows an ad, a break or a finished game, any live stream without an ad takes over. Only Main is audible. Every number is a setting in the popup, with an explanation.
+Several times a second each stream gets a score: crowd noise, loudness above its own normal, a fresh score change, a favourite team's bonus, closeness and time left, minus commentary and music. A stream on an ad scores below zero. A challenger takes Main when it beats the stream there by 40% (and by a minimum gap), has a score high enough that loudness alone cannot do it, has qualified for two seconds, has been watched for 20 seconds, and the last swap is at least 20 seconds old. When Main shows an ad, a break or a finished game, any live stream without an ad takes over (not one that was on an ad in the last 30 seconds, unless Main's ad is certain, for example the player's ad placeholder; this stops Main hopping between streams that are all on commercials). Only Main is audible. The numbers that decide swaps are settings in the popup, with an explanation; a few constants of the scoreboard reader (for example how much taller than the team names a score digit must be) are in the code.
 
 ## Logs
 
@@ -202,6 +202,7 @@ Not committed: `.venv\`, `models\`, `logs\`, `samples\`, `dist\`, `build\`.
 - Tested mostly with DAZN, a few other sites, and American football, college football, basketball and soccer scoreboards, in English and French. Other layouts may need tuning of the scoreboard reader. Known weak spots: a scoreboard layout with a logo read as a digit (one expected-failure test), boards whose big digits OCR cannot read at all (the fallback covers some), and overtime scoreboards.
 - The screen layout (one main window and up to four others) is built in.
 - Audio capture ends whenever a page reloads; the tab then needs tracking again with `Ctrl+Shift+Y`.
+- Closeness and time left only count when the score and the quarter (or the soccer minute) can be read and the sport is known (American football, basketball, soccer); otherwise a game gets no bonus or penalty.
 - The first 20 seconds after the daemon starts, nothing swaps on sound (every stream is warming up); a certain ad on Main is still replaced.
 - Several things are only checked on the author's machine: a fresh `setup.ps1` run and the tray launcher's Start and Restart.
 
