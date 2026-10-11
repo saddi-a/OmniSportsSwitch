@@ -31,7 +31,7 @@ from daemon.arrange import plan_fix, plan_swap
 from daemon.favourites import match_multiplier, match_slots
 from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
-from daemon.feed_map import FeedMapper
+from daemon.feed_map import FeedMapper, parse_clock_s
 from daemon.logsetup import LOG_DIR
 from daemon.sport_choice import choose_sport, sport_from_feed
 from daemon.sport_detect import sport_from_title
@@ -345,13 +345,16 @@ class Server:
             self.feed_gate.messages.clear()
             try:
                 self.feed_map.set_games(self.feed.games())
+                self.feed_gate.sport_of.update({s.game_id: s.sport for s in self.feed.games()})
                 for game_id, situations in self.feed.situations().items():
                     self.feed_gate.set_situations(game_id, situations)
             except Exception as e:   # mapping is measuring only too
                 log.warning("feed map update failed: %s: %s", type(e).__name__, e)
             for n in notes:
                 if n.event is not None:
-                    self.feed_gate.add(n.event, n.snap)
+                    self.feed_gate.add(n.event, n.snap, now)
+                elif n.kind == "score":
+                    self.feed_gate.add_score(n.snap, n.before, now)
                 log.info("feed %s %s %s [%s] %s", n.kind, n.snap.league, n.snap.label, n.snap.display or n.snap.status,
                          f"{n.event.kind} {n.event.display} {n.event.team}: {n.event.text}" if n.event else n.text)
 
@@ -529,6 +532,13 @@ class Server:
             mapped = self.feed_map.mapping(tab_id, index)
             self.feed_gate.lead_s = self.scorer.config.feed_lead_s
             self.feed_gate.confirm_s = self.scorer.config.feed_confirm_s
+            self.feed_gate.field_goal_strength = self.scorer.config.field_goal_strength
+            self.feed_gate.big_play_strength = self.scorer.config.big_play_strength
+            clock_now = parse_clock_s(r["clocks"])
+            if mapped is not None and clock_now is not None:   # measuring only: the OCR score against the feed score at the stream clock
+                allowed = self.feed_map.allowed_scores(mapped.game_id, clock_now, tracker.period)
+                for line in self.feed_gate.referee(tab_id, index, watcher.score, allowed, tracker.replay, clock_now):
+                    log.info("%s", line)
             for line in self.feed_gate.observe(tab_id, index, mapped.game_id if mapped else None, r["clocks"], tracker.period, tracker.replay, now):
                 log.info("%s", line)
             if changed and per_tab[tab_id][-1] != "live":

@@ -18,7 +18,7 @@ from daemon import feed
 WINDOW = 10            # readings (with at least one candidate) remembered per tile
 MIN_HITS = 3           # readings in the window that must show the game's two teams
 MIN_OK = 2             # of those, readings whose score/clock fit the feed's timeline
-DROP_AFTER = 6         # readings in a row that disagree with the feed before a lock is dropped
+DROP_AFTER = 20        # readings in a row that disagree with the feed before a lock is dropped (the referee speaks at 10, first)
 SLACK_S = 90.0         # soccer: the score at the stream clock may come from the feed within this many seconds
 AHEAD_S = 120.0        # a stream cannot be ahead of the feed's clock by more than this
 NAME_PREFIXES = {"AS", "AC", "FC", "SS", "US", "SSC", "ACF", "CF", "RC", "SC", "AFC", "BSC", "FK", "SV", "VFB", "VFL", "TSG", "RB"}
@@ -104,7 +104,8 @@ class FeedMapper:
 
     def __init__(self) -> None:
         self.games: dict[str, feed.Snapshot] = {}
-        self.history: dict[str, list] = {}       # soccer game id -> [(clock_s, home_score, away_score)] as the feed showed them
+        self.history: dict[str, list] = {}       # game id -> [(elapsed_s, home_score, away_score)] as the feed showed them
+        self.sport_of: dict[str, str] = {}
         self.text: dict[int, str] = {}           # tab id -> teams typed in the popup
         self.tiles: dict[tuple, _Tile] = {}
 
@@ -112,10 +113,14 @@ class FeedMapper:
     def set_games(self, snaps: list[feed.Snapshot]) -> None:
         self.games = {s.game_id: s for s in snaps}
         for s in snaps:
-            if s.sport != "soccer" or s.state == "pre" or s.clock_s is None or s.home_score is None or s.away_score is None:
+            if s.state == "pre" or s.clock_s is None or s.home_score is None or s.away_score is None:
                 continue
+            elapsed = feed.game_elapsed_s(s.sport, s.period, s.clock_s)
+            if elapsed is None:
+                continue
+            self.sport_of[s.game_id] = s.sport
             rows = self.history.setdefault(s.game_id, [])
-            row = (s.clock_s, s.home_score, s.away_score)
+            row = (elapsed, s.home_score, s.away_score)
             if not rows or rows[-1][1:] != row[1:] or row[0] < rows[-1][0]:
                 rows.append(row)
 
@@ -130,6 +135,23 @@ class FeedMapper:
     def mapping(self, tab_id: int, tile: int) -> Mapping | None:
         t = self.tiles.get((tab_id, tile))
         return t.lock if t else None
+
+    def allowed_scores(self, game_id: str, clock_s: float, period: int | None, before_s: float = 8.0, after_s: float = 60.0):
+        """The scores the screen may show at this stream moment: the feed's score a few seconds before it, and every score the
+        feed reached up to `after_s` later (the feed notices a goal after the picture showed it, never before). None = the feed
+        recorded nothing for that moment (started later, no clock), so nobody can judge."""
+        rows = self.history.get(game_id)
+        sport = self.sport_of.get(game_id)
+        if not rows or sport is None:
+            return None
+        stream = clock_s if sport == "soccer" else feed.game_elapsed_s(sport, period, clock_s)
+        if stream is None:
+            return None
+        allowed = {r[1:] for r in rows if stream - before_s < r[0] <= stream + after_s}
+        earlier = [r for r in rows if r[0] <= stream - before_s]
+        if earlier:
+            allowed.add(earlier[-1][1:])
+        return allowed or None
 
     # -- the fit with the feed's timeline ---------------------------------------------------------------------------
     def fits(self, snap: feed.Snapshot, score: tuple | None, clock_s: float | None) -> bool | None:

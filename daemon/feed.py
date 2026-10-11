@@ -171,7 +171,9 @@ def _soccer_events(game_id: str, details: list, teams: dict) -> tuple:
         clock = d.get("clock") or {}
         team_id = str((d.get("team") or {}).get("id", ""))
         text = (d.get("type") or {}).get("text", "")
-        events.append(FeedEvent(game_id, (game_id, text, clock.get("value"), team_id), _soccer_kind(d), None,
+        kind = _soccer_kind(d)
+        family = "goal" if kind in ("goal", "own goal", "penalty goal") else kind   # the text grows ("Goal - Volley"), the goal stays
+        events.append(FeedEvent(game_id, (game_id, family, clock.get("value"), team_id), kind, None,
                                 _float(clock.get("value")), clock.get("displayValue", ""),
                                 teams[team_id].abbr if team_id in teams else "", text))
     return tuple(events)
@@ -275,6 +277,7 @@ class Note:
     snap: Snapshot
     text: str
     event: FeedEvent | None = None
+    before: tuple | None = None     # score notes: (home, away) before the change
 
 
 class FeedTracker:
@@ -294,7 +297,8 @@ class FeedTracker:
                 self.seen.update(e.key for e in s.events)
             else:
                 if (s.home_score, s.away_score) != (before.home_score, before.away_score):
-                    notes.append(Note("score", s, f"{before.home_score}-{before.away_score} -> {s.home_score}-{s.away_score}"))
+                    notes.append(Note("score", s, f"{before.home_score}-{before.away_score} -> {s.home_score}-{s.away_score}", None,
+                                      (before.home_score, before.away_score)))
                 if (s.state, s.status) != (before.state, before.status):
                     notes.append(Note("status", s, f"{before.status} -> {s.status}"))
                 for e in s.events:

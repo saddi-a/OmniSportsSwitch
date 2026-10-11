@@ -97,7 +97,7 @@ def test_unconfirmed_would_fire_is_reported_once_after_the_window():
     see(g, snap, "52:55", 1)
     see(g, snap, "52:56", 2)
     lines = see(g, snap, "60:00", 2 + CONFIRM_S + 1)
-    assert len(lines) == 1 and "unconfirmed" in lines[0]
+    assert len(lines) == 1 and "feed-only" in lines[0]
     assert see(g, snap, "60:05", 2 + CONFIRM_S + 2) == []
 
 

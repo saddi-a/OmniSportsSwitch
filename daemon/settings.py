@@ -167,6 +167,7 @@ LAYOUT = [
         ("scoring.feed_summary_s", "Football plays every (s, 0 = off)", "American football: the plays of each live game are fetched this often."),
         ("scoring.feed_unconfirmed_factor", "Unconfirmed score change counts (x)", "A score change read from the screen on a game the feed knows, that no feed event came before, counts this much (1.0 = off) until the feed confirms it."),
         ("scoring.feed_confirm_s", "Feed confirms within (s)", "How long the feed has, after a score change read from the screen, to confirm it before it stays at the reduced strength."),
+        ("scoring.feed_event_weight", "Feed goal counts (x, 0 = log only)", "A goal or touchdown of the feed, released when the stream clock is shortly before it, counts this much of a screen goal in the scorer. 0 = it is only written to the log."),
         ("scoring.feed_lead_s", "Shadow lead (s)", "Measuring only: a feed event is logged as \"would fire\" when the stream's clock is this many seconds before it."),
     ]),
     ("Manual control", [

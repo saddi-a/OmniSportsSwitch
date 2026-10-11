@@ -35,6 +35,7 @@ feed_idle_poll_s = 120.0  # a league with nothing live or starting soon is asked
 feed_summary_s = 10.0   # American football: the plays of each live game are fetched this often; 0 = off
 feed_unconfirmed_factor = 0.5  # BOTH mode: an OCR score change on a mapped game that no feed event preceded counts this much until the feed confirms it (1.0 = off)
 feed_confirm_s = 30.0   # ...and the feed has this long after the OCR change to confirm it
+feed_event_weight = 0.0  # a feed goal/touchdown on a mapped game counts this much of its strength (0 = only logged, 1 = full)
 feed_lead_s = 10.0      # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event
