@@ -2,9 +2,9 @@
 
 An automated "live broadcast director" for people who watch several sports streams at once.
 
-You open your streams in separate Edge windows (one per screen slot). OmniSportsSwitch listens to every stream, reads the scoreboards on screen, and automatically moves the most exciting game into the big centre window (`MAIN`). Everything runs locally on your PC: no accounts, no cloud, no API keys.
+You open your streams in separate Edge windows (one per screen slot). OmniSportsSwitch listens to every stream, reads the scoreboards on screen, and automatically moves the most exciting game into the big centre window (Main). Everything runs locally on your PC: no accounts, no cloud, no API keys.
 
-> Status: personal project, working but still being tested live. It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites). Expect rough edges.
+> Status: personal project, working and under live testing (about 280 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
 
 ## How it works
 
@@ -17,11 +17,12 @@ Two parts talk over a local WebSocket (`ws://127.0.0.1:8765`):
 
 What the daemon looks at:
 
-- **Crowd noise** and sudden loudness (a roar means something happened).
-- **Score changes** read from the scoreboard (a goal, a touchdown), and **big-play banners** ("TOUCHDOWN", "GOAL"...).
-- **Game state**: live, break, or over (from the clock, the scoreboard and the picture).
-- **Commercials**: a stream on an ad gets a negative score and is never promoted. A broadcast on an ad in `MAIN` is replaced.
-- **Your preferences**: favourite teams (kept on `MAIN` unless something exciting happens elsewhere), per-sport weights, per-tab weights, and slots a team or tab may or may not use.
+- **Crowd noise** and sudden loudness (a roar means something happened), measured against each stream's own normal level.
+- **Score changes** read from the scoreboard (a touchdown, a goal, a basket) and **big-play banners** ("TAKEAWAY", "RED CARD"...). Scoreboards whose big digits the normal reading misses are read by a fallback that looks right beside the team names.
+- **Game state**: live, break, or over, from the clock, the scoreboard (down and distance, quarter, overtime), captions such as FINAL or HALF TIME, and the picture.
+- **Commercials**: a stream on an ad (a placeholder in the picture, an ad countdown, or music-only sound) gets a negative score and is never promoted. A stream in `Main` that shows an ad is replaced by a live one.
+- **Closeness and time left**: a late, close game is worth more than a blowout.
+- **Your preferences**: favourite teams (kept on Main unless something exciting happens elsewhere), per-sport weights, per-tab weights, and windows a team or tab may or may not use.
 
 Other features: freeze Main with a hotkey, **Make Main** to force a stream there for a while, DAZN multiview support (it clicks the right tile), window names remembered across restarts, sport detected from the picture, close and late games valued above blowouts, every setting editable in the popup, permanent logs.
 
@@ -31,7 +32,7 @@ The daemon understands English and French scoreboards and banners.
 
 - Windows 11 and Microsoft Edge.
 - An NVIDIA GPU with a recent driver (audio classification and OCR use CUDA).
-- Python 3.12.
+- Python 3.10 to 3.13 (3.12 is what it was built with).
 - Edge **hardware acceleration must be OFF** (`edge://settings/system`). Streaming sites protect their video, so the daemon reads the screen instead. With acceleration on, the screen capture comes out black.
 - No other window may cover a stream, because the daemon reads what is on screen.
 
@@ -127,6 +128,7 @@ After a page reloads (for example switching a DAZN tab between single view and m
 | What changed | What to do |
 |---|---|
 | You edited daemon code or pulled new code | `scripts\stop_all.ps1`, then `scripts\start_all.ps1`. The streams reconnect by themselves. For about 20 seconds after the start nothing swaps (the streams are warming up). |
+| You use the tray launcher | Right-click its tray icon, **Restart daemon**. |
 | You changed a setting in the popup | Nothing, it applies at once. |
 | You edited `extension\` files | In the popup, press **Reload extension**, then track every tab again (Edge requires the click). |
 | The popup says the daemon is not running | Start it: `scripts\start_all.ps1`. |
@@ -165,6 +167,10 @@ If a shortcut does nothing, check `edge://extensions/shortcuts`.
 - Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running). Changed values are shown in bold, the arrow button puts one back to its default, and "Reset all" restores everything. The values are kept in `settings.local.json` (not committed), layered on top of the defaults in `settings.toml`.
 - Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed windows per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
 
+## How a swap is decided
+
+Every two seconds each stream gets a score: crowd noise, loudness above its own normal, a fresh score change, a favourite team's bonus, closeness and time left, minus commentary and music. A stream on an ad scores below zero. A challenger takes Main when it beats the stream there by 40% (and by a minimum gap), has a score high enough that loudness alone cannot do it, has qualified for two seconds, has been watched for 20 seconds, and the last swap is at least 20 seconds old. When Main shows an ad, a break or a finished game, any live stream without an ad takes over. Only Main is audible. Every number is a setting in the popup, with an explanation.
+
 ## Logs
 
 In `logs/` (not committed): `events.log` (goals, swaps and why, game states, warnings), `daemon.log` (everything, including the OCR text of each video area), `boxes.log` (sizes and positions of OCR items, for tuning).
@@ -172,16 +178,32 @@ In `logs/` (not committed): `events.log` (goals, swaps and why, game states, war
 ## Tests
 
 ```powershell
-.venv\Scripts\python -m pytest daemon\tests -q
+.venv\Scripts\python -m pytest daemon -q
 ```
 
-One test is an expected failure on purpose (a scoreboard layout the reader still gets wrong).
+About 280 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
+
+## What is where
+
+| Folder | What it holds |
+|---|---|
+| `daemon/` | The Python daemon: the server, the scorer, the scoreboard reader, game state, settings, and the tests with real scoreboard fixtures. |
+| `extension/` | The Edge extension (plain JavaScript, no build step). |
+| `launcher/` | The tray launcher, built into `dist\OmniSportsSwitch.exe`. |
+| `scripts/` | Setup, start, stop, build and sample-capture scripts. |
+| `settings.toml` | The default value of every setting (your changes in the popup are kept separately, in `settings.local.json`). |
+| `PLAN.md`, `CLAUDE.md` | The design and hand-over notes, and guidance for AI coding assistants. |
+
+Not committed: `.venv\`, `models\`, `logs\`, `samples\`, `dist\`, `build\`.
 
 ## Limits worth knowing
 
-- Tested mostly with DAZN, a few other sites, and American football, college football, basketball and football (soccer) scoreboards. Other layouts may need tuning of the scoreboard reader.
-- The screen layout (three monitors, five slots) is currently built in.
-- Audio capture ends whenever a page reloads; the tab then needs tracking again.
+- Windows 11 and Edge only, and an NVIDIA GPU. The streams are read from the screen, so no window may cover them and hardware acceleration must stay off.
+- Tested mostly with DAZN, a few other sites, and American football, college football, basketball and soccer scoreboards, in English and French. Other layouts may need tuning of the scoreboard reader. Known weak spots: a scoreboard layout with a logo read as a digit (one expected-failure test), boards whose big digits OCR cannot read at all (the fallback covers some), and overtime scoreboards.
+- The screen layout (one main window and up to four others) is built in.
+- Audio capture ends whenever a page reloads; the tab then needs tracking again with `Ctrl+Shift+Y`.
+- The first 20 seconds after the daemon starts, nothing swaps on sound (every stream is warming up); a certain ad on Main is still replaced.
+- Several things are only checked on the author's machine: a fresh `setup.ps1` run and the tray launcher's Start and Restart.
 
 ## Project notes
 
