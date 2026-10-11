@@ -82,6 +82,12 @@ YARDS_RE = re.compile(r"(\d{1,2})\s?yds?", re.IGNORECASE)
 DOWN_NUMBER_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*&\s*(\d{1,2}|goal|inches)", re.IGNORECASE)   # "Ist & GOAL", "2nD & 7"
 DOWN_OF_SUFFIX = {"st": 1, "sr": 1, "nd": 2, "rd": 3, "r0": 3, "th": 4}
 STAT_LINE_RE = re.compile(r"\d+\s?(rec|car|att|tds?)\b|\brec\b,?|\bcomp\b", re.IGNORECASE)   # "7 REC, 68 YDS": a stat line, not a position
+GOAL_WORD_RE = re.compile(r"go{1,4}a{1,2}l|but|gol|golo|gool", re.IGNORECASE)   # a whole item: "GOAL", "BUT !", "GOL" (letters only)
+GOAL_PAIR_RE = re.compile(r"go{0,3}a{1,2}l", re.IGNORECASE)   # two items side by side that OCR broke GOAL into: "G" + "AL"
+GOAL_LONE = {"al", "oal", "goa", "gal"}   # what is left of the banner when it hides the first team code
+GOAL_BANNER_COOLDOWN_S = 30.0
+NOT_TEAM_CODES = {"LIVE", "MORE", "NEWS", "HOME", "PLAY", "FREE", "SHOP", "VOIR", "PLUS", "AVEC", "POUR", "DAZN", "BEIN", "WATCH", "FULL", "TIME", "HALF", "STAT", "STATS"}
+CODE_PAIR_MEMORY_S = 10.0   # two team codes read together this recently mean a scorebug is on screen
 END_ZONE_MAX_YD = 25   # a yard line graphic beyond the red zone says nothing about the end zone
 GAIN_RE = re.compile(r"\+\s?(\d{1,3})\s?yds?", re.IGNORECASE)
 ADDED_TIME_RE = re.compile(r"\+\s?\d{1,2}")
@@ -180,6 +186,9 @@ class GameTracker:
         self._clock_replay_start: float | None = None   # when the clock replay in progress was detected
         self.anticipation: list[str] = []   # cues reported on this reading
         self.anticipation_text: dict[str, str] = {}   # ...and the banner text each came from (the subject of a review)
+        self.goal_banner = ""                    # soccer: set on the one reading where a GOAL banner shows (see _read_goal_banner)
+        self._goal_banner_at = float("-inf")
+        self._code_pair: tuple[frozenset, float] | None = None   # the two team codes of the scorebug and when they were last read
         self.down: int | None = None            # American football: the down on the scorebug (1-4), else None
         self.goal_to_go = False                 # ...and whether it says "& GOAL"
         self.end_zone_yards: int | None = None  # ...and the distance to the end zone when a yard line graphic gives it (beside a down text)
@@ -305,6 +314,7 @@ class GameTracker:
             self.state = "break" if now - since > self.profile.no_clock_s else "live"
         self._note_hidden_scorebug(now, on_ad)
         self._read_position(texts)
+        self._read_goal_banner(now, texts, on_ad)
         self._note_anticipation(now, texts, on_ad)
         return self.state
 
@@ -405,6 +415,37 @@ class GameTracker:
                 found.append(cue)
                 self._cue_texts.setdefault(cue, t)
         return list(dict.fromkeys(found))
+
+    def _read_goal_banner(self, now: float, texts: list[str], on_ad: bool) -> None:
+        """Soccer: the GOAL banner an operator flashes in the place of the scorebug's team code and digits, for one or two readings, often
+        before the score changes ("GOAL", "BUT", "GOL", "GOLO", broken as "G" + "AL", or just "AL" left of the second team code).
+        It needs a scorebug in sight (two team codes now, or two seen in the last `CODE_PAIR_MEMORY_S`), a live game, no stats graphic, and
+        is not repeated for `GOAL_BANNER_COOLDOWN_S`. Not in other sports, nor in "GOAL TO GO", "FIELD GOAL", "GOALS", "Goal kick"
+        (those are other whole items)."""
+        self.goal_banner = ""
+        items = [t.strip() for t in texts]
+        codes = {t for t in items if TEAM_CODE_RE.fullmatch(t) and t not in NOT_TEAM_CODES and not GOAL_WORD_RE.fullmatch(t)}
+        previous = self._code_pair
+        if len(codes) >= 2:
+            self._code_pair = (frozenset(codes), now)
+        if self.sport != "football" or on_ad or self.state != "live" or now - self._goal_banner_at < GOAL_BANNER_COOLDOWN_S:
+            return
+        if any(STAT_GRAPHIC_RE.search(t) for t in items):
+            return
+        recent_pair = previous is not None and now - previous[1] <= CODE_PAIR_MEMORY_S
+        if len(codes) < 2 and not (recent_pair and codes & previous[0]):
+            return   # no scorebug in sight: two team codes, or one of the two seen a moment ago
+        letters = [re.sub(r"[^A-Za-z]", "", t) for t in items]
+        hit = next((t for t in letters if GOAL_WORD_RE.fullmatch(t)), "")
+        if not hit:
+            for a, b in zip(letters, letters[1:]):
+                if 1 <= len(a) <= 3 and 1 <= len(b) <= 3 and len(a + b) >= 3 and GOAL_PAIR_RE.fullmatch(a + b):
+                    hit = (a + b).upper()
+                    break
+        if not hit and recent_pair and len(codes) == 1 and next(iter(codes)) in previous[0]:
+            hit = next((t.upper() for t in letters if t.casefold() in GOAL_LONE), "")   # the banner hides the other team code
+        if hit:
+            self.goal_banner, self._goal_banner_at = hit, now
 
     def _read_position(self, texts: list[str]) -> None:
         """American football: the down, "& GOAL" and, when a yard line graphic ("5 YD") shows beside a down text, the distance to the end
