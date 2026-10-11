@@ -114,7 +114,7 @@ scripts\build_launcher.ps1
 | You want to | Do this |
 |---|---|
 | Keep Main where it is | `Ctrl+Shift+P` (or the popup's Freeze button). While frozen, the winning stream goes to Window 2 instead. Press again to resume. |
-| Put a stream on Main yourself | Popup, on that stream's block: **Make Main**. It stays on Main for the hold time (10 minutes by default, set in Settings), unless something really exciting happens elsewhere. A yellow bar at the top of the popup shows the time left and a **Release** button. |
+| Put a stream on Main yourself | Popup, on that stream's block: **Make Main**. It stays on Main for the hold time (60 seconds by default, set in Settings), unless something really exciting happens elsewhere. A yellow bar at the top of the popup shows the time left and a **Release** button. |
 | Stop a stream from taking Main | Untick **Main** in its "Allowed in" boxes (per tab) or in the team's boxes (per team). |
 | Prefer a team | Popup, Priorities, Teams: add the team with a multiplier (2 = twice as much). Favourites stay on Main unless something exciting happens elsewhere. |
 | Tell the daemon a game is over or on a break | Per tab: Status = Over or Break (Auto reads it from the picture). |

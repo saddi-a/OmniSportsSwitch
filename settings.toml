@@ -32,7 +32,7 @@ lev_basketball_close = 6.0
 lev_basketball_blowout = 20.0
 lev_soccer_close = 1.0
 lev_soccer_blowout = 3.0
-manual_hold_s = 600.0   # "Make Main" in the popup holds the stream on MAIN this long (seconds)
+manual_hold_s = 60.0    # "Make Main" in the popup holds the stream on MAIN this long (seconds)
 hold_over_s = 60.0     # a held stream whose game has looked over for this long loses the hold
 hold_break_score = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
 

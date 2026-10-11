@@ -46,7 +46,7 @@ class Config:
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
-    manual_hold_s: float = 600.0   # "Make Main" from the popup holds the stream on MAIN this long
+    manual_hold_s: float = 60.0    # "Make Main" from the popup holds the stream on MAIN this long
     hold_over_s: float = 60.0      # a held stream whose game has looked over for this long loses the hold
     hold_break_score: float = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
     leverage_weight: float = 0.3      # closeness / time left: a late close game adds up to this to its score, a late blowout takes it away
