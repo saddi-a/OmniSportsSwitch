@@ -670,3 +670,112 @@ def test_the_thresholds_are_settings():
     g = GameTracker("football", Config(scorebug_hidden_s=2.0))
     notes(g, 0, 20, BUG, lambda t: ticking(t + 600))
     assert [n[0] for _, n in notes(g, 20, 6, ["DA", "ZN"])] == ["hidden"]
+
+
+# ---- anticipation cues (measure only): banners and graphics that come just before a likely score ----------------------
+
+SCORE = ["TEXAS", "7", "14", "OKLAHOMA"]   # scoreboard text beside the clock (a clock alone is an ad countdown)
+
+
+def cues_over(g, start, texts, clock=None, readings=4, step=2.0):
+    """Feed identical readings; returns [(reading index, cue)] for every cue reported."""
+    out = []
+    for i in range(readings):
+        g.update(start + i * step, list(texts), [clock] if clock else [])
+        out += [(i, c) for c in g.anticipation]
+    return out
+
+
+def test_a_goal_to_go_banner_is_a_cue_once_it_is_confirmed_on_two_readings():
+    g = GameTracker("American football")
+    assert cues_over(g, 0, ["GOAL TO GO", "TEXAS", "7", "OKLAHOMA"], "8:41") == [(1, "goal to go")]   # not on the first reading, once
+
+
+def test_a_goal_down_text_is_the_same_cue():
+    g = GameTracker("American football")
+    assert [c for _, c in cues_over(g, 0, ["1st & GOAL", "TEXAS"], "8:41")] == ["goal to go"]
+
+
+def test_fourth_down_even_as_ocr_mangles_it():
+    for text in ("4th & 3", "Ath & 3", "4TH & GOAL"):
+        g = GameTracker("American football")
+        assert "4th down" in [c for _, c in cues_over(g, 0, [text, "TEXAS"], "8:41")], text
+
+
+def test_stat_labels_are_not_cues():
+    for text in ("4th DOWN CONVERSIONS", "3rd & 4", "FIELD GOALS 2/3", "Penalty box analysis tonight"):
+        g = GameTracker("American football")
+        assert cues_over(g, 0, [text, "TEXAS"], "8:41") == [], text
+
+
+def test_english_and_french_banners():
+    for text, cue in (("FIELD GOAL", "field goal"), ("TWO-MINUTE WARNING", "two-minute warning"), ("UNDER REVIEW", "under review"),
+                      ("FLAG", "flag"), ("PENALTY", "penalty"), ("VAR CHECK", "var check"), ("VAR", "var"), ("FREE KICK", "free kick"),
+                      ("CORNER", "corner"), ("COUP FRANC", "coup franc"), ("TIR AU BUT", "tir au but"), ("PÉNALTY", "pénalty"),
+                      ("PENALTY SHOOTOUT", "penalty shootout"), ("RED ZONE", "red zone"), ("CHALLENGE", "challenge")):
+        g = GameTracker("football")
+        assert [c for _, c in cues_over(g, 0, [text, "PSG", "0", "LYON"], "30:00")] == [cue], text
+
+
+def test_basketball_banners():
+    for text, cue in (("TECHNICAL FOUL", "technical foul"), ("FLAGRANT FOUL", "flagrant foul"), ("BUZZER BEATER", "buzzer beater"),
+                      ("FREE THROWS", "free throws"), ("TIMEOUT", "timeout"), ("LANCERS FRANCS", "lancers francs"), ("TEMPS MORT", "temps mort")):
+        g = GameTracker("basketball")
+        assert [c for _, c in cues_over(g, 0, [text, "LAL", "55", "50", "BOS"], "5:30")] == [cue], text
+    g = GameTracker("basketball")
+    assert cues_over(g, 0, ["TIMEOUTS", "LAL", "55", "50", "BOS"], "5:30") == []    # a stat label
+
+
+def test_a_red_card_or_penalty_kick_is_a_big_play_not_also_a_cue():
+    for text in ("RED CARD", "PENALTY KICK", "CARTON ROUGE"):
+        g = GameTracker("football")
+        assert cues_over(g, 0, [text, "PSG"], "30:00") == [], text
+
+
+def test_the_same_cue_counts_again_only_after_its_cooldown():
+    g = GameTracker("football")
+    assert len(cues_over(g, 0, ["CORNER"] + SCORE, "30:00", readings=8)) == 1       # lingering for 16 s
+    assert len(cues_over(g, 40, ["CORNER"] + SCORE, "30:40", readings=4)) == 1      # more than 30 s after the first
+
+
+def test_two_different_cues_do_not_share_a_cooldown():
+    g = GameTracker("football")
+    assert [c for _, c in cues_over(g, 0, ["CORNER", "VAR"] + SCORE, "30:00")] == ["corner", "var"]
+
+
+def test_no_cues_during_an_ad_a_break_or_a_replay():
+    g = GameTracker("football")
+    assert cues_over(g, 0, ["COMMERCIAL BREAK IN PROGRESS", "CORNER"], "0:30") == []
+    g = GameTracker("football")
+    assert cues_over(g, 0, ["HALFTIME", "CORNER"], "45:00") == []
+    g = GameTracker("football")
+    feed(g, 0, ["PSG", "1", "0", "LYON"], "30:00")
+    assert cues_over(g, 6, ["REPLAY", "CORNER", "PSG", "1", "0", "LYON"], "30:06") == []
+
+
+def test_added_time_next_to_the_clock_after_45_or_90():
+    for clock in ("45:50", "46:02", "90:30", "93:10"):
+        g = GameTracker("football")
+        assert [c for _, c in cues_over(g, 0, ["+3", "PSG", "0", "LYON"], clock)] == ["added time"], clock
+    g = GameTracker("football")
+    assert cues_over(g, 0, ["+3", "PSG", "0", "LYON"], "20:00") == []
+
+
+def test_big_gain_graphics_and_the_yard_line_need_the_threshold():
+    g = GameTracker("American football")
+    assert [c for _, c in cues_over(g, 0, ["+35 YDS"] + SCORE, "8:41")] == ["big gain"]
+    g = GameTracker("American football")
+    assert cues_over(g, 0, ["+5 YDS"] + SCORE, "8:41") == []
+    g = GameTracker("American football")
+    assert [c for _, c in cues_over(g, 0, ["4 YD", "2nd & 4"] + SCORE, "8:41")] == ["yard line"]
+    g = GameTracker("American football")
+    assert cues_over(g, 0, ["4 YD"] + SCORE, "8:41") == []        # no down text: not a scorebug
+    g = GameTracker("American football")
+    assert cues_over(g, 0, ["25 YD", "2nd & 4"] + SCORE, "8:41") == []
+
+
+def test_the_cue_thresholds_are_settings():
+    g = GameTracker("American football", Config(anticipation_big_gain_yd=50.0, anticipation_cooldown_s=5.0))
+    assert cues_over(g, 0, ["+35 YDS"] + SCORE, "8:41") == []
+    g = GameTracker("football", Config(anticipation_cooldown_s=5.0))
+    assert len(cues_over(g, 0, ["CORNER"] + SCORE, "30:00", readings=8)) == 3   # cooldown 5 s: at 2, 8 and 14 s

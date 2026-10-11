@@ -25,6 +25,10 @@ classifier_target_rms = 0.0   # above 0: the sound is levelled to this normal lo
 classifier_max_gain = 8.0     # ...by at most this factor up or down
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event
+anticipation_s = 18.0       # a cue boosts a stream this long (fading)
+anticipation_cooldown_s = 30.0   # the same cue is not reported again this soon
+anticipation_big_gain_yd = 20.0  # a "+NN YDS" graphic is a cue from this many yards
+anticipation_goal_yd = 10.0      # a yard line graphic (beside a down text) is a cue up to this many yards
 scorebug_hidden_s = 6.0   # measuring only: a scorebug missing this long is logged as 'scorebug hidden' (DAZN hides it in replays)
 scorebug_memory_s = 60.0  # ...if it was seen within this long before the gap
 replay_dampen = 0.3     # during a replay inside a live game, crowd noise and loudness count this much (the replay's old cheers)
@@ -50,6 +54,7 @@ crowd = 1.0          # cheering / crowd / applause sound
 speech = -0.2        # commentary (negative: talking is not excitement)
 music = -0.5         # music, ads and jingles (negative)
 event = 0.8          # a fresh goal / touchdown read from the scoreboard
+anticipation = 0.0   # a banner before a likely score (red zone, VAR, corner...), 0 = off; only logged until switched on (try 0.15)
 shout = 0.0          # shouting / yelling / screaming (0 = off; try 0.2 after checking it on live games)
 favourite = 0.4      # steady bonus per +1 of a favourite team's multiplier (x2 team = +0.4)
 
@@ -73,6 +78,7 @@ big_play_words = ["takeaway", "interception", "intercepted", "fumble", "sack", "
 
 # Banners of a replay (English, French, Spanish, Portuguese), same rule: the text must be just that phrase. A replay over a live
 # scorebug has its crowd noise dampened and its graphics ignored; a replay with no scorebug (studio show) counts as a break.
+anticipation_words = ["red zone", "goal to go", "two minute warning", "two-minute warning", "field goal", "field goal attempt", "penalty", "flag", "flag on the play", "review", "under review", "replay review", "challenge", "big play", "var", "var check", "free kick", "corner", "corner kick", "penalty shootout", "avertissement de deux minutes", "tir de placement", "pénalité", "pénalty", "drapeau", "révision", "contestation", "assistance vidéo", "coup franc", "tir au but", "tirs au but", "penalti", "tiro libre", "saque de esquina", "escanteio", "tiro livre", "pênalti", "free throw", "free throws", "technical foul", "flagrant foul", "flagrant", "buzzer beater", "timeout", "lancer franc", "lancers francs", "faute technique", "faute flagrante", "temps mort", "tiros libres", "falta técnica"]
 replay_words = ["replay", "instant replay", "action replay", "slo-mo", "slow motion", "ralenti", "reprise", "reprise vidéo", "reprise video", "repetición", "repeticion", "ralentí", "câmera lenta", "camera lenta", "cámara lenta", "camara lenta", "repetição", "repeticao"]
 
 # When does a stopped game clock mean a break?  freeze_s: clock unchanged this long.  no_clock_s: scoreboard

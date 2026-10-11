@@ -28,6 +28,7 @@ class Weights:
     music: float = -0.5
     event: float = 0.8    # a fresh score change (goal, touchdown) read from the picture
     shout: float = 0.0    # shouting / yelling (not commentary); off until it has been checked on live games
+    anticipation: float = 0.0   # a cue before a likely score (red zone, VAR, corner...); off until its log has been checked. Keep it small: alone it must stay under min_score
     favourite: float = 0.4  # steady bonus per +1 of a favourite team's multiplier (x2 favourite = +0.4)
 
 
@@ -60,6 +61,10 @@ class Config:
     lev_soccer_blowout: float = 3.0
     field_goal_strength: float = 0.6  # American football: a field goal or safety counts this much of a touchdown
     extra_point_s: float = 30.0  # an extra point / two-point conversion this soon after a touchdown is not a new event
+    anticipation_s: float = 18.0   # a cue boosts a stream this long (fading)
+    anticipation_cooldown_s: float = 30.0   # the same cue is not reported again this soon
+    anticipation_big_gain_yd: float = 20.0  # a "+NN YDS" graphic counts as a cue from this many yards
+    anticipation_goal_yd: float = 10.0      # a yard line graphic counts as a cue up to this many yards, beside a down text
     scorebug_hidden_s: float = 6.0   # measuring only: a scorebug missing this long (seen a moment before) is logged as hidden
     scorebug_memory_s: float = 60.0  # ...if it was seen within this long before; a later first sight of the gap is stale and not logged
     replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
@@ -88,6 +93,7 @@ class _Stream:
     last_sample: float | None = None
     tags: tuple[float, float, float] = (0.0, 0.0, 0.0)  # crowd, speech, music
     tags_at: float = float("-inf")
+    anticipation_at: float = float("-inf")   # when a cue (banner before a likely score) was last seen
     shout: float = 0.0   # 0..1 probability of shouting / yelling / screaming
     event_at: float = float("-inf")  # when a score change was last seen
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
@@ -177,6 +183,10 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
 
+    def set_anticipation(self, tab_id: int, now: float) -> None:
+        if tab_id in self.streams:
+            self.streams[tab_id].anticipation_at = now
+
     def set_replay(self, tab_id: int, replay: bool) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].replay = replay
@@ -224,8 +234,9 @@ class Scorer:
             crowd, surge = crowd * cfg.replay_dampen, surge * cfg.replay_dampen
 
         event = max(0.0, 1.0 - (now - stream.event_at) / cfg.event_s)
+        cue = max(0.0, 1.0 - (now - stream.anticipation_at) / cfg.anticipation_s)
         w = cfg.weights
-        excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.shout * shout + w.event * event)
+        excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.shout * shout + w.anticipation * cue + w.event * event)
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
         raw += cfg.leverage_weight * stream.leverage                 # a late close game is worth more, a late blowout less
         status = stream.override or stream.auto_state
@@ -236,7 +247,7 @@ class Scorer:
         elif audio_ad:
             score = -cfg.ad_penalty / 2         # music-dominated sound without a crowd: probably an ad too
         return {"score": score, "ad": stream.on_ad or audio_ad, "surge": surge, "crowd": crowd,
-                "speech": speech, "music": music, "shout": shout, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
+                "speech": speech, "music": music, "shout": shout, "anticipation": cue, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
 
     def score(self, tab_id: int, now: float) -> float | None:
         c = self.components(tab_id, now)
