@@ -34,6 +34,7 @@ from daemon.feed_gate import FeedGate
 from daemon.feed_map import FeedMapper
 from daemon.logsetup import LOG_DIR
 from daemon.sport_choice import choose_sport, sport_from_feed
+from daemon.sport_detect import sport_from_title
 from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
 from daemon.game_state import GameTracker, combine
@@ -109,6 +110,7 @@ class Server:
         self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
         self.cue_speech = SpeechMemory(self.scorer.config.cue_speech_window_s)   # review subjects the commentary named lately, per tab
+        self.tab_titles: dict[int, str] = {}   # tab id -> page title sent by the extension (league words are weak evidence of the sport)
         self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
@@ -133,6 +135,7 @@ class Server:
             if isinstance(msg.get("favourites"), list):
                 self.favourites = msg["favourites"]
             self.team_text[tab_id] = msg.get("teams") or ""
+            self.tab_titles[tab_id] = msg.get("title") or ""
             self.feed_map.set_text(tab_id, self.team_text[tab_id])
             self._update_favourite(tab_id, time.monotonic())
             status = msg.get("status", "auto")
@@ -444,7 +447,7 @@ class Server:
             mapping = self.feed_map.mapping(tab_id, index)
             feed_sport = sport_from_feed(LEAGUES[mapping.league][0]) if mapping and mapping.league in LEAGUES else None
             # popup choice > hard cue > feed league > tab title (stage C) > league words on screen > remembered sport
-            sport, source = choose_sport(popup=self.sports.get(tab_id), hard=detected, feed=feed_sport, title=None,
+            sport, source = choose_sport(popup=self.sports.get(tab_id), hard=detected, feed=feed_sport, title=sport_from_title(self.tab_titles.get(tab_id)),
                                          weak=det.weak_sport, memory=self.sport_memory.get(tab_id, now_wall))
             tracker.set_sport(sport)
             if source in ("hard", "feed"):   # only reliable sources are remembered

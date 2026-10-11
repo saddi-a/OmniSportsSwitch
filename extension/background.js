@@ -65,7 +65,7 @@ async function pushState() {
   if (!(await chrome.offscreen.hasDocument())) return;
   const weights = effectiveWeights(await getState());
   const { tracked, priorities } = await getState();
-  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status, allowed: t.allowed ?? null, teams: t.teams ?? "" }]));
+  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status, allowed: t.allowed ?? null, teams: t.teams ?? "", title: t.title ?? "" }]));
   chrome.runtime
     .sendMessage({ type: "state", roles: await computeTabRoles(), weights, labels, favourites: priorities.teams })
     .catch(() => {});
