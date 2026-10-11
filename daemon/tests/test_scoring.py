@@ -782,12 +782,17 @@ def test_the_hold_times_out_and_can_be_released():
     assert s.hold_left(t + 101) == 0
 
 
-def test_the_hold_ends_when_the_game_is_over():
-    s = make()
+def test_a_game_that_only_flickers_to_over_keeps_its_hold_but_a_real_end_does_not():
+    s = make(hold_over_s=60)
     t = warm_up(s)
     s.force_main(2, t)
-    s.set_status(2, "over")
-    assert s.hold_left(t + 1) == 0
+    s.set_auto_state(2, "over")                       # a wrong 'over' reading right after the click
+    assert s.hold_left(t + 1) > 0 and s.hold_tab == 2
+    s.set_auto_state(2, "live")
+    assert s.hold_left(t + 20) > 0
+    s.set_auto_state(2, "over")
+    assert s.hold_left(t + 30) > 0                    # over, but only for a moment
+    assert s.hold_left(t + 100) == 0 and s.hold_tab is None   # over for 70 s: the game really ended
 
 
 def test_forcing_the_current_main_just_holds_it_and_a_restricted_stream_is_refused():

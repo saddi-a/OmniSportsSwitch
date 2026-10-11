@@ -134,6 +134,7 @@ LAYOUT = [
     ]),
     ("Manual control", [
         ("scoring.manual_hold_s", "Hold time for Make Main (s)", "How long a stream you put on Main with the popup button stays there."),
+        ("scoring.hold_over_s", "Game over ends a hold after (s)", "A held stream whose game has looked over for this long loses its hold. The automatic game-over reading is sometimes wrong, so it must last."),
         ("scoring.hold_break_score", "Score that breaks a hold", "A challenger scoring at least this still takes Main from a held stream. Higher = harder to break."),
     ]),
     ("Signal weights", [

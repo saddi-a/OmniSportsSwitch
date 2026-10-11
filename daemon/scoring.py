@@ -47,6 +47,7 @@ class Config:
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
     manual_hold_s: float = 600.0   # "Make Main" from the popup holds the stream on MAIN this long
+    hold_over_s: float = 60.0      # a held stream whose game has looked over for this long loses the hold
     hold_break_score: float = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
     leverage_weight: float = 0.3      # closeness / time left: a late close game adds up to this to its score, a late blowout takes it away
     lev_us_football_close: float = 8.0      # points apart that still count as close (one score)...
@@ -100,6 +101,7 @@ class Scorer:
         self._last_evict = float("-inf")
         self.hold_tab: int | None = None     # the stream the user forced onto MAIN
         self.hold_until = float("-inf")      # ...and until when it is held there
+        self._hold_over_since: float | None = None   # since when the held game has looked over
         self._candidate: tuple[int, int, float] | None = None  # (replaced, challenger, since when it has qualified)
         self._previous_main: int | None = None  # MAIN before a tab registered as MAIN: comes back if that tab leaves
 
@@ -293,6 +295,7 @@ class Scorer:
         if not stream.can_main:
             raise ValueError("this tab is not allowed in Main (its slot rules)")
         self.hold_tab, self.hold_until = tab_id, now + self.config.manual_hold_s
+        self._hold_over_since = None
         if tab_id == self.main or self.main is None:
             self._set_main(tab_id)
             return None
@@ -303,18 +306,27 @@ class Scorer:
 
     def release_hold(self) -> None:
         self.hold_tab, self.hold_until = None, float("-inf")
+        self._hold_over_since = None
 
     def hold_left(self, now: float) -> float:
         """Seconds the stream the user forced onto MAIN is still held there (0 if there is no hold). The hold ends
-        by itself when it times out, when something else is on MAIN, or when that game is over."""
+        by itself when it times out, when something else is on MAIN, or when that game has looked over for a full
+        `hold_over_s` (the automatic "over" is sometimes wrong: a stream the user chose must not lose MAIN to it)."""
         tab = self.hold_tab
         if tab is None:
             return 0.0
         stream = self.streams.get(tab)
         left = self.hold_until - now
-        if stream is None or left <= 0 or self.main != tab or (stream.override or stream.auto_state) == "over":
+        if stream is None or left <= 0 or self.main != tab:
             self.release_hold()
             return 0.0
+        if (stream.override or stream.auto_state) == "over":
+            self._hold_over_since = now if self._hold_over_since is None else self._hold_over_since
+            if now - self._hold_over_since >= self.config.hold_over_s:
+                self.release_hold()
+                return 0.0
+        else:
+            self._hold_over_since = None
         return left
 
     def evict_main(self, now: float) -> Swap | None:
