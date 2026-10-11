@@ -938,3 +938,27 @@ def test_main_on_a_break_hands_over_even_if_the_others_had_an_ad_lately():
     s.set_on_ad(2, False, now + 4)
     s.set_auto_state(1, "break")
     assert s.decide(now + 5).promote == 2
+
+
+def test_leveling_gain_brings_a_stream_to_the_target_within_limits():
+    from daemon.server import leveling_gain
+    assert leveling_gain(0.01, 0.05, 8.0) == pytest.approx(5.0)
+    assert leveling_gain(0.2, 0.05, 8.0) == pytest.approx(0.25)
+    assert leveling_gain(0.0001, 0.05, 8.0) == 8.0       # near silence is not boosted without limit
+    assert leveling_gain(5.0, 0.05, 8.0) == pytest.approx(1 / 8.0)
+
+
+def test_leveling_gain_is_neutral_when_off_or_unknown():
+    from daemon.server import leveling_gain
+    assert leveling_gain(0.01, 0.0, 8.0) == 1.0
+    assert leveling_gain(None, 0.05, 8.0) == 1.0
+    assert leveling_gain(0.0, 0.05, 8.0) == 1.0
+
+
+def test_baseline_of_reports_the_streams_normal_loudness():
+    scorer = Scorer()
+    scorer.register(1)
+    assert scorer.baseline_of(1) is None
+    scorer.add_audio(1, 0.02, 0.0)
+    assert scorer.baseline_of(1) == pytest.approx(0.02)
+    assert scorer.baseline_of(99) is None

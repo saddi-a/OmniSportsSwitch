@@ -114,6 +114,8 @@ LAYOUT = [
         ("scoring.window_s", "Loudness window (s)", "Loudness is averaged over this many seconds."),
         ("scoring.baseline_s", "Normal loudness window (s)", "Each stream's normal loudness is averaged over about this long."),
         ("scoring.surge_cap", "Loudness surge cap", "Upper limit of the loudness signal (1.0 = loudness doubled)."),
+        ("scoring.classifier_target_rms", "Level the sound (0 = off)", "Above 0, every stream's normal loudness is brought to this level before the crowd / speech / music detector hears it, so a quietly mixed broadcast is judged like a loud one. Try 0.05."),
+        ("scoring.classifier_max_gain", "Levelling limit (x)", "The levelling never raises or lowers the sound by more than this factor."),
         ("scoring.event_s", "Goal boost (s)", "How long a goal or touchdown boosts a stream (it fades)."),
         ("scoring.big_play_strength", "Big play strength", "A big play banner counts this much of a goal (1.0 = the same as a goal)."),
         ("scoring.stale_s", "Silence limit (s)", "A stream with no audio for this long is ignored."),

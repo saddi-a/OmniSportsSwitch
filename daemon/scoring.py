@@ -61,6 +61,8 @@ class Config:
     audio_ad_margin: float = 0.15  # ...and music must exceed speech by this much (stadium music under commentary is not an ad)
     audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...
     audio_ad_window: float = 5.0  # ...among the last this many (one reading is never enough: arena music, jingles)
+    classifier_target_rms: float = 0.0  # >0: each stream's sound is scaled so its normal loudness equals this before the sound classifier hears it (0 = off)
+    classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
 
 
 @dataclass
@@ -138,6 +140,11 @@ class Scorer:
             alpha = 1 - math.exp(-(now - stream.last_sample) / self.config.baseline_s)
             stream.baseline += alpha * (level - stream.baseline)
         stream.last_sample = now
+
+    def baseline_of(self, tab_id: int) -> float | None:
+        """The stream's normal loudness (long-term average), or None if nothing was heard yet."""
+        stream = self.streams.get(tab_id)
+        return None if stream is None else stream.baseline
 
     def set_tags(self, tab_id: int, crowd: float, speech: float, music: float, now: float) -> None:
         stream = self.streams.get(tab_id)

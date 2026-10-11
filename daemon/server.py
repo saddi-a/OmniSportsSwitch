@@ -55,6 +55,15 @@ log = logging.getLogger("daemon")
 boxes_log = logging.getLogger("daemon.boxes")
 
 
+def leveling_gain(baseline: float | None, target: float, max_gain: float) -> float:
+    """Factor that brings a stream's normal loudness to `target` before the sound classifier hears it, so a quietly
+    mixed broadcast is judged like a loud one. It follows the slow baseline, not the last seconds, so a roar still
+    sounds louder than normal. 1.0 when off (target 0) or while nothing is known."""
+    if target <= 0 or baseline is None or baseline <= 0:
+        return 1.0
+    return min(max(target / baseline, 1.0 / max_gain), max_gain)
+
+
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None):
         self.scorer = scorer or Scorer()
@@ -253,7 +262,10 @@ class Server:
             ready = [t for t, b in self.buffers.items() if len(b) >= CLASSIFY_WINDOW]
             if not ready:
                 continue
-            batch = np.stack([self.buffers[t] for t in ready])
+            cfg = self.scorer.config
+            batch = np.stack([self.buffers[t] * leveling_gain(self.scorer.baseline_of(t), cfg.classifier_target_rms,
+                                                              cfg.classifier_max_gain) for t in ready])
+            np.clip(batch, -1.0, 1.0, out=batch)
             probs = await asyncio.to_thread(self.classifier.predict, batch)
             idx = self.classifier.index
             now = time.monotonic()
