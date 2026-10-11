@@ -88,3 +88,14 @@ def test_a_lone_countdown_next_to_ad_words_is_still_an_ad():
 def test_both_team_codes_and_the_score_in_one_item():
     texts = ["Ue", "21.10", "FRA 2-0 BEL"]
     assert find_score(texts, find_clocks(texts), anchored_only=True) == (2, 0)
+
+
+# Eagles-Jaguars (2026-10-11 17:42, boxes.log): "PHI| 14" is the code and the score in one item, "JAX" sits between the two
+# scores, the play clock "37" is to the right of the game clock. It was read (7, 37) and the real 14 later fired a false touchdown.
+EAGLES = boxes([("bein spoRts", 36, 121, 93), ("LONDON", 51, 1747, 1136), ("2-2", 36, 605, 1165), ("2", 35, 638, 1164),
+                ("PHI| 14", 74, 654, 1144), ("3-1", 33, 1038, 1163), ("JAX", 64, 1081, 1145), ("7", 57, 1218, 1149),
+                ("3RD", 56, 1305, 1149), ("9:39", 55, 1421, 1149), ("37", 52, 1603, 1153), ("UFL", 32, 330, 1172)])
+
+
+def test_team_code_and_score_in_one_item_with_the_other_team_between_the_scores():
+    assert find_score_geo(EAGLES, ["9:39"]) == (14, 7)

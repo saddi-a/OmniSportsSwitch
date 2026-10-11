@@ -25,6 +25,7 @@ TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, a
 ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "1st" as OCR mangles them (Ath, Ist, Znd, Isr, Jrd)
 TEAM_PAIR_ITEM_RE = re.compile(r"^([^\W\d_]{2,4})\s+(\d{1,2})\s?[-–]\s?(\d{1,2})(?:\s+[^\W\d_]{2,4})?$")   # a code and the score in one item ("FRA 0-0", "FRA 0-0 BEL")
 CLOCK_AND_TEAM_RE = re.compile(r"^(\d{1,3}\s?[:.,]\s?\d{2})\s+\W?([A-Za-z]{2,4})\W?$")   # "24.47 RMA": the clock and a team code in one item
+CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
@@ -151,6 +152,12 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             width = (it["x1"] - it["x0"]) / len(it["text"].strip())
             split.append(dict(it, text=c.group(2), x0=it["x0"] + width * (it["text"].strip().index(c.group(2)) - 0.5), x1=it["x1"]))
             continue
+        cs = CODE_SCORE_RE.match(it["text"].strip())
+        if cs:   # "PHI| 14": the code and the digits become two items, cut at the separator
+            char = (it["x1"] - it["x0"]) / len(it["text"].strip())
+            split.append(dict(it, text=cs.group(1), x1=it["x0"] + char * len(cs.group(1))))
+            split.append(dict(it, text=cs.group(2), x0=it["x0"] + char * it["text"].strip().index(cs.group(2))))
+            continue
         m = MERGED_PAIR_RE.match(it["text"].strip())
         if m:   # two scores merged by OCR: cut the box at the space into two numbers, remembered as halves of the same item
             a, b = m.group(1), m.group(2)
@@ -181,6 +188,12 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
         before = any(t["x1"] <= left["x0"] + 0.5 * line_h and left["x0"] - t["x1"] <= reach and abs(cy(t) - cy(left)) <= 0.6 * line_h for t in teams)
         after = any(t["x0"] >= right["x1"] - 0.5 * line_h and t["x0"] - right["x1"] <= reach and abs(cy(t) - cy(right)) <= 0.6 * line_h for t in teams)
         return before and after
+
+    def name_left(left, right, line_h) -> bool:
+        # the layout "PHI 14  JAX 7": each number has its own team name right before it, on its row
+        reach = 1.5 * line_h
+        return all(any(t["x1"] <= n["x0"] + 0.5 * line_h and n["x0"] - t["x1"] <= reach and abs(cy(t) - cy(n)) <= 0.6 * line_h for t in teams)
+                   for n in (left, right))
 
     best, best_key = None, None
 
@@ -222,7 +235,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             beside = [t for t in teams if abs(cy(t) - mid) <= 2.2 * line_h and t["x1"] >= left["x0"] - 4 * line_h
                       and t["x0"] <= right["x1"] + 4 * line_h]
             slack = 0.5 * line_h
-            if len(beside) >= 2 and (left["x0"] < min(t["x0"] for t in beside) - slack or right["x1"] > max(t["x1"] for t in beside) + slack):
+            if len(beside) >= 2 and not name_left(left, right, line_h) and (left["x0"] < min(t["x0"] for t in beside) - slack or right["x1"] > max(t["x1"] for t in beside) + slack):
                 continue   # a number outside the span of the team names: a jersey number, not the score
             labels = [height(t) for t in teams if abs(cy(t) - cy(a)) <= 2.2 * max(ha, hb) and t["x1"] >= left["x0"] - 4 * max(ha, hb)
                       and t["x0"] <= right["x1"] + 4 * max(ha, hb)]
@@ -230,11 +243,11 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
                 # As small as the team labels: usually a record ("4-0" read as 40), a down and distance, a quarter. Except a
                 # compact scorebug (USC 7 ... 7 PENN STATE) whose digits sit on the names' own row, right beside each name.
                 halves = left.get("merged") is not None and left.get("merged") == right.get("merged")
-                if not inline(left, right, line_h) and not (halves and min(ha, hb) >= MERGED_VS_LABEL * max(labels)):
+                if not inline(left, right, line_h) and not name_left(left, right, line_h) and not (halves and min(ha, hb) >= MERGED_VS_LABEL * max(labels)):
                     continue
             between = sum(1 for it in live if not NUMBER_RE.match(it["text"].strip()) and left["x1"] <= it["x0"] and it["x1"] <= right["x0"]
                           and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
-            pairs.append((min(ha, hb), between, near, left, right))
+            pairs.append((min(ha, hb), between, near, left, right, name_left(left, right, line_h)))
     # two numbers stacked in a column, each right beside its own team (ATM 2 / RMA 1)
     for i, a in enumerate(numbers):
         for b in numbers[i + 1:]:
@@ -249,12 +262,14 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
                 key = (min(ha, hb), 2)
                 if best_key is None or key > best_key:
                     best, best_key = (int(top["text"]), int(bottom["text"])), key
+    if any(p[5] for p in pairs):
+        pairs = [p for p in pairs if p[5]]   # each number with its own team name before it (PHI 14  JAX 7) beats a number from elsewhere on the row
     if pairs:
         # The scores are the biggest pair. Among pairs about as big as the biggest, the one with the centre panel
         # (down and distance, clock) between its numbers wins: a team logo read as a digit ("0" for an O) forms a pair
         # with the real score next to it, with nothing between them.
         biggest = max(p[0] for p in pairs)
-        size, _, near, left, right = max((p for p in pairs if p[0] >= 0.85 * biggest), key=lambda p: (p[1], p[0], p[2]))
+        size, _, near, left, right, _ = max((p for p in pairs if p[0] >= 0.85 * biggest), key=lambda p: (p[1], p[0], p[2]))
         key = (size, near)
         if best_key is None or key > best_key:
             best, best_key = (int(left["text"]), int(right["text"])), key
