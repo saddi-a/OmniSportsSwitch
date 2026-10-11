@@ -500,3 +500,40 @@ def test_goal_words_include_opening_the_scoring_and_equalising():
     assert find_speech_cues("Roma ouvre le score !") == ["goal"]
     assert find_speech_cues("Como égalise juste avant la pause") == ["goal"]
     assert find_speech_cues("Les poteaux ont sauvé le gardien") == ["post"]
+
+
+# ---- semantic reading of the commentary (measuring only) -------------------------------------------------------------
+
+def test_the_commentary_is_cut_into_pieces_and_the_level_needs_a_margin_over_ordinary_talk():
+    from daemon.semantic import level, pieces
+
+    assert pieces("Quelle occasion, quelle action ! Oh la la.") == ["Quelle occasion", "quelle action", "Oh la la", "Quelle occasion, quelle action ! Oh la la."]
+    assert pieces("Oui.") == []   # one word is not worth a reading
+    assert level({"high": 0.7, "mid": 0.4, "low": 0.3}, 0.55, 0.05) == "high"
+    assert level({"high": 0.7, "mid": 0.4, "low": 0.68}, 0.55, 0.05) == ""        # as close to ordinary talk: no
+    assert level({"high": 0.4, "mid": 0.6, "low": 0.3}, 0.55, 0.05) == "mid"
+    assert level({"high": 0.4, "mid": 0.4, "low": 0.3}, 0.55, 0.05) == ""
+
+
+@pytest.mark.asyncio
+async def test_the_loop_logs_the_semantic_reading_and_a_level_once_per_cooldown(caplog):
+    class FakeListener:
+        device = "fake"
+
+        def transcribe(self, samples):
+            return "il touche la barre", "fr"
+
+    class FakeMatcher:
+        def match(self, text):
+            return {"high": 0.8, "mid": 0.3, "low": 0.2, "phrase": "il touche la barre", "piece": text}
+
+    config = Config(speech_interval_s=0.01, speech_window_s=1.0, speech_cue_cooldown_s=60.0)
+    server = Server(Scorer(config), speech=FakeListener(), semantic=FakeMatcher())
+    server.speech_buffers[5] = np.zeros(SAMPLE_RATE_FOR_TEST, dtype=np.float32)
+    with caplog.at_level(logging.INFO):
+        task = asyncio.create_task(server._speech_loop())
+        await asyncio.sleep(2.3)
+        task.cancel()
+    messages = [r.getMessage() for r in caplog.records]
+    assert sum(m.startswith("semantic heard") for m in messages) >= 2
+    assert sum(m.startswith("semantic high") for m in messages) == 1

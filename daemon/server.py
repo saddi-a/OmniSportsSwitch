@@ -34,6 +34,7 @@ from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
+from daemon.semantic import level as semantic_level
 from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer
 
@@ -68,9 +69,10 @@ def leveling_gain(baseline: float | None, target: float, max_gain: float) -> flo
 
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None,
-                 speech=None):
+                 speech=None, semantic=None):
         self.scorer = scorer or Scorer()
         self.speech = speech                    # SpeechListener or None: the commentary listener (measuring only)
+        self.semantic = semantic                # SemanticMatcher or None: how close the commentary is to big-moment phrases (measuring only)
         self.speech_buffers: dict[int, np.ndarray] = {}   # tab id -> last speech_window_s seconds of audio
         self.speech_cue_at: dict[tuple[int, str], float] = {}  # (tab, cue) -> when it was last logged
         self.settings = settings  # daemon.settings.Settings; the popup edits it live
@@ -305,6 +307,15 @@ class Server:
                     continue
                 log.info("speech heard tab %s [%s]: %s", tab_id, language, text)
                 now = time.monotonic()
+                if self.semantic is not None:
+                    match = await asyncio.to_thread(self.semantic.match, text)
+                    tier = semantic_level(match, cfg.semantic_min_sim, cfg.semantic_margin)
+                    log.info("semantic heard tab %s: high=%.2f mid=%.2f low=%.2f best='%s'", tab_id, match["high"], match["mid"],
+                             match["low"], match["phrase"])
+                    if tier and now - self.speech_cue_at.get((tab_id, "semantic " + tier), float("-inf")) >= cfg.speech_cue_cooldown_s:
+                        self.speech_cue_at[(tab_id, "semantic " + tier)] = now
+                        log.info("semantic %s tab %s: high=%.2f mid=%.2f low=%.2f best='%s' piece='%s'", tier, tab_id, match["high"],
+                                 match["mid"], match["low"], match["phrase"], match["piece"])
                 for cue in find_speech_cues(text):
                     if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= cfg.speech_cue_cooldown_s:
                         self.speech_cue_at[(tab_id, cue)] = now
@@ -601,8 +612,16 @@ if __name__ == "__main__":
             log.info("commentary listener ready on %s", speech.device)
         except Exception as error:   # package or model missing: the daemon runs as before
             log.warning("commentary listener not available (%s: %s); continuing without it", type(error).__name__, error)
+    semantic = None
+    if speech is not None:   # the semantic reading works on the listener's transcripts (measuring only)
+        try:
+            from daemon.semantic import SemanticMatcher
+            semantic = SemanticMatcher()
+            log.info("semantic matcher ready (cpu)")
+        except Exception as error:
+            log.warning("semantic matcher not available (%s: %s); continuing without it", type(error).__name__, error)
     try:
         asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
-                           focuser=TileFocuser(settings.focus), settings=settings, speech=speech).run())
+                           focuser=TileFocuser(settings.focus), settings=settings, speech=speech, semantic=semantic).run())
     except KeyboardInterrupt:
         pass

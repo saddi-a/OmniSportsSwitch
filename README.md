@@ -13,7 +13,7 @@ Two parts talk over a local WebSocket (`ws://127.0.0.1:8765`):
 | Part | What it does |
 |---|---|
 | **Edge extension** (`extension/`, Manifest V3, plain JavaScript, no build step) | Captures each tab's audio, reports where the video sits on screen, moves tabs between windows, mutes all but `MAIN`, and has a popup for your settings. |
-| **Python daemon** (`daemon/`) | Scores every stream and decides who goes where. Audio is classified on the GPU with PANNs (crowd, speech, music...). Scoreboards are read with EasyOCR on screenshots of the video area. An optional listener (faster-whisper, on the GPU) writes down what the commentators say, for measuring only. |
+| **Python daemon** (`daemon/`) | Scores every stream and decides who goes where. Audio is classified on the GPU with PANNs (crowd, speech, music...). Scoreboards are read with EasyOCR on screenshots of the video area. An optional listener (faster-whisper, on the GPU) writes down what the commentators say, and a small multilingual sentence model (ONNX, on the CPU) rates how close that is to big-moment phrases; both are for measuring only. |
 
 What the daemon looks at:
 
@@ -46,7 +46,7 @@ Run this once from the repository folder in PowerShell (it needs Python 3.10 to 
 scripts\setup.ps1
 ```
 
-It creates the `.venv`, installs PyTorch from the CUDA index first (otherwise pip may install a CPU-only build), installs the other packages, downloads the models (the PANNs audio checkpoint, about 330 MB, into `models\panns\`, and the English and French OCR models into `models\easyocr\`; the speech model, about 460 MB, downloads into `models\whisper\` the first time the daemon starts), then runs the tests. Every step is skipped when it is already done, so you can run it again. Useful switches:
+It creates the `.venv`, installs PyTorch from the CUDA index first (otherwise pip may install a CPU-only build), installs the other packages, downloads the models (the PANNs audio checkpoint, about 330 MB, into `models\panns\`, and the English and French OCR models into `models\easyocr\`; the speech model, about 460 MB, downloads into `models\whisper\` and the sentence model, about 120 MB, into `models\semantic\` the first time the daemon starts), then runs the tests. Every step is skipped when it is already done, so you can run it again. Useful switches:
 
 | Switch | What it does |
 |---|---|
@@ -189,7 +189,7 @@ About 370 tests, a few seconds. One is an expected failure on purpose (a scorebo
 
 | Folder | What it holds |
 |---|---|
-| `daemon/` | The Python daemon: the server, the scorer, the scoreboard reader, the commentary listener, game state, settings, and the tests with real scoreboard fixtures. |
+| `daemon/` | The Python daemon: the server, the scorer, the scoreboard reader, the commentary listener and its semantic reading, game state, settings, and the tests with real scoreboard fixtures. |
 | `extension/` | The Edge extension (plain JavaScript, no build step). |
 | `launcher/` | The tray launcher, built into `dist\OmniSportsSwitch.exe`. |
 | `scripts/` | Setup, start, stop, build and sample-capture scripts. |
