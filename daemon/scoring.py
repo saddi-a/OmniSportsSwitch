@@ -246,18 +246,27 @@ class Scorer:
         current_score = current_c["score"] if current_c else 0.0
         # An ad (music) or a break / over: any live stream without music is better than that.
         idle = current_c is not None and (current_c["ad"] or current_c["status"] != "live")
-        best_id, best_c = None, None
-        for tab_id in self.streams:
-            if tab_id in (self.main, replaced) or not self.streams[tab_id].can_main:
-                continue
-            c = self.components(tab_id, now, warmup=not warming)
-            if c is None:
-                continue
-            if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music
-                         or now - self.streams[tab_id].ad_at < cfg.recent_ad_s):
-                continue   # not an ad, and not one that was on an ad a moment ago (the ad flag forgets after a few seconds)
-            if best_c is None or c["score"] > best_c["score"]:
-                best_id, best_c = tab_id, c
+        def pick(hold_off: bool):
+            best_id, best_c = None, None
+            for tab_id in self.streams:
+                if tab_id in (self.main, replaced) or not self.streams[tab_id].can_main:
+                    continue
+                c = self.components(tab_id, now, warmup=not warming)
+                if c is None:
+                    continue
+                if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music
+                             or (hold_off and now - self.streams[tab_id].ad_at < cfg.recent_ad_s)):
+                    continue   # not an ad, and (first choice) not one that was on an ad a moment ago
+                if best_c is None or c["score"] > best_c["score"]:
+                    best_id, best_c = tab_id, c
+            return best_id, best_c
+
+        best_id, best_c = pick(hold_off=True)
+        replaced_stream = self.streams[replaced]
+        if best_c is None and idle and (replaced_stream.on_ad or current_c["status"] != "live"):
+            # Everything else had an ad lately, but MAIN shows an ad (or a break / the end) for certain right now: any
+            # stream that is playing at this moment is better than staying on it. (A sound-only guess does not count.)
+            best_id, best_c = pick(hold_off=False)
 
         if best_c is None:
             self._candidate = None

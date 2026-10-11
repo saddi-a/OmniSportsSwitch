@@ -900,3 +900,41 @@ def test_a_swap_forgets_the_remembered_previous_main():
     s.register(9, is_main=True)
     s.remove(9)
     assert s.main == 2
+
+
+# ---- MAIN stuck on a picture ad because every other stream had an ad lately (live log 02:10, LSU on MAIN) -----------
+
+def test_main_on_a_picture_ad_still_hands_over_when_the_others_were_on_an_ad_lately():
+    s = make(min_dwell_s=20, recent_ad_s=30)
+    now = warm_up(s)
+    quiet_play(s, 1, now)
+    quiet_play(s, 2, now)
+    quiet_play(s, 3, now)
+    s.set_on_ad(2, True, now + 2)        # 2 and 3 were on an ad a few seconds ago, but are playing now
+    s.set_on_ad(2, False, now + 4)
+    s.set_on_ad(3, True, now + 3)
+    s.set_on_ad(3, False, now + 4)
+    s.set_on_ad(1, True, now + 4)        # MAIN shows the player's ad placeholder right now
+    swap = s.decide(now + 5)
+    assert swap is not None and swap.promote in (2, 3)
+
+
+def test_the_hold_off_still_applies_when_main_is_only_an_audio_ad():
+    s = make(min_dwell_s=20, recent_ad_s=30)
+    now = warm_up(s)
+    ad(s, 1, now)                         # MAIN sounds like an ad (music only, no picture evidence)
+    quiet_play(s, 2, now)
+    s.set_on_ad(2, True, now + 2)
+    s.set_on_ad(2, False, now + 4)
+    assert s.decide(now + 5) is None      # 2 was on a picture ad a moment ago and MAIN's ad is only a guess from the sound
+
+
+def test_main_on_a_break_hands_over_even_if_the_others_had_an_ad_lately():
+    s = make(min_dwell_s=20, recent_ad_s=30)
+    now = warm_up(s)
+    quiet_play(s, 1, now)
+    quiet_play(s, 2, now)
+    s.set_on_ad(2, True, now + 2)
+    s.set_on_ad(2, False, now + 4)
+    s.set_auto_state(1, "break")
+    assert s.decide(now + 5).promote == 2
