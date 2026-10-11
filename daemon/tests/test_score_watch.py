@@ -337,3 +337,56 @@ def test_the_watcher_exposes_the_score_it_believes():
     assert w.score is None
     run(w, board(24, 24), 0, 5)
     assert w.score == (24, 24)
+
+
+# ---- Georgia-Alabama board (live log 01:52-02:00): ranked names, digit read with dashes, records, jerseys ----------
+
+def _geo(items):
+    from daemon.score_watch import find_score_geo
+    return find_score_geo(items, [])
+
+
+GEORGIA_ALABAMA_0_0 = boxes([("2 Georgia", 32, 730, 1112), ("6 ALABAMA", 37, 1607, 1108), ("50", 30, 874, 1162), ("0", 96, 1028, 1126),
+                             ("25", 32, 1296, 1194), ("0 =", 104, 1425, 1122), ("1201", 28, 1606, 1192), ("50", 30, 1608, 1162),
+                             ("J", 98, 1734, 1142)])
+GEORGIA_RECORDS = boxes([("SED", 50, 166, 40), ("2 Georgia", 36, 729, 1109), ("59", 66, 869, 1159), ("Ist & 10", 36, 1203, 1111),
+                         ("0 :", 108, 1424, 1121), ("59", 66, 1603, 1159), ("6 ALABAMA", 32, 1608, 1112), ("A 1", 104, 1738, 1138)])
+GEORGIA_JERSEYS = boxes([("SED", 48, 166, 40), ("5", 98, 400, 1052), ("2 Georgia", 32, 730, 1112), ("3rd & 10", 42, 1193, 1107),
+                         ("4", 88, 1373, 1029), ("0 :", 108, 1425, 1121), ("6 ALABAMA", 36, 1607, 1109), ("59", 66, 869, 1159)])
+
+
+def test_a_digit_read_together_with_the_dash_marks_and_ranked_team_names_give_the_score():
+    assert _geo(GEORGIA_ALABAMA_0_0) == (0, 0)       # was None: "0 =" is not a number, "2 Georgia" is not a team
+
+
+def test_the_georgia_alabama_board_gets_a_baseline_and_a_touchdown_is_seen():
+    w = ScoreWatcher()
+    feed_items(w, [GEORGIA_ALABAMA_0_0], 5)
+    assert w.score == (0, 0)
+    seven = [dict(it, text="7") if it["text"] == "0" and it["x0"] < 1200 else it for it in GEORGIA_ALABAMA_0_0]
+    assert feed_items(w, [seven], 5) != []
+
+
+def test_records_read_as_two_digit_numbers_are_not_a_score():
+    assert _geo(GEORGIA_RECORDS) is None
+    w = ScoreWatcher()
+    feed_items(w, [GEORGIA_RECORDS], 8)
+    assert w.score is None
+
+
+def test_jersey_numbers_far_outside_the_team_names_are_not_a_score():
+    assert _geo(GEORGIA_JERSEYS) is None
+
+
+def test_truncated_stat_labels_from_the_live_log_are_skipped():
+    for text in ("ath DOWN CONV", "4th DOWN CONV", "This season", "3RD DOWN CONVERSION"):
+        assert STAT_GRAPHIC_RE.search(text), text
+
+
+def test_two_record_tokens_on_one_row_are_records_not_a_score():
+    # live log 01:57:06: "5-0" under each team name, with both ranked names around them
+    records = boxes([("2 Georgia", 32, 730, 1112), ("2nd DOWN", 40, 1173, 1109), ("6 ALABAMA", 37, 1607, 1108), ("5-0", 30, 876, 1162),
+                     ("5-0", 32, 1608, 1162), ("J", 96, 1736, 1144)])
+    assert _geo(records) is None
+    one_score = boxes([("NAP", 30, 100, 800), ("1-0", 32, 200, 800), ("FRO", 30, 300, 800)])
+    assert _geo(one_score) == (1, 0)                              # a single token between the names is still a score

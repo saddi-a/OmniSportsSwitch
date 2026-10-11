@@ -24,12 +24,14 @@ ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
-STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversion|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b", re.I)   # overlays full of numbers
+STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b", re.I)   # overlays full of numbers
+RANKED_TEAM_RE = re.compile(r"^\d{1,2}\s+[^\W\d_]{3,}(?:[ .'\-][^\W\d_]+)*$")   # "2 Georgia", "6 ALABAMA": a ranking and a name
+DIGIT_WITH_MARKS_RE = re.compile(r"^(\d{1,3})\s?[:=;|!]+$")   # the score digit read together with the dashes drawn beside it ("0 =")
 NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", "period", "round", "set", "game", "shots",
               "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
-SCORE_VS_LABEL = 1.2   # score digits are at least this much taller than the team names beside them
+SCORE_VS_LABEL = 2.0   # score digits are at least this much taller than the team names beside them
 CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
 CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 HISTORY = 5          # readings that vote
@@ -127,6 +129,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     height, with a team name nearby. Play clocks, records, jersey numbers and "2nd & 10" are smaller or alone.
     """
     skip = set(clocks)
+    items = [dict(it, text=m.group(1)) if (m := DIGIT_WITH_MARKS_RE.match(it["text"].strip())) else it for it in items]
     live = [it for it in items if it["text"].strip() not in skip and not CLOCK_RE.match(it["text"].strip())
             and not LOGO_RE.match(it["text"].strip())]
 
@@ -136,8 +139,8 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     def cy(it):
         return (it["y0"] + it["y1"]) / 2
 
-    teams = [it for it in live if TEAM_RE.match(it["text"].strip()) and len(it["text"].strip()) >= 3
-             and not ORDINAL_RE.match(it["text"].strip())]
+    teams = [it for it in live if (TEAM_RE.match(it["text"].strip()) or RANKED_TEAM_RE.match(it["text"].strip()))
+             and len(it["text"].strip()) >= 3 and not ORDINAL_RE.match(it["text"].strip())]
 
     def teams_near(line_cy, line_h, x0, x1) -> int:
         reach = 4 * line_h
@@ -146,11 +149,14 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     best, best_key = None, None
 
     # one item holding both scores ("2-0", "10/20") with a team name on each side of it
-    for it in live:
+    tokens = [it for it in live if SCORE_PAIR_RE.match(it["text"].strip()) or SLASH_PAIR_RE.match(it["text"].strip())]
+    for it in tokens:
         text = it["text"].strip()
         m = SCORE_PAIR_RE.match(text) or SLASH_PAIR_RE.match(text)
         if not m:
             continue
+        if sum(1 for o in tokens if abs(cy(o) - cy(it)) <= 0.5 * height(it)) >= 2:
+            continue   # two such tokens on one row: the records shown under each team ("5-0" and "5-0"), not a score
         a, b = int(m.group(1)), int(m.group(2))
         if SCORE_PAIR_RE.match(text) and max(a, b) > MAX_PAIR_VALUE:
             continue
@@ -176,6 +182,12 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             near = teams_near((cy(a) + cy(b)) / 2, max(ha, hb), left["x0"], right["x1"])
             if near == 0:
                 continue
+            mid, line_h = (cy(a) + cy(b)) / 2, max(ha, hb)
+            beside = [t for t in teams if abs(cy(t) - mid) <= 2.2 * line_h and t["x1"] >= left["x0"] - 4 * line_h
+                      and t["x0"] <= right["x1"] + 4 * line_h]
+            slack = 0.5 * line_h
+            if len(beside) >= 2 and (left["x0"] < min(t["x0"] for t in beside) - slack or right["x1"] > max(t["x1"] for t in beside) + slack):
+                continue   # a number outside the span of the team names: a jersey number, not the score
             labels = [height(t) for t in teams if abs(cy(t) - cy(a)) <= 2.2 * max(ha, hb) and t["x1"] >= left["x0"] - 4 * max(ha, hb)
                       and t["x0"] <= right["x1"] + 4 * max(ha, hb)]
             if labels and min(ha, hb) < SCORE_VS_LABEL * max(labels):
