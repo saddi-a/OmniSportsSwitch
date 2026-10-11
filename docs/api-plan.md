@@ -178,3 +178,12 @@ Setting `[feed] mode = "local" | "both" | "api"` (default `local`; with `local` 
 6. **DVR/pause behaviour:** accept that after a long rewind API events wait for the clock (nothing lost, just later)?
 
 When you answer, I will turn Stage 0 into a concrete task list for the main session (it owns `server.py` and the restart).
+
+## 9. Decisions taken (user, 2026-10-11)
+
+1. **ESPN is approved for now** (Stage 0 and later), knowing the terms clause in section 1.
+2. **The API is wanted EARLY, not delayed.** The point is to be on Main when a goal happens, not after. So timing is a lead, not a hold: an event is released when the stream's clock is `lead_s` seconds BEFORE the event's clock (default 10 s, editable; 0 = release exactly when the stream shows it). Without a stream clock (API-only test mode) it is released `stream_delay - lead_s` seconds after the API reports it (`stream_delay` is a setting, default from Stage 0 numbers). Raw ungated release is rejected: the lead would swing between about 5 s and 50 s per stream. Consequences: a lead event may swap even inside the 20 s dwell (still respecting Make Main, Freeze, ads); events already behind the stream clock (rewind, replay) are dropped; goals, touchdowns, awarded penalties and red cards lead, and the existing cues (red zone, 4th down) can come from the feed too. The audio roar cannot give a lead; only the feed can.
+3. **API mode disables all OCR (testing mode).** Main use is BOTH or LOCAL. With no OCR there is no stream clock, no ad/replay/break detection from the picture, and no team-name mapping from the scorebug; the stream delay is manual, mapping comes from the tab's teams field/pin, and unmapped tabs run on audio only. This replaces the "light OCR" idea of section 5 for API mode.
+4. **The goal is accuracy**, not hardware. Hardware measurements stay informative only.
+5. **No budget**: free sources only (ESPN). No paid provider.
+6. **Rewind/pause:** strict clock rule plus dropping events already behind the stream clock.
