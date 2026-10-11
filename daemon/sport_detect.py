@@ -21,6 +21,16 @@ BASKETBALL_WORDS_RE = re.compile(r"\b(fouls?|bonus|timeouts?)\b", re.IGNORECASE)
 STOPPAGE_RE = re.compile(r"^\d{2}\s?\+\s?\d{1,2}$")                               # "45+2"
 CLOCK_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 
+# League words on the screen (header, network bug, scorebug): weak evidence, kept apart from the hard cues above. Whole words only.
+LEAGUE_WORDS = {
+    FOOTBALL: r"NFL|NCAAF|NCAA FOOTBALL|COLLEGE FOOTBALL|SUPER ?BOWL|FOOTBALL AM[EÉ]RICAIN",
+    BASKETBALL: r"NBA|WNBA|NCAAB|EURO ?LEAGUE|EURO ?LIGUE|BASKET(?:BALL)?",
+    SOCCER: (r"PREMIER L\w{1,2}GUE|LIGUE 1|LIGUE 2|LIGUE DES CHAMPIONS|CHAMPIONS LEAGUE|EUROPA LEAGUE|LA ?LIGA|SERIE A|BUNDESLIGA|MLS"
+             r"|UEFA|COUPE DE FRANCE|FA CUP|COPA DEL REY|EREDIVISIE|LIGA PORTUGAL"),
+}
+LEAGUE_RES = {sport: re.compile(r"(?<![A-Za-z0-9])(?:" + words + r")(?![A-Za-z0-9])", re.IGNORECASE) for sport, words in LEAGUE_WORDS.items()}
+WEAK_MIN = 3.0         # about four readings with the league word: one banner is not enough
+
 DECAY = 0.995          # per reading (about 3 s): evidence halves in roughly four minutes
 MIN_EVIDENCE = 6.0     # the winner needs at least this much...
 MIN_RATIO = 1.5        # ...and this many times the runner-up
@@ -31,11 +41,16 @@ class SportDetector:
     def __init__(self):
         self._evidence = {FOOTBALL: 0.0, SOCCER: 0.0, BASKETBALL: 0.0}
         self._previous_clocks: list[int] = []
+        self._weak = {FOOTBALL: 0.0, SOCCER: 0.0, BASKETBALL: 0.0}
 
     def update(self, texts: list[str], clocks: list[str]) -> str | None:
         for sport in self._evidence:
             self._evidence[sport] *= DECAY
+            self._weak[sport] *= DECAY
         ev = self._evidence
+        for sport, pattern in LEAGUE_RES.items():
+            if any(pattern.search(t) for t in texts):
+                self._weak[sport] += 1
 
         for text in (t.strip() for t in texts):
             if DOWN_DISTANCE_RE.match(text):
@@ -64,6 +79,15 @@ class SportDetector:
                     ev[BASKETBALL] += 0.25
             self._previous_clocks = seconds
         return self.sport
+
+    @property
+    def weak_sport(self) -> str | None:
+        """The sport the league words on screen point to, or None. Weaker than `sport`: the caller ranks them."""
+        ranked = sorted(self._weak.items(), key=lambda kv: kv[1], reverse=True)
+        (best, best_score), (_, second_score) = ranked[0], ranked[1]
+        if best_score >= WEAK_MIN and best_score >= MIN_RATIO * second_score:
+            return best
+        return None
 
     @property
     def sport(self) -> str | None:
