@@ -850,3 +850,48 @@ def test_leverage_is_clamped():
     assert s.streams[2].leverage == 1.0
     s.set_leverage(2, -5.0)
     assert s.streams[2].leverage == -1.0
+
+
+# ---- MAIN must survive a stray tab registering as MAIN and leaving (live log 01:57:59-01:58:03: all swaps stopped) ----
+
+def test_a_stray_tab_that_registers_as_main_and_leaves_gives_main_back():
+    s = make()
+    now = warm_up(s)
+    s.register(9, is_main=True)      # a window that is not a stream: registered while sitting in the MAIN slot
+    s.remove(9)
+    assert s.main == 1
+
+
+def test_main_comes_back_to_the_previous_stream_not_to_a_removed_one():
+    s = make()
+    s.register(9, is_main=True)
+    s.remove(1)                      # the earlier MAIN is gone too
+    s.remove(9)
+    assert s.main is None
+
+
+def test_swaps_still_work_after_the_stray_tab_left():
+    s = make()
+    now = warm_up(s)
+    s.register(9, is_main=True)
+    s.remove(9)
+    ad(s, 1, now)
+    quiet_play(s, 2, now)
+    assert s.decide(now + 5).promote == 2
+
+
+def test_removing_a_stream_that_is_not_main_changes_nothing():
+    s = make()
+    s.remove(3)
+    assert s.main == 1
+
+
+def test_a_swap_forgets_the_remembered_previous_main():
+    s = make()
+    now = warm_up(s)
+    ad(s, 1, now)
+    quiet_play(s, 2, now)
+    assert s.decide(now + 5).promote == 2
+    s.register(9, is_main=True)
+    s.remove(9)
+    assert s.main == 2

@@ -101,16 +101,24 @@ class Scorer:
         self.hold_tab: int | None = None     # the stream the user forced onto MAIN
         self.hold_until = float("-inf")      # ...and until when it is held there
         self._candidate: tuple[int, int, float] | None = None  # (replaced, challenger, since when it has qualified)
+        self._previous_main: int | None = None  # MAIN before a tab registered as MAIN: comes back if that tab leaves
 
     def register(self, tab_id: int, weight: float = 1.0, is_main: bool = False) -> None:
         self.streams.setdefault(tab_id, _Stream()).weight = weight
-        if is_main:
+        if is_main and tab_id != self.main:
+            self._previous_main = self.main   # a stray window in the MAIN slot must not make the real MAIN forgotten
             self.main = tab_id
+
+    def _set_main(self, tab_id: int) -> None:
+        self.main, self._previous_main = tab_id, None
 
     def remove(self, tab_id: int) -> None:
         self.streams.pop(tab_id, None)
+        if self._previous_main == tab_id:
+            self._previous_main = None
         if self.main == tab_id:
-            self.main = None
+            self.main = self._previous_main if self._previous_main in self.streams else None
+            self._previous_main = None
 
     def set_weight(self, tab_id: int, weight: float) -> None:
         if tab_id in self.streams:
@@ -272,7 +280,7 @@ class Scorer:
         reason = f"{slot + ' idle: ' if idle else ''}challenger [{fmt(best_c)}] vs {label} [{fmt(current_c) if current_c else 'no data'}]"
         swap = Swap(promote=best_id, demote=replaced, reason=reason)
         if target is None:
-            self.main = best_id
+            self._set_main(best_id)
         self._last_swap = now
         return swap
 
@@ -286,10 +294,10 @@ class Scorer:
             raise ValueError("this tab is not allowed in Main (its slot rules)")
         self.hold_tab, self.hold_until = tab_id, now + self.config.manual_hold_s
         if tab_id == self.main or self.main is None:
-            self.main = tab_id
+            self._set_main(tab_id)
             return None
         swap = Swap(promote=tab_id, demote=self.main, reason="MAIN forced by the user")
-        self.main = tab_id
+        self._set_main(tab_id)
         self._last_swap = now
         return swap
 
@@ -328,7 +336,7 @@ class Scorer:
             return None
         self._last_evict = now
         swap = Swap(promote=best_id, demote=self.main, reason="MAIN stream is not allowed there any more")
-        self.main = best_id
+        self._set_main(best_id)
         self._last_swap = now
         return swap
 
