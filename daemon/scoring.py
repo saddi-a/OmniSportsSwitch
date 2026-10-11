@@ -102,6 +102,8 @@ class Config:
     feed_poll_s: float = 5.0        # a league with a live game is asked this often (never less than 5 s: the feed's own cache time)
     feed_idle_poll_s: float = 120.0 # a league with nothing live or starting soon is asked this often
     feed_summary_s: float = 10.0    # American football: the plays of each live game (up to 6) are fetched this often; 0 = off
+    feed_unconfirmed_factor: float = 0.5   # BOTH mode: a score change read by OCR on a mapped game that no feed event preceded counts this much until the feed confirms it (1.0 = off)
+    feed_confirm_s: float = 30.0    # ...and the feed has this long after the OCR change to confirm it
     feed_lead_s: float = 10.0       # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
 
 

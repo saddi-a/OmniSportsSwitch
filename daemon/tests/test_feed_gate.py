@@ -85,9 +85,10 @@ def test_real_score_change_after_would_fire_is_confirmed_with_the_lead():
     g = gate_with(goal(snap), snap)
     see(g, snap, "52:55", 1)
     see(g, snap, "52:56", 2)                      # fires at t=2
-    lines = g.real_change(1, 0, 14.0)
-    assert len(lines) == 1 and "confirmed" in lines[0] and "12 s after" in lines[0]
-    assert "ocr-only" in g.real_change(1, 0, 20.0)[0]    # a second change has no feed event behind it
+    g.fresh = {snap.game_id}
+    change = g.real_change(1, 0, 14.0)
+    assert change.verdict == "confirmed" and len(change.lines) == 1 and "12 s after" in change.lines[0]
+    assert g.real_change(1, 0, 20.0).verdict == "ocr-only"    # a second change has no feed event behind it
 
 
 def test_unconfirmed_would_fire_is_reported_once_after_the_window():
