@@ -74,6 +74,9 @@ class Config:
     cue_support: float = 0.10      # crowd + surge + shouting + score change worth this much lift that cap
     cue_leverage_gain: float = 0.5  # a cue is worth x(1 + gain * leverage): up to x1.5 in a late close game, down to x0.5 in a late blowout
     cue_speech_window_s: float = 20.0   # commentary heard this recently tells what a bare review is about
+    goal_banner_strength: float = 0.4   # soccer: a GOAL banner counts as this fraction of a goal (fading) until a real score change takes it to 1.0
+    goal_phrase_surge: float = 0.6      # MEASURING ONLY: a goal phrase heard with a loudness surge at least this big is logged as "would fire"
+    goal_phrase_window_s: float = 10.0  # ...when the two are at most this many seconds apart
     cue_zone_near_yd: float = 3.0       # at this many yards from the end zone or closer a cue has its highest weight
     cue_zone_far_yd: float = 10.0       # at this many or more it has its lowest
     anticipation_cooldown_s: float = 30.0   # the same cue is not reported again this soon
