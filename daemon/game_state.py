@@ -76,6 +76,8 @@ YARDS_RE = re.compile(r"(\d{1,2})\s?yds?", re.IGNORECASE)
 GAIN_RE = re.compile(r"\+\s?(\d{1,3})\s?yds?", re.IGNORECASE)
 ADDED_TIME_RE = re.compile(r"\+\s?\d{1,2}")
 ADDED_TIME_MINUTES = (range(45, 51), range(90, 101))   # a "+3" beside a soccer clock reading these minutes is added time
+LONE_CLOCK_GRACE_S = 15.0   # a clock with no scoreboard text beside it still counts as the game clock this long after a scoreboard, if it keeps running
+CLOCK_SLACK_S = 3.0         # ...and it is the same clock when it moved by the elapsed time (or not at all: a stopped clock) within this slack
 AD_CONFIRMATIONS = 2   # the phrase must show on this many consecutive readings
 AD_MEMORY_S = 8.0      # a break placeholder counts this long after it was last seen
 
@@ -141,6 +143,7 @@ class GameTracker:
         self._over_hits = 0
         self._break_hits = 0
         self._ad_hits = 0
+        self._game_clock: tuple[float, float] | None = None   # (seconds, time) of the clock last read beside a scoreboard
         self._ad_seen = float("-inf")
         self.on_ad = False   # True while the player's ad placeholder is showing
         self.replay = False   # True while a replay is shown over a live game (scorebug still visible); a replay with no scorebug is a break
@@ -202,7 +205,10 @@ class GameTracker:
         lowered = [t.casefold() for t in texts]
         # A countdown clock that is the ONLY text on screen (no teams, no score) is the player's ad countdown ("2:27"), not a
         # game clock: seen on two readings in a row it counts like an ad placeholder phrase.
-        lone_clock = bool(clocks) and bool(texts) and not has_scoreboard_text(texts, clocks)
+        scoreboard = has_scoreboard_text(texts, clocks)
+        lone_clock = bool(clocks) and bool(texts) and not scoreboard and not self._continues_game_clock(now, clocks)
+        if scoreboard and clocks and (m := re.fullmatch(r"(\d{1,3}):(\d{2})", clocks[0].strip())):
+            self._game_clock = (int(m.group(1)) * 60 + int(m.group(2)), now)
         self._ad_hits = self._ad_hits + 1 if lone_clock or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
@@ -262,6 +268,21 @@ class GameTracker:
         self._note_hidden_scorebug(now, on_ad)
         self._note_anticipation(now, texts, on_ad)
         return self.state
+
+    def _continues_game_clock(self, now: float, clocks: list[str]) -> bool:
+        """True when a clock seen without any scoreboard text beside it is the game clock going on under a graphic (a substitution
+        banner hiding the team names): a scoreboard was read less than `LONE_CLOCK_GRACE_S` ago and the clock moved by the elapsed time
+        (either way) or not at all. An ad countdown starts at some unrelated value."""
+        if self._game_clock is None or now - self._game_clock[1] > LONE_CLOCK_GRACE_S:
+            return False
+        last, then = self._game_clock
+        for c in clocks:
+            m = re.fullmatch(r"(\d{1,3}):(\d{2})", c.strip())
+            if m:
+                moved = abs(int(m.group(1)) * 60 + int(m.group(2)) - last)
+                if moved <= CLOCK_SLACK_S or abs(moved - (now - then)) <= CLOCK_SLACK_S:
+                    return True
+        return False
 
     def _track_clock_replay(self, now: float, clocks: list[str]) -> None:
         """A replay shown with its scorebug has the clock of the moment being replayed: it goes back `replay_clock_min_s` to
