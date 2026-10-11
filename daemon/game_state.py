@@ -14,7 +14,8 @@ from dataclasses import dataclass
 
 # A caption only counts when a whole OCR text item is exactly the keyword. Words inside a sentence do not
 # (an ad saying "ready for the half time?" must not mark the game as on a break).
-OVER_RE = re.compile(r"(FINA[LU1I](?:\s?[/|IlU1]?\s?\d?OT\d?)?|SCORE FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|MATCH TERMIN[EÉ]|TERMIN[EÉ])",
+OVER_RE = re.compile(r"(FINA[LU1I](?:\s?[/|IlU1]?\s?\d?OT\d?)?|SCORE FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|MATCH TERMIN[EÉ]|TERMIN[EÉ]|COUP DE SIFFLET FINAL"
+                     r"|FINAL DEL PARTIDO|FIN DEL PARTIDO|PARTIDO FINALIZADO|FINALIZADO|TERMINADO|FIM DE JOGO|FIM DO JOGO|FINAL DO JOGO|JOGO ENCERRADO)",
                      re.IGNORECASE)   # also "FINAL/OT", "FINAL/2OT" as OCR mangles them (FINAUOT, FINALIOT)
 # Overtime (American football, basketball) has no game clock on the scoreboard, so a missing clock is not a break there.
 OVERTIME_RE = re.compile(r"(\d?OT|.*(OVERTIME|PROLONGATION|TEMPS SUPPL[EÉ]MENTAIRE).*)", re.IGNORECASE)
@@ -31,14 +32,19 @@ DOWN_MEMORY_S = 20.0
 IN_PLAY_MEMORY_S = 15.0   # a "Final" caption is ignored this long after the scorebug of a game in play was seen
 PERIOD_OF = {"1st": 1, "ist": 1, "isr": 1, "lst": 1, "2nd": 2, "znd": 2, "3rd": 3, "3r0": 3, "jrd": 3, "4th": 4, "ath": 4, "q1": 1, "q2": 2, "q3": 3, "q4": 4}
 PERIOD_VOTES, PERIOD_NEEDED = 5, 3   # the period is the value most of the last readings agree on
-BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)", re.IGNORECASE)
+BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE|DESCANSO|ENTRE[\s-]?TIEMPO|MEDIO[\s-]?TIEMPO|INTERVALO(?: DE JOGO)?)", re.IGNORECASE)
+# The end of a quarter / period (English, French, Spanish, Portuguese; "OTR" is how OCR reads "QTR"). A shorter break than half time:
+# it ends as soon as the scorebug shows play again.
+QUARTER_END_RE = re.compile(r"(END OF\s+\w{1,6}\s+(QTR|OTR|QUARTER|PERIOD|PERIODE)|FIN DU\s+(\w{1,8}\s+)?QUART|FIN D[EU]\s+(LA\s+)?(\w{1,4}\s+)?P[EÉ]RIODE"
+                            r"|FIN DEL\s+\w+\s+(CUARTO|TIEMPO|PERIODO)|FIM DO\s+\w+\s+(QUARTO|TEMPO|PER[IÍ]ODO))", re.IGNORECASE)
+QUARTER_END_MEMORY_S = 45.0
 CAPTION_CONFIRMATIONS = 2  # a caption must show on this many consecutive readings
 KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long after it was last seen
 
 # Phrases a streaming player shows during an ad break (matched inside a longer text item, lower case).
 # Seen live: "COMMERCIAL BREAK IN PROGRESS", "PUBLICITARIA EN CURSO", "INTERVALO COMERCIAL", "PUBLICITE".
-AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite",
-              "ad break", "advertisement", "right back", "watch now", "ondazn"]
+AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire", "publicidade", "pausa comercial",
+              "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn"]
 # Banners the broadcast flashes for a big play. A text item counts only if it is (nearly) just that phrase, so
 # sentences and stat labels ("TURNOVERS") do not. Seen live: "TAKEAWAY!" after an interception.
 BIG_PLAY_WORDS = ["takeaway", "interception", "intercepted", "fumble", "sack", "red card", "carton rouge", "penalty kick"]
@@ -78,6 +84,8 @@ class GameTracker:
         self._first_seen: float | None = None
         self._over_seen = float("-inf")
         self._break_seen = float("-inf")
+        self._qend_seen = float("-inf")
+        self._qend_hits = 0
         self._overtime_seen = float("-inf")
         self._down_seen = float("-inf")
         self._in_play_seen = float("-inf")
@@ -123,6 +131,9 @@ class GameTracker:
             self._over_seen = now
         if self._break_hits >= CAPTION_CONFIRMATIONS:
             self._break_seen = now
+        self._qend_hits = self._qend_hits + 1 if any(QUARTER_END_RE.fullmatch(t) for t in items) else 0
+        if self._qend_hits >= CAPTION_CONFIRMATIONS:
+            self._qend_seen = now
 
         lowered = [t.casefold() for t in texts]
         # A countdown clock that is the ONLY text on screen (no teams, no score) is the player's ad countdown ("2:27"), not a
@@ -163,6 +174,8 @@ class GameTracker:
             self.state = "break"
         elif now - self._break_seen <= KEYWORD_MEMORY_S:
             self.state = "break"
+        elif now - self._qend_seen <= QUARTER_END_MEMORY_S and self._in_play_seen < self._qend_seen:
+            self.state = "break"   # end of a quarter: until the scorebug shows down and distance / the quarter again
         elif clocks and self._clock_changed_at is not None:
             frozen_for = now - self._clock_changed_at
             self.state = "break" if frozen_for > self.profile.freeze_s else "live"

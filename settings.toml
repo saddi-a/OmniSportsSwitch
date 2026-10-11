@@ -57,7 +57,7 @@ ad_penalty = 0.5     # a tile showing an ad gets negative interest, so focus mov
 [banners]
 # Text a streaming player shows while an ad break is on (matched anywhere inside a text item, any case). It must
 # appear on two readings in a row. Add the wording your services use, in any language.
-break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "ad break", "advertisement", "right back", "watch now", "ondazn"]
+break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire", "publicidade", "pausa comercial", "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn"]
 
 # Banners flashed for a big play. A text item counts when it is just that phrase (a few extra characters are
 # allowed), so sentences and stat labels like "TURNOVERS" do not trigger it.

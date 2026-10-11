@@ -488,3 +488,56 @@ def test_a_game_clock_with_a_quarter_but_no_scores_read_is_not_an_ad():
         clock = f"{9 - i // 3}:{(59 - i * 3) % 60:02d}"
         state = g.update(i * 3.0, ["LSU", "Ath", "KENTUCKY", clock], [clock])
     assert state == "live" and not g.on_ad
+
+
+# ---- bilingual / multilingual banners (EN, FR, ES, PT) ---------------------------------------------------------------
+
+def _state_after(caption, sport="football", readings=3, clock=True):
+    g = GameTracker(sport)
+    state = None
+    for i in range(readings):
+        state = g.update(i * 3.0, [caption, "TEAM A", "1", "TEAM B", "0"], ["45:00"] if clock else [])
+    return state
+
+
+def test_halftime_and_second_language_break_captions():
+    for caption in ("HALFTIME", "HALF TIME", "MI-TEMPS", "MI TEMPS", "INTERVALLE", "DESCANSO", "ENTRETIEMPO", "MEDIO TIEMPO", "MEDIOTIEMPO",
+                    "INTERVALO", "INTERVALO DE JOGO"):
+        assert _state_after(caption) == "break", caption
+
+
+def test_end_of_a_quarter_captions_in_english_french_spanish_portuguese():
+    for caption in ("END OF 1st QTR", "END OF Ist OTR", "END OF 2ND QUARTER", "END OF 3RD QTR", "END OF FIRST QUARTER", "END OF 4TH QUARTER",
+                    "FIN DU QUART", "FIN DU 1ER QUART", "FIN DU 2E QUART", "FIN DE LA 1RE PÉRIODE", "FIN DE PÉRIODE", "FIN DU PREMIER QUART",
+                    "FIN DEL PRIMER CUARTO", "FIN DEL 2º CUARTO", "FIM DO 1º QUARTO", "FIM DO PRIMEIRO QUARTO"):
+        assert _state_after(caption, "american football", clock=False) == "break", caption
+
+
+def test_a_quarter_end_caption_ends_when_the_scorebug_shows_play_again():
+    g = GameTracker("american football")
+    for i in range(4):
+        g.update(i * 3.0, ["END OF 1st QTR"], [])
+    assert g.state == "break"
+    state = None
+    for i in range(3):
+        state = g.update(20 + i * 3.0, ["TEXAS", "7", "OKLAHOMA", "7", "2nd & 10", "Znd"], [])
+    assert state == "live"
+
+
+def test_over_captions_in_french_spanish_portuguese():
+    for caption in ("FIN DU MATCH", "COUP DE SIFFLET FINAL", "FINAL DEL PARTIDO", "FIN DEL PARTIDO", "PARTIDO FINALIZADO", "FINALIZADO", "TERMINADO",
+                    "FIM DE JOGO", "FIM DO JOGO", "FINAL DO JOGO", "JOGO ENCERRADO", "FULL TIME", "FULL-TIME"):
+        assert _state_after(caption) == "over", caption
+
+
+def test_ordinary_words_are_not_captions():
+    for text in ("PAUSE", "PAUSE BUTTON", "ENTRETIEMPO DE LA SERIE", "END OF SEASON", "FIN DU MONDE", "INTERVAL TRAINING"):
+        assert _state_after(text) == "live", text
+
+
+def test_ad_phrases_in_more_languages():
+    for text in ("PAUSE PUBLICITAIRE", "PAUSA COMERCIAL", "PUBLICIDADE EM CURSO", "Volvemos enseguida", "De retour dans un instant", "We'll be right back"):
+        g = GameTracker("football")
+        for i in range(3):
+            g.update(i * 3.0, [text], [])
+        assert g.on_ad, text
