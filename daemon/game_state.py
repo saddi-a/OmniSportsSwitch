@@ -27,7 +27,10 @@ DOWN_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*(&\s*(\d{1,2}|goal|
 # The quarter on its own ("4th", read "Ath"; "1st", read "Ist") sits on the same scorebug: also proof that it is on screen.
 QUARTER_RE = re.compile(r"(1st|ist|isr|lst|2nd|znd|3rd|3r0|jrd|4th|ath|q[1-4])", re.IGNORECASE)
 # A score ("44"), a score pair ("2-0") or a down/quarter beside a clock means a scoreboard; ad copy beside a countdown has none.
-SCOREBOARD_ITEM_RE = re.compile(r"\d{1,3}|\d{1,3}\s?[-/]\s?\d{1,3}")
+SCOREBOARD_ITEM_RE = re.compile(r"\d{1,3}|\d{1,3}\s?[-/]\s?\d{1,3}|[A-Z]{2,4}\s+\d{1,3}\s?[-/]\s?\d{1,3}")   # last: "FRA 0-0"
+# A scorebug whose digits OCR missed still shows team codes ("SGR", "REN") or a code read together with the clock ("24.47 RMA").
+TEAM_CODE_RE = re.compile(r"[A-Z]{3,4}")
+CLOCK_WITH_CODE_RE = re.compile(r"\d{1,3}\s?[:.,]\s?\d{2}\s+\W?[A-Z]{2,4}\W?")
 DOWN_MEMORY_S = 20.0
 IN_PLAY_MEMORY_S = 15.0   # a "Final" caption is ignored this long after the scorebug of a game in play was seen
 PERIOD_OF = {"1st": 1, "ist": 1, "isr": 1, "lst": 1, "2nd": 2, "znd": 2, "3rd": 3, "3r0": 3, "jrd": 3, "4th": 4, "ath": 4, "q1": 1, "q2": 2, "q3": 3, "q4": 4}
@@ -88,6 +91,15 @@ def _banner_hit(text: str, phrases: list[str], slack: int) -> str:
         if re.search("(?<![a-zà-ÿ])" + re.escape(phrase) + "(?![a-zà-ÿ])", words) and len(words) <= len(phrase) + slack:
             return phrase
     return ""
+
+
+def has_scoreboard_text(texts: list[str], clocks: list[str]) -> bool:
+    """True when something besides the clocks looks like a scoreboard: a score, a pair, a down or quarter, two team codes, or a team
+    code read together with the clock. A countdown with none of them beside it is an ad countdown, not a game clock."""
+    others = [t.strip() for t in texts if t.strip() and t.strip() not in clocks]
+    if any(SCOREBOARD_ITEM_RE.fullmatch(t) or DOWN_RE.fullmatch(t) or QUARTER_RE.fullmatch(t) for t in others):
+        return True
+    return len({t for t in others if TEAM_CODE_RE.fullmatch(t)}) >= 2 or any(CLOCK_WITH_CODE_RE.fullmatch(t) for t in others)
 
 
 class GameTracker:
@@ -160,8 +172,7 @@ class GameTracker:
         lowered = [t.casefold() for t in texts]
         # A countdown clock that is the ONLY text on screen (no teams, no score) is the player's ad countdown ("2:27"), not a
         # game clock: seen on two readings in a row it counts like an ad placeholder phrase.
-        lone_clock = bool(clocks) and bool(texts) and not any(SCOREBOARD_ITEM_RE.fullmatch(t.strip()) or DOWN_RE.fullmatch(t.strip())
-                                                              or QUARTER_RE.fullmatch(t.strip()) for t in texts if t.strip() not in clocks)
+        lone_clock = bool(clocks) and bool(texts) and not has_scoreboard_text(texts, clocks)
         self._ad_hits = self._ad_hits + 1 if lone_clock or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
