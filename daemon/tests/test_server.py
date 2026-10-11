@@ -419,7 +419,7 @@ def test_a_replay_banner_over_a_live_scorebug_flags_the_stream_and_a_score_in_it
     server.handle_message({"type": "register", "tab_id": 14, "sport": "american football"})
     for i in range(5):
         server._update_game_states(_football_board(7), 100.0 + i * 3)
-    replay = {(14, 0): {"texts": ["HOUSTON", "14", "K-STATE", "3", "1ST & GOAL", "REPLAY"], "clocks": ["10:45"]}}
+    replay = {(14, 0): {"texts": ["HOUSTON", "0", "K-STATE", "3", "1ST & GOAL", "REPLAY"], "clocks": ["10:45"]}}   # an OLD score on the replayed play
     for i in range(5):
         server._update_game_states(replay, 120.0 + i * 3)
     assert server.scorer.streams[14].replay is True
@@ -589,3 +589,20 @@ def test_the_memory_file_can_be_given_to_the_server(tmp_path):
     for i in range(3):
         server._update_game_states({(8, 0): {"texts": ["HOUSTON", "0", "K-STATE", "0", "1ST & GOAL"], "clocks": ["10:45"]}}, 100.0 + i * 3)
     assert path.exists()
+
+
+def test_a_new_score_read_while_a_replay_banner_shows_counts_at_once():
+    # the user's rule (2026-10-11): a goal that just happened has the focus even if it is being replayed
+    server = Server(Scorer(Config(warmup_s=0)))
+    server.handle_message({"type": "register", "tab_id": 14, "sport": "american football"})
+    for i in range(5):
+        server._update_game_states(_football_board(7), 100.0 + i * 3)
+    replay = {(14, 0): {"texts": ["HOUSTON", "14", "K-STATE", "3", "1ST & GOAL", "REPLAY"], "clocks": ["10:45"]}}
+    for i in range(5):
+        server._update_game_states(replay, 120.0 + i * 3)
+    assert server.scorer.streams[14].replay is True
+    assert (14, 0) in server.event_at                       # the touchdown was counted during the replay
+    stamped = server.event_at[(14, 0)]
+    for i in range(5):
+        server._update_game_states(replay, 140.0 + i * 3)   # the replay goes on showing the same score
+    assert server.event_at[(14, 0)] == stamped              # no second event

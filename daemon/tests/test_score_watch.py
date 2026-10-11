@@ -556,13 +556,13 @@ def test_other_sports_and_unknown_sports_keep_full_events():
         assert len(late) == 1 and late[0][1] == 1.0, sport
 
 
-# ---- replays: the graphics of a replay are not new score changes -------------------------------------------------
+# ---- replays: the replay of an old score changes nothing; a NEW score read during a replay counts (see test_samples_1011) -------------
 
 def test_readings_during_a_replay_neither_fire_nor_change_the_baseline():
     w = ScoreWatcher()
     assert feed_items(w, [BOARD], 5) == []
-    replay_board = boxes([("HOUSTON", 30, 100, 800), ("38", 60, 330, 790), ("17", 60, 430, 790), ("K-STATE", 30, 520, 800), ("2nd", 30, 700, 800)])
-    for _ in range(6):   # the replay graphic shows a score that is not the game's
+    replay_board = boxes([("HOUSTON", 30, 100, 800), ("24", 60, 330, 790), ("17", 60, 430, 790), ("K-STATE", 30, 520, 800), ("2nd", 30, 700, 800)])
+    for _ in range(6):   # the replay shows an older score (the play before the last touchdown): not the game's
         texts = [it["text"] for it in replay_board]
         assert w.update(texts, [], items=replay_board, replay=True) is False
     assert w.score == (31, 17)

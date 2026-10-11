@@ -25,7 +25,7 @@ TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, a
 ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "1st" as OCR mangles them (Ath, Ist, Znd, Isr, Jrd)
 TEAM_PAIR_ITEM_RE = re.compile(r"^([^\W\d_]{2,4})\s+(\d{1,2})\s?[-–]\s?(\d{1,2})(?:\s+[^\W\d_]{2,4})?$")   # a code and the score in one item ("FRA 0-0", "FRA 0-0 BEL")
 CLOCK_AND_TEAM_RE = re.compile(r"^(\d{1,3}\s?[:.,]\s?\d{2})\s+\W?([A-Za-z]{2,4})\W?$")   # "24.47 RMA": the clock and a team code in one item
-CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[}{)(]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
+CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[}{)(E]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
@@ -414,14 +414,19 @@ class ScoreWatcher:
         self._alt = (seconds[0], now)
         return False
 
+    def _is_news(self, score: tuple[int, int]) -> bool:
+        """During a replay only a score ABOVE the one already counted can be a new goal: neither side lower than the ceiling, at least one
+        side higher by 1..MAX_RISE (the usual order of the sides). The replay of an old goal shows the same or an older score."""
+        return (all(n >= p for n, p in zip(score, self._peak)) and any(1 <= n - p <= MAX_RISE for n, p in zip(score, self._peak)))
+
     def update(self, texts: list[str], clocks: list[str], now: float | None = None, items: list[dict] | None = None,
                replay: bool = False, sport: str | None = None) -> bool:
         # A countdown with no scoreboard beside it is the player's ad countdown: it is not a game clock and must not look like a
         # clock jump (that threw the score away at every commercial break, so a touchdown before the break was never seen).
-        if replay:
-            return False   # a replay shows old action with its own graphics: not a new score, and not a baseline either
+        if replay and self._stable is None:
+            return False   # a replay shows old action with its own graphics: with no score known there is nothing to compare it with
         game_clocks = [] if clocks and _no_scoreboard(texts, clocks) else clocks
-        if now is not None and self._clock_jumped(game_clocks, now):
+        if now is not None and not replay and self._clock_jumped(game_clocks, now):   # a replay's clock is an old moment's: no jump
             self._reset()
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
@@ -434,6 +439,8 @@ class ScoreWatcher:
             score = find_score_card(items, clocks, self._stable)
         if score is None:
             return False
+        if replay and not self._is_news(score):
+            return False   # a replay re-shows old action (the same or an older score): not a reading at all
         self._readings += 1
         t = now if now is not None else self._readings * READING_S
         self._history.append(score)
