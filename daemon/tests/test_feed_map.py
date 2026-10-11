@@ -180,3 +180,22 @@ def test_the_server_gives_the_mapper_the_popup_teams_and_forgets_them():
     assert server.feed_map.text[7] == "Como vs Roma"
     server.handle_message({"type": "unregister", "tab_id": 7})
     assert 7 not in server.feed_map.text
+
+
+def test_canal_plus_header_with_a_slash_and_the_popup_text_forms():
+    """Seen live 2026-10-11 (tab 485660202): header 'LIVERPOOL / MANCHESTER CITY', scorebug 'LIV 0 0 MCI 61:16'."""
+    snap = dataclasses.replace(games()[0], home=feed.Team("364", "LIV", "Liverpool"), away=feed.Team("382", "MNC", "Manchester City"))
+    assert shows_game(["LIVERPOOL / MANCHESTER CITY", "Premier League - 6e journée"], snap)
+    for text in ("Liverpool vs Man City", "Liverpool - Man City", "Man City vs Liverpool", "liverpool v manchester city", "LIV vs MCI"):
+        assert shows_game([text], snap), text
+    assert not shows_game(["Liverpool vs Everton"], snap)
+
+
+def test_popup_text_with_a_slash_header_locks_through_the_text_path_too():
+    snap = dataclasses.replace(games()[0], home=feed.Team("364", "LIV", "Liverpool"), away=feed.Team("382", "MNC", "Manchester City"))
+    m = mapper([snap])
+    m.set_text(1, "Liverpool vs Man City")
+    lines = []
+    for _ in range(2):
+        lines += m.observe(1, 0, ["LIVERPOOL / MANCHESTER CITY"], (0, 0), ["61:16"])
+    assert len(lines) == 1 and "ocr+text" in lines[0]
