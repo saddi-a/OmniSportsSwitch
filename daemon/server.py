@@ -43,7 +43,7 @@ from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
-from daemon.cues import SpeechMemory, cue_weight, end_zone_factor
+from daemon.cues import GoalPhraseWatch, SpeechMemory, cue_weight, end_zone_factor
 from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer
 
@@ -114,6 +114,7 @@ class Server:
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
         self.cue_speech = SpeechMemory(self.scorer.config.cue_speech_window_s)   # review subjects the commentary named lately, per tab
         self.tab_titles: dict[int, str] = {}   # tab id -> page title sent by the extension (league words are weak evidence of the sport)
+        self.goal_watch = GoalPhraseWatch()   # a goal phrase heard near a loud surge (measuring only)
         self.fed: dict[tuple[int, int], float] = {}   # (tab, tile) -> when a feed goal was counted there
         self.unconfirmed: dict[tuple[int, int], tuple[float, float]] = {}   # (tab, tile) -> (full strength, when): OCR score changes the feed has not confirmed
         self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
@@ -299,6 +300,10 @@ class Server:
             if probs is not None:
                 text += " top=" + ",".join(f"{n}:{p:.2f}" for n, p in self.classifier.top(probs, 3))
             log.info("  %s", text)
+            cfg = self.scorer.config
+            self.goal_watch.surge_min, self.goal_watch.window_s = cfg.goal_phrase_surge, cfg.goal_phrase_window_s
+            if self.goal_watch.surge(tab_id, c["surge"], now):
+                log.info("goal phrase + surge would fire tab %s (measuring only)", tab_id)
 
     async def _classify_loop(self) -> None:
         while True:
@@ -392,6 +397,9 @@ class Server:
                 cues = find_speech_cues(text)
                 self.cue_speech.window_s = cfg.cue_speech_window_s
                 self.cue_speech.record(tab_id, cues, text, self._tab_sport(tab_id), now)
+                self.goal_watch.surge_min, self.goal_watch.window_s = cfg.goal_phrase_surge, cfg.goal_phrase_window_s
+                if "goal" in cues and self.goal_watch.phrase(tab_id, now):
+                    log.info("goal phrase + surge would fire tab %s (measuring only)", tab_id)
                 for cue in cues:
                     if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= cfg.speech_cue_cooldown_s:
                         self.speech_cue_at[(tab_id, cue)] = now
@@ -524,6 +532,13 @@ class Server:
                                                      now - (1.0 - strength) * self.scorer.config.event_s)
                 self.scorer.set_event(tab_id, now, strength)
                 log.info("big play tab %s tile %s: %s", tab_id, index, tracker.big_play)
+            if tracker.goal_banner:   # a GOAL banner (soccer): an early event, a real score change takes it to full strength
+                strength = self.scorer.config.goal_banner_strength
+                if strength > 0:
+                    self.event_at[(tab_id, index)] = max(self.event_at.get((tab_id, index), float("-inf")),
+                                                         now - (1.0 - strength) * self.scorer.config.event_s)
+                    self.scorer.set_event(tab_id, now, strength)
+                log.info("goal banner tab %s tile %s: %s", tab_id, index, tracker.goal_banner)
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
                 self.fav_seen[(tab_id, index)] = (seen, now)
