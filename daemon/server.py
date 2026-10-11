@@ -327,6 +327,8 @@ class Server:
             self.feed.messages.clear()
             try:
                 self.feed_map.set_games(self.feed.games())
+                for game_id, situations in self.feed.situations().items():
+                    self.feed_gate.set_situations(game_id, situations)
             except Exception as e:   # mapping is measuring only too
                 log.warning("feed map update failed: %s: %s", type(e).__name__, e)
             for n in notes:

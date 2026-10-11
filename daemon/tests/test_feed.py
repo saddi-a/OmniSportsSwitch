@@ -361,6 +361,9 @@ async def test_the_server_logs_what_the_feed_reports(caplog, monkeypatch):
         def games(self):
             return [snap]
 
+        def situations(self):
+            return {}
+
         def step(self, now, wall):
             FakeSession.calls += 1
             return [feed.Note("event", snap, "Red Card", event)] if FakeSession.calls == 1 else []

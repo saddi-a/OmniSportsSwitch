@@ -1,0 +1,142 @@
+{
+ "drives": {
+  "previous": [
+   {
+    "plays": [
+     {
+      "id": "4018729813888",
+      "sequenceNumber": "388800",
+      "period": {
+       "number": 4
+      },
+      "clock": {
+       "displayValue": "11:16"
+      },
+      "type": {
+       "text": "Penalty"
+      },
+      "start": {
+       "down": 2,
+       "distance": 13,
+       "yardsToEndzone": 66,
+       "shortDownDistanceText": "2nd & 13",
+       "team": {
+        "id": "30"
+       }
+      }
+     },
+     {
+      "id": "4018729813912",
+      "sequenceNumber": "391200",
+      "period": {
+       "number": 4
+      },
+      "clock": {
+       "displayValue": "11:16"
+      },
+      "type": {
+       "text": "Pass Reception"
+      },
+      "start": {
+       "down": 2,
+       "distance": 18,
+       "yardsToEndzone": 71,
+       "shortDownDistanceText": "2nd & 18",
+       "team": {
+        "id": "30"
+       }
+      }
+     },
+     {
+      "id": "4018729813937",
+      "sequenceNumber": "393700",
+      "period": {
+       "number": 4
+      },
+      "clock": {
+       "displayValue": "10:30"
+      },
+      "type": {
+       "text": "Rush"
+      },
+      "start": {
+       "down": 3,
+       "distance": 4,
+       "yardsToEndzone": 57,
+       "shortDownDistanceText": "3rd & 4",
+       "team": {
+        "id": "30"
+       }
+      }
+     },
+     {
+      "id": "4018729813968",
+      "sequenceNumber": "396800",
+      "period": {
+       "number": 4
+      },
+      "clock": {
+       "displayValue": "9:44"
+      },
+      "type": {
+       "text": "Rush"
+      },
+      "start": {
+       "down": 1,
+       "distance": 10,
+       "yardsToEndzone": 41,
+       "shortDownDistanceText": "1st & 10",
+       "team": {
+        "id": "30"
+       }
+      }
+     },
+     {
+      "id": "4018729813990",
+      "sequenceNumber": "399000",
+      "period": {
+       "number": 4
+      },
+      "clock": {
+       "displayValue": "8:59"
+      },
+      "type": {
+       "text": "Pass Reception"
+      },
+      "start": {
+       "down": 1,
+       "distance": 10,
+       "yardsToEndzone": 28,
+       "shortDownDistanceText": "1st & 10",
+       "team": {
+        "id": "30"
+       }
+      }
+     },
+     {
+      "id": "4018729814015",
+      "sequenceNumber": "401500",
+      "period": {
+       "number": 4
+      },
+      "clock": {
+       "displayValue": "8:09"
+      },
+      "type": {
+       "text": "Penalty"
+      },
+      "start": {
+       "down": 1,
+       "distance": 1,
+       "yardsToEndzone": 1,
+       "shortDownDistanceText": "1st & Goal",
+       "team": {
+        "id": "30"
+       }
+      }
+     }
+    ]
+   }
+  ]
+ }
+}
