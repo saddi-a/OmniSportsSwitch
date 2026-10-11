@@ -253,3 +253,78 @@ def test_shot_and_period_words_are_not_team_names():
     from daemon.score_watch import STAT_GRAPHIC_RE
     for text in ("TIRS 2NDE", "TiRS IRE", "Shots on target", "TIRS CADRES"):
         assert STAT_GRAPHIC_RE.search(text), text
+
+
+# ---- a NEW score read during a replay counts at once (the user's rule, 2026-10-11); a replay of an old score changes nothing ---------------------------
+# Eagles-Jaguars 18:51:41 (boxes.log): the Jaguars touchdown (10 -> 16) on the scorebug; the separator after the code was read as 'E'.
+TD_BUG = boxes([("DIRECI", 24, 80, 46), ("bein spoets", 28, 88, 66), ("QB", 28, 328, 788), ("2-2", 24, 438, 844), ("PHI| 14", 50, 474, 830),
+                ("3-1", 26, 752, 844), ("JAXE 16", 50, 782, 830), ("Ath", 44, 946, 833), ("3:20", 40, 1029, 833), ("08", 40, 1159, 835),
+                ("LONDON", 42, 1264, 821)])
+OLD_BUG = boxes([("2-2", 24, 438, 844), ("PHI| 14", 50, 474, 830), ("3-1", 26, 752, 844), ("JAX} 10", 50, 782, 830), ("3RD", 44, 946, 833),
+                 ("7:05", 40, 1029, 833), ("25", 40, 1161, 835), ("LONDON", 42, 1264, 821)])
+SOCCER_0_1 = boxes([("LIV", 50, 132, 84), ("0", 68, 267, 71), ("1", 58, 368, 74), ("MCI", 50, 454, 84)])
+SOCCER_0_2 = boxes([("LIV", 50, 132, 84), ("0", 68, 267, 71), ("2", 58, 368, 74), ("MCI", 50, 454, 84)])
+SOCCER_1_0 = boxes([("LIV", 50, 132, 84), ("1", 68, 267, 71), ("0", 58, 368, 74), ("MCI", 50, 454, 84)])
+
+
+def watch_replay(readings, w, replay, sport):
+    fired = []
+    for n, items in enumerate(readings):
+        texts = [it["text"] for it in items]
+        if w.update(texts, find_clocks(texts), float(1000 + n * 3), items, replay=replay, sport=sport):
+            fired.append(n)
+    return fired
+
+
+def test_the_team_code_separator_read_as_e():
+    assert find_score_geo(TD_BUG, ["3:20"]) == (14, 16)
+
+
+def test_a_new_score_during_a_replay_fires_without_waiting_for_the_replay_to_end():
+    w, _ = watch([SOCCER_0_1] * 5, sport="football")
+    assert w._stable == (0, 1)
+    fired = watch_replay([SOCCER_0_2] * 5, w, replay=True, sport="football")
+    assert len(fired) == 1 and fired[0] <= 2          # as soon as the usual 3 readings agree
+    assert w._stable == (0, 2)
+
+
+def test_the_replay_of_a_counted_score_gives_no_second_event():
+    w, _ = watch([SOCCER_0_1] * 5, sport="football")
+    watch_replay([SOCCER_0_2] * 4, w, replay=True, sport="football")           # counted during the replay
+    assert watch_replay([SOCCER_0_2] * 6, w, replay=True, sport="football") == []   # the same replay goes on
+    assert watch_replay([SOCCER_0_2] * 6, w, replay=False, sport="football") == []  # and the live scorebug shows it too
+
+
+def test_a_replay_of_an_old_goal_with_the_old_scoreboard_changes_nothing():
+    w, _ = watch([SOCCER_0_2] * 5, sport="football")
+    assert watch_replay([SOCCER_0_1] * 60, w, replay=True, sport="football") == []   # minutes of replays of the first goal
+    assert w._stable == (0, 2) and w._peak == (0, 2)                           # not even the slow "a lower score that lasts" timer moved
+    assert watch_replay([SOCCER_0_2] * 5, w, replay=False, sport="football") == []
+
+
+def test_a_replay_showing_the_sides_the_other_way_round_is_not_a_new_score():
+    w, _ = watch([SOCCER_0_2] * 5, sport="football")
+    assert watch_replay([SOCCER_1_0] * 6, w, replay=True, sport="football") == []   # (1, 0): one side up, the other down: not the same ordering
+
+
+def test_a_replay_with_no_score_known_yet_is_ignored():
+    w = ScoreWatcher()
+    assert watch_replay([SOCCER_0_2] * 6, w, replay=True, sport="football") == [] and w._stable is None
+
+
+def test_a_replay_clock_does_not_throw_the_score_away():
+    w, _ = watch([SOCCER_0_2] * 5, sport="football")
+    jump = boxes([("LIV", 50, 132, 84), ("0", 68, 267, 71), ("1", 58, 368, 74), ("MCI", 50, 454, 84), ("12:34", 30, 300, 130)])
+    watch_replay([jump] * 3, w, replay=True, sport="football")                      # a replay of an early moment shows an old clock
+    assert w._stable == (0, 2)
+
+
+def test_american_football_touchdown_and_field_goal_during_a_replay():
+    w, _ = watch([OLD_BUG] * 5, sport="american football")          # JAX 10, PHI 14
+    assert w._stable == (14, 10)
+    fired = watch_replay([TD_BUG] * 5, w, replay=True, sport="american football")      # 18:51:41: JAX 16 (touchdown + miss: +6)
+    assert len(fired) == 1 and w._stable == (14, 16) and w.strength == 1.0
+    w2, _ = watch([EAGLES] * 5, sport="american football")           # PHI 14, JAX 7
+    fired = watch_replay([EAGLES_FG] * 5, w2, replay=True, sport="american football")  # 17:50: JAX 10 (field goal, +3)
+    assert len(fired) == 1 and w2._stable == (14, 10) and w2.strength == 0.6
+    assert watch_replay([EAGLES_FG] * 8, w2, replay=True, sport="american football") == []
