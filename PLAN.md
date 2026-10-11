@@ -2,7 +2,7 @@
 
 ## 0. Resume here (read this first)
 
-**State (2026-10-11, after midnight).** Everything described below is built, committed and pushed on the branch `phase-0-1-spike-and-daemon` of the private repo `saddi-a/OmniSportsSwitch` (`main` only has GitHub's first commit); the working tree is clean. `pytest daemon` passes (171 tests) plus 1 expected failure (the UCF scoreboard layout, on purpose). The daemon and the test Edge are running; the extension (v0.5.0) was reloaded and the windows re-tracked after the last change.
+**State (2026-10-11, after midnight).** Everything described below is built, committed and pushed on the branch `develop` (called `phase-0-1-spike-and-daemon` until 2026-10-11) of the private repo `saddi-a/OmniSportsSwitch` (`main` only has GitHub's first commit); the working tree is clean. `pytest daemon` passes (171 tests) plus 1 expected failure (the UCF scoreboard layout, on purpose). The daemon and the test Edge are running; the extension (v0.5.0) was reloaded and the windows re-tracked after the last change.
 
 **Running it.**
 * `scripts\start_all.ps1` starts the daemon (its own window, **minimized; closing it stops the daemon**) and the test Edge profile (separate profile at `%LOCALAPPDATA%\OmniSportsSwitch\edge-profile`, debug port 9222, extension preloaded). It skips whatever already runs. `scripts\stop_all.ps1` stops the daemon.
