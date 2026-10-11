@@ -29,7 +29,7 @@ CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[}{)(]\s?(\d{1,3})$")  
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
-STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b", re.I)   # overlays full of numbers
+STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b|\btop ?\d\b|statistics?|statistiques?|ballons", re.I)   # overlays full of numbers
 RANKED_TEAM_RE = re.compile(r"^\d{1,2}\s+[^\W\d_]{3,}(?:[ .'\-][^\W\d_]+)*$")   # "2 Georgia", "6 ALABAMA": a ranking and a name
 DIGIT_WITH_MARKS_RE = re.compile(r"^(\d{1,3})\s?[:=;|!]+$")   # the score digit read together with the dashes drawn beside it ("0 =")
 MERGED_PAIR_RE = re.compile(r"^(\d{1,3})\s+(\d{1,3})$")   # two scores read as ONE item ("28 9", "10 24")
@@ -160,6 +160,30 @@ def find_score_card(items: list[dict], clocks: list[str], last: tuple[int, int] 
     if all(0 <= n - o <= MAX_RISE for o, n in zip(last, score)):
         return score
     return None
+
+
+def _numbers_read_as_a_score(score: tuple[int, int], items: list[dict]) -> bool:
+    """False when the text-only reader's two numbers are separate items that cannot be the two scores of a scoreboard: not on one row
+    and not two neighbours of one column (a third number between them: a column of stats beside player names). Numbers that are
+    not items of their own ("FRA 0-0", "NAVY 58") are not checked."""
+    numbers = [it for it in items if NUMBER_RE.match(it["text"].strip())]
+    first = [it for it in numbers if int(it["text"]) == score[0]]
+    second = [it for it in numbers if int(it["text"]) == score[1]]
+    if not first or not second:
+        return True
+    for a in first:
+        for b in second:
+            if a is b:
+                continue
+            h = max(a["y1"] - a["y0"], b["y1"] - b["y0"])
+            ya, yb = (a["y0"] + a["y1"]) / 2, (b["y0"] + b["y1"]) / 2
+            if abs(ya - yb) <= 0.6 * h:
+                return True   # one row
+            low, high = sorted((ya, yb))
+            if abs(a["x0"] - b["x0"]) <= 0.6 * h and not any(
+                    n is not a and n is not b and low < (n["y0"] + n["y1"]) / 2 < high and abs(n["x0"] - a["x0"]) <= 0.6 * h for n in numbers):
+                return True   # stacked neighbours
+    return False
 
 
 def clock_seconds(text: str) -> int | None:
@@ -392,7 +416,11 @@ class ScoreWatcher:
             self._reset()
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
-        score = (find_score_geo(items, clocks) if items else None) or find_score(texts, clocks, anchored_only=bool(items))
+        score = find_score_geo(items, clocks) if items else None
+        if score is None:
+            score = find_score(texts, clocks, anchored_only=bool(items))
+            if score is not None and items and not _numbers_read_as_a_score(score, items):
+                score = None   # "BARCOLA 5 ... Cherki 2": player names with a column of stats, not teams with scores
         if score is None and items:
             score = find_score_card(items, clocks, self._stable)
         if score is None:
