@@ -325,6 +325,7 @@ class Server:
             for message in self.feed.messages:
                 log.warning("%s", message)
             self.feed.messages.clear()
+            self.feed_gate.fresh = self.feed.fresh_game_ids(time.monotonic())
             try:
                 self.feed_map.set_games(self.feed.games())
                 for game_id, situations in self.feed.situations().items():
@@ -494,12 +495,13 @@ class Server:
                 log.info("%s", line)
             mapped = self.feed_map.mapping(tab_id, index)
             self.feed_gate.lead_s = self.scorer.config.feed_lead_s
+            self.feed_gate.confirm_s = self.scorer.config.feed_confirm_s
             for line in self.feed_gate.observe(tab_id, index, mapped.game_id if mapped else None, r["clocks"], tracker.period, tracker.replay, now):
                 log.info("%s", line)
             if changed and per_tab[tab_id][-1] != "live":
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
             elif changed:
-                for line in self.feed_gate.real_change(tab_id, index, now):
+                for line in self.feed_gate.real_change(tab_id, index, now).lines:
                     log.info("%s", line)
                 strength = watcher.strength
                 self.event_at[(tab_id, index)] = now - (1.0 - strength) * self.scorer.config.event_s

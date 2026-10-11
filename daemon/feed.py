@@ -435,6 +435,11 @@ class FeedSession:
         self.situation_by_game: dict[str, tuple] = {}   # American football: the start state of every scrimmage play
         self.messages: list[str] = []     # warnings for the log (league switched off, errors)
         self.by_league: dict[str, list[Snapshot]] = {}   # the latest snapshots of each league
+        self.league_ok: dict[str, float] = {}            # league -> when it last answered well
+
+    def fresh_game_ids(self, now: float, stale_s: float = 30.0) -> set[str]:
+        """Games whose league answered well in the last `stale_s` seconds (a stale feed must not judge OCR readings)."""
+        return {s.game_id for s in self.games() if now - self.league_ok.get(s.league, float("-inf")) <= stale_s}
 
     def situations(self) -> dict[str, tuple]:
         return dict(self.situation_by_game)
@@ -458,6 +463,7 @@ class FeedSession:
             snaps = parse_scoreboard(data, league)
             self.poller.done(league, now, snaps, utc)
             self.by_league[league] = snaps
+            self.league_ok[league] = now
             found = self.tracker.update(snaps)
             notes += found
             if self.recorder:

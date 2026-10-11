@@ -165,6 +165,8 @@ LAYOUT = [
         ("scoring.feed_poll_s", "Live league every (s)", "A league with a live game is asked this often (5 s at the least: the feed refreshes its cache every 5 s)."),
         ("scoring.feed_idle_poll_s", "Quiet league every (s)", "A league with no live game and none starting soon is asked this often."),
         ("scoring.feed_summary_s", "Football plays every (s, 0 = off)", "American football: the plays of each live game are fetched this often."),
+        ("scoring.feed_unconfirmed_factor", "Unconfirmed score change counts (x)", "A score change read from the screen on a game the feed knows, that no feed event came before, counts this much (1.0 = off) until the feed confirms it."),
+        ("scoring.feed_confirm_s", "Feed confirms within (s)", "How long the feed has, after a score change read from the screen, to confirm it before it stays at the reduced strength."),
         ("scoring.feed_lead_s", "Shadow lead (s)", "Measuring only: a feed event is logged as \"would fire\" when the stream's clock is this many seconds before it."),
     ]),
     ("Manual control", [
