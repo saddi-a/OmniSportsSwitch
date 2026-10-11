@@ -91,3 +91,50 @@ def test_a_lone_ot_or_one_stray_quarter_is_not_basketball():
     d.update(["OT"], [])
     d.update(["Q4"], [])
     assert d.sport is None
+
+
+# ---- league words on the screen: weak evidence, a separate answer (`weak_sport`), never the hard `sport` --------------------------------
+# Header and scorebug of the Eagles-Jaguars tab (daemon.log 17:41): 'NFL' and 'NFL - 5e journee' are on screen from the first frame.
+NFL_BREAK = ["JACKSONVILLE JAGUARS / PHILADELPHIA EAGLES", "NFL", "5e journée", "bein spoets", "LIVE", "TOUTES LES CHAINES"]
+
+
+def weak(readings):
+    d = SportDetector()
+    for texts in readings:
+        d.update(texts, [])
+    return d
+
+
+def test_league_words_give_a_weak_guess_after_a_few_readings():
+    assert weak([NFL_BREAK]).weak_sport is None            # one reading is not enough
+    d = weak([NFL_BREAK] * 4)
+    assert d.weak_sport == FOOTBALL
+    assert d.sport is None                                 # the hard answer stays "unknown": no scorebug cue yet
+
+
+def test_league_words_in_french_english_and_the_other_sports():
+    assert weak([["NBA", "bein"]] * 4).weak_sport == BASKETBALL
+    assert weak([["Premier League", "2026/27"]] * 4).weak_sport == SOCCER
+    assert weak([["LIGUE 1 McDonald's"]] * 4).weak_sport == SOCCER
+    assert weak([["Premier Lcague"]] * 4).weak_sport == SOCCER      # OCR mangle seen in the logs
+    assert weak([["NCAA FOOTBALL"]] * 4).weak_sport == FOOTBALL
+    assert weak([["LIGUE DES CHAMPIONS"]] * 4).weak_sport == SOCCER
+
+
+def test_words_inside_other_words_do_not_count():
+    assert weak([["NFLUENCER", "INFLATION", "BANAL", "DINBA"]] * 6).weak_sport is None
+    assert weak([["bein SPORTS 1", "DIRECT"]] * 6).weak_sport is None
+
+
+def test_two_leagues_at_once_give_no_guess():
+    assert weak([["NFL", "NBA"]] * 6).weak_sport is None
+
+
+def test_a_hard_cue_is_not_overridden_by_league_words():
+    d = SportDetector()
+    for _ in range(4):
+        d.update(["NFL", "bein"], [])
+    for i in range(4):
+        sec = 52 * 60 + 54 + 3 * i
+        d.update(["PSG", "1", "LMFC", "0", "NFL"], [f"{sec // 60}:{sec % 60:02d}"])
+    assert d.sport == SOCCER                               # the hard answer is its own; the caller ranks the sources
