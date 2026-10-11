@@ -212,4 +212,4 @@ The design, the scoring rules and the hand-over notes for development are in [PL
 
 ## Licence
 
-Not chosen yet.
+Private project, not published or licensed for distribution.
