@@ -21,6 +21,7 @@ SKIP_BEHIND_S = 30.0      # an event this far behind the stream clock is not "ea
 CONFIRM_S = 120.0         # a real score change this soon after a would-fire belongs to it
 ARM_READINGS = 2          # the condition must hold on this many readings in a row (a clock misread once must not fire)
 MAX_PENDING = 400
+ENDZONE_YDS = 20          # a play that starts this close to the end zone is logged as an end-zone cue
 
 
 @dataclasses.dataclass
@@ -48,6 +49,7 @@ class FeedGate:
         self.armed: dict[tuple, int] = {}            # (tab, tile, event key) -> readings in a row that qualified
         self.fires: dict[tuple, list[_Fire]] = {}    # (tab, tile) -> would-fires waiting for the real score change
         self.mapped: dict[tuple, str] = {}           # (tab, tile) -> game id, as of the last observe
+        self.situations: dict[str, tuple] = {}       # game id -> feed.Situation of every scrimmage play (American football)
 
     def add(self, event: feed.FeedEvent, snap: feed.Snapshot) -> None:
         if event.kind not in KINDS.get(snap.sport, ()):
@@ -58,6 +60,9 @@ class FeedGate:
         rows = self.pending.setdefault(event.game_id, [])
         rows.append(_Pending(event, snap.sport, snap.league, snap.label, elapsed))
         del rows[:-MAX_PENDING]
+
+    def set_situations(self, game_id: str, situations: tuple) -> None:
+        self.situations[game_id] = situations
 
     def forget(self, tab_id: int) -> None:
         for store in (self.fires, self.mapped):
@@ -99,6 +104,33 @@ class FeedGate:
                     self.armed.pop(key, None)
                     self.fires.setdefault(tile_key, []).append(_Fire(p, now, gap))
                     msgs.append(f"feed would-fire {where}: {what} (stream clock {clock_s:.0f} s, event {gap:.0f} s ahead){guessed}")
+            else:
+                self.armed.pop(key, None)
+        return msgs + self._end_zone(tab_id, tile, game_id, clock_s, period)
+
+    def _end_zone(self, tab_id: int, tile: int, game_id: str, clock_s: float, period: int | None) -> list[str]:
+        """Measuring only: the start state of a play close to the end zone, released by the same rule as events (the stream
+        clock is within `lead_s` before the snap, two readings in a row, never when already behind)."""
+        msgs = []
+        for s in self.situations.get(game_id, ()):
+            if s.yards_to_endzone > ENDZONE_YDS:
+                continue
+            key = (tab_id, tile, "zone", s.play_id)
+            stream = feed.game_elapsed_s("american football", period, clock_s)
+            if key in self.done or stream is None:
+                continue
+            gap = feed.game_elapsed_s("american football", s.period, s.clock_s) - stream
+            if gap < -SKIP_BEHIND_S:
+                self.done.add(key)
+            elif gap <= self.lead_s:
+                self.armed[key] = self.armed.get(key, 0) + 1
+                if self.armed[key] >= ARM_READINGS:
+                    self.done.add(key)
+                    self.armed.pop(key, None)
+                    goal = "goal" if s.goal_to_go else str(s.distance)
+                    msgs.append(f"feed end zone would raise cue: {s.yards_to_endzone} yds, {s.down} & {goal} "
+                                f"(tab {tab_id} tile {tile}, {s.offense or '?'} has the ball, play {s.display} in period {s.period}, "
+                                f"{gap:.0f} s ahead of the stream clock) (period guessed)")
             else:
                 self.armed.pop(key, None)
         return msgs

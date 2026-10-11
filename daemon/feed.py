@@ -36,6 +36,7 @@ BACKOFF_S = (5.0, 10.0, 30.0, 60.0)     # after errors, per league
 SOON_MIN = 20.0                         # a game starting within this many minutes counts as active
 MAX_SUMMARIES = 6                       # live American football games whose plays are fetched at once
 BIG_PLAY_YD = 20
+NOT_SCRIMMAGE = ("timeout", "kickoff", "end of", "end period", "coin toss", "two-minute", "two minute")
 
 
 def scoreboard_url(league: str) -> str:
@@ -67,6 +68,21 @@ class FeedEvent:
     team: str               # team abbreviation ("" if unknown)
     text: str = ""
     yards: int = 0
+
+
+@dataclasses.dataclass(frozen=True)
+class Situation:
+    """American football: the state at the start of a play, as the broadcast graphic shows it before the snap."""
+    game_id: str
+    play_id: str
+    period: int
+    clock_s: float          # game clock at the snap (counts down inside the period)
+    display: str
+    down: int               # 1..4
+    distance: int           # yards to go for a first down
+    yards_to_endzone: int   # yards from the ball to the end zone the offense attacks (>= 1)
+    goal_to_go: bool
+    offense: str            # abbreviation of the team with the ball ("" if unknown)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -222,6 +238,32 @@ def parse_summary(data: dict, snap: Snapshot) -> tuple:
         events.append(FeedEvent(snap.game_id, (snap.game_id, "play", str(p.get("id"))), kind, _int((p.get("period") or {}).get("number")),
                                 clock_seconds(clock), clock, "", p.get("text", ""), _int(p.get("statYardage")) or 0))
     return tuple(events)
+
+
+def parse_situations(data: dict, snap: Snapshot) -> tuple:
+    """American football: the start state (down, distance, yards to the end zone) of every scrimmage play of a game's
+    summary, in play order. Kickoffs, timeouts and other plays without a down are left out. ESPN sometimes gives 0 yards
+    to the end zone on a goal-line start; it is read as 1."""
+    drives = (data or {}).get("drives") or {}
+    plays = [p for d in list(drives.get("previous", [])) + ([drives["current"]] if isinstance(drives.get("current"), dict) else [])
+             for p in d.get("plays", [])]
+    plays.sort(key=lambda p: _int(p.get("sequenceNumber")) or 0)
+    abbr = {snap.home.id: snap.home.abbr, snap.away.id: snap.away.abbr}
+    out, seen = [], set()
+    for p in plays:
+        s = p.get("start") or {}
+        kind = ((p.get("type") or {}).get("text") or "").lower()
+        if str(p.get("id")) in seen or any(w in kind for w in NOT_SCRIMMAGE):
+            continue                                  # a play listed twice; a timeout, kickoff... repeats the state of the next snap
+        seen.add(str(p.get("id")))
+        down, dist, yte = _int(s.get("down")), _int(s.get("distance")), _int(s.get("yardsToEndzone"))
+        period, clock = _int((p.get("period") or {}).get("number")), (p.get("clock") or {}).get("displayValue", "")
+        if not down or down < 1 or down > 4 or dist is None or yte is None or not period or clock_seconds(clock) is None:
+            continue
+        text = (s.get("shortDownDistanceText") or s.get("downDistanceText") or "")
+        out.append(Situation(snap.game_id, str(p.get("id")), period, clock_seconds(clock), clock, down, dist, max(yte, 1),
+                             "goal" in text.lower(), abbr.get(str((s.get("team") or {}).get("id")), "")))
+    return tuple(out)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -390,8 +432,12 @@ class FeedSession:
         self.tracker = FeedTracker()
         self.summary_at: dict[str, float] = {}
         self.summary_done: set[str] = set()
+        self.situation_by_game: dict[str, tuple] = {}   # American football: the start state of every scrimmage play
         self.messages: list[str] = []     # warnings for the log (league switched off, errors)
         self.by_league: dict[str, list[Snapshot]] = {}   # the latest snapshots of each league
+
+    def situations(self) -> dict[str, tuple]:
+        return dict(self.situation_by_game)
 
     def games(self) -> list[Snapshot]:
         return [s for snaps in list(self.by_league.values()) for s in snaps]
@@ -435,6 +481,7 @@ class FeedSession:
                 continue
             first = s.game_id not in self.summary_done
             self.summary_done.add(s.game_id)
+            self.situation_by_game[s.game_id] = parse_situations(data, s)
             found = self.tracker.add_events(s.game_id, parse_summary(data, s), first)
             notes += found
             if self.recorder:

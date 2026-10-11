@@ -132,3 +132,72 @@ def test_forget_clears_a_tab():
     see(g, snap, "52:56", 2)
     g.forget(1)
     assert g.fires == {} and g.mapped == {}
+
+
+# ---------------------------------------------------------------- Stage 2b: end zone cue (shadow)
+def nfl_snap():
+    return feed.parse_scoreboard(json.loads((FIXTURES / "feed_nfl_scoreboard.json").read_text(encoding="utf-8")), "nfl")[0]
+
+
+def situation_data():
+    return json.loads((FIXTURES / "feed_nfl_situations.json").read_text(encoding="utf-8"))
+
+
+def test_situations_are_read_in_order_with_goal_to_go_and_offense():
+    snap = nfl_snap()
+    sits = feed.parse_situations(situation_data(), snap)
+    assert [s.yards_to_endzone for s in sits] == [66, 71, 57, 41, 28, 1]
+    last = sits[-1]
+    assert (last.period, last.clock_s, last.down, last.distance, last.goal_to_go, last.offense) == (4, 489.0, 1, 1, True, snap.home.abbr)
+    assert not sits[0].goal_to_go
+
+
+def test_timeouts_kickoffs_duplicates_and_stateless_plays_are_left_out():
+    data = situation_data()
+    plays = data["drives"]["previous"][0]["plays"]
+    timeout = json.loads(json.dumps(plays[-1]))
+    timeout.update(id="t1", type={"text": "Official Timeout"})
+    kick = json.loads(json.dumps(plays[-1]))
+    kick.update(id="k1", type={"text": "Kickoff"})
+    nodown = json.loads(json.dumps(plays[-1]))
+    nodown.update(id="n1")
+    nodown["start"]["down"] = -1
+    plays += [timeout, kick, nodown, json.loads(json.dumps(plays[0]))]
+    assert len(feed.parse_situations(data, nfl_snap())) == 6
+
+
+def test_zero_yards_to_the_end_zone_is_read_as_one():
+    data = situation_data()
+    data["drives"]["previous"][0]["plays"][-1]["start"]["yardsToEndzone"] = 0
+    assert feed.parse_situations(data, nfl_snap())[-1].yards_to_endzone == 1
+
+
+def zone_gate():
+    snap = nfl_snap()
+    g = FeedGate(lead_s=10.0)
+    g.set_situations(snap.game_id, feed.parse_situations(situation_data(), snap))
+    return g, snap
+
+
+def test_end_zone_cue_is_logged_once_when_the_stream_nears_the_snap():
+    g, snap = zone_gate()
+    assert see(g, snap, "9:00", 1, period=4) == []
+    assert see(g, snap, "8:21", 2, period=4) == []                 # 12 s before the snap: too early
+    assert see(g, snap, "8:17", 3, period=4) == []                 # armed
+    lines = see(g, snap, "8:16", 4, period=4)
+    assert len(lines) == 1 and "feed end zone would raise cue: 1 yds, 1 & goal" in lines[0] and "JAX has the ball" in lines[0]
+    assert see(g, snap, "8:10", 5, period=4) == []
+
+
+def test_plays_far_from_the_end_zone_are_never_logged_and_no_period_holds():
+    g, snap = zone_gate()
+    for i, clock in enumerate(["9:50", "9:48", "9:45", "9:00", "8:59"]):
+        assert see(g, snap, clock, i, period=4) == []             # the 41 and 28 yard plays
+    assert see(g, snap, "8:15", 10) == [] and see(g, snap, "8:14", 11) == []   # no period read
+    assert see(g, snap, "8:13", 12, period=4) == []                # armed only now
+
+
+def test_end_zone_play_already_behind_the_stream_is_dropped_quietly():
+    g, snap = zone_gate()
+    assert see(g, snap, "4:00", 1, period=4) == [] and see(g, snap, "4:00", 2, period=4) == []
+    assert see(g, snap, "8:12", 3, period=4) == []                 # decided for good

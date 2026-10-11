@@ -210,3 +210,11 @@ Owner: the main session for `server.py` and the restart; the API session can wri
 5. Record while checking, for the open items: the NFL `situation` field (down, distance, red zone) on a live game; whether VAR, substitutions, disallowed goals and shootout events appear in soccer; which league slugs work for La Liga, Premier League, Ligue 1 and national teams; whether `Cache-Control: max-age=5` really means the data changes no faster.
 6. Tests: parsing against fixtures, a fake local server for polling/backoff/429/timeouts, `mode = "local"` starts nothing.
 7. After 2-3 game days: report the lag numbers and a recommendation for `lead_s`, then start Stage 1 (mapping) with the user.
+
+## 12. American football situation (end zone) from the feed: measured 2026-10-11 (JAX-PHI, 165 plays)
+
+- The scoreboard `situation` field is EMPTY on every live NFL snapshot (0 of 30). The data is in the `summary` endpoint (already polled every 10 s): every play has `start` and `end` with `down`, `distance`, `yardLine`, `yardsToEndzone`, `downDistanceText` ("1st & Goal at PHI 1"), `shortDownDistanceText` ("1st & Goal"), `possessionText` and `team.id` (the team with the ball). Present on 165 of 165 plays for the numbers, on 155 of 165 for the texts. `wallclock` (UTC, real time of the play) is also there.
+- Plays come in two drive lists that overlap (a play can appear twice with the same id) and are not in order: sort by `sequenceNumber`, drop duplicate ids.
+- Quirks: timeouts and kickoffs carry `down` -1 or 0 and a copy of the next state; a goal-line start can have `yardsToEndzone` 0 (read as 1); the `end` state of a scrimmage play equals the next play's `start` in only 80 of 103 cases (penalties, touchdowns and change of possession break it), so the **start** state of each play is used, not the end state.
+- 36 of 165 plays end within 20 yards of the end zone, 18 are "Goal" situations.
+- Code: `feed.parse_situations` -> `Situation(play_id, period, clock_s, down, distance, yards_to_endzone, goal_to_go, offense)`; `FeedGate._end_zone` logs `feed end zone would raise cue: N yds, D & X (...)` in shadow, with the same release rule as events. Measuring only.
