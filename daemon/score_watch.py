@@ -43,11 +43,15 @@ CARD_VS_LABEL = 2.0   # the two scores of a card are at least this much taller t
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
 RECORD_ROW = 0.8   # a "4-0" pair counts as a score only when its team names are on its own row (records sit below the names)
+PANEL_QUARTER_RE = re.compile(r"^(q[1-4]|[1-4]q)$", re.I)
+PLAY_CLOCK_VS_PANEL = 1.3   # a number right of the clock / quarter text and at most this much taller than it is the play clock, not a score
 SCORE_VS_LABEL = 2.0   # score digits are at least this much taller than the team names beside them
 CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
 CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 HISTORY = 5          # readings that vote
 NEEDED = 3           # votes a value needs to count
+PRE_RESET_MEMORY_S = 300   # the score known before a baseline reset is remembered this long: a baseline that rose across it is an event
+QUARTER_END_S = 10        # a clock jump to this many seconds or less of an American football quarter is the quarter ending, not a rewind
 PEAK_MEMORY_S = 120  # a score only goes up: a lower reading is a misread (a logo read as 0), unless it lasts this long
 PEAK_HOLD_S = 25     # a score above the ceiling becomes the new ceiling only after it has held this long
 FIRED_MEMORY_S = 60   # the same score is not announced twice inside this time (a misread flicker around a goal)
@@ -281,7 +285,20 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
                 best, best_key = (a, b), key
 
     # two separate numbers on one line, similar height, a team name close by
-    numbers = [it for it in live if NUMBER_RE.match(it["text"].strip())]
+    panel = [it for it in items if CLOCK_RE.match(it["text"].strip()) or it["text"].strip() in skip or ORDINAL_RE.match(it["text"].strip())
+             or PANEL_QUARTER_RE.match(it["text"].strip())]
+
+    def is_play_clock(n) -> bool:
+        """The play clock is printed right of the game clock / quarter text in the same size; the big digits of a centre-panel scorebug
+        are much taller than the panel text (1.4x to 2.7x on the logs), the play clock about 1.0x."""
+        for p in panel:
+            h = p["y1"] - p["y0"]
+            if (n["x0"] >= p["x1"] - 5 and abs((n["y0"] + n["y1"]) / 2 - (p["y0"] + p["y1"]) / 2) <= 0.6 * h and n["x0"] - p["x1"] <= 4 * h
+                    and (n["y1"] - n["y0"]) <= PLAY_CLOCK_VS_PANEL * h):
+                return True
+        return False
+
+    numbers = [it for it in live if NUMBER_RE.match(it["text"].strip()) and not is_play_clock(it)]
     pairs = []   # (min height, text items between the two, teams near, left, right)
     for i, a in enumerate(numbers):
         for b in numbers[i + 1:]:
@@ -363,6 +380,8 @@ class ScoreWatcher:
         self._below_since: float | None = None          # since when the vote has been under the peak
         self._above_since: float | None = None          # since when the vote has been above the peak
         self._fired: tuple[tuple[int, int], float] | None = None   # the last score announced and when
+        self._before_reset: tuple[tuple[int, int], float, tuple[int, float] | None] | None = None   # ceiling when the baseline was last reset, when, and the game clock then
+        self._recent_clock: tuple[int, float] | None = None   # the latest game clock read at all (even a jumped one) and when
         self._readings = 0
         self._clock: tuple[int, float] | None = None   # last plausible game clock and when it was read
         self._alt: tuple[int, float] | None = None     # an implausible clock seen once, waiting for confirmation
@@ -372,7 +391,10 @@ class ScoreWatcher:
         """The score the watcher currently believes (voted over several readings), or None."""
         return self._stable
 
-    def _reset(self) -> None:
+    def _reset(self, now: float | None = None) -> None:
+        if self._peak is not None and now is not None:
+            # the ceiling only rises after a score has held 25 s, so the voted score counts too
+            self._before_reset = (tuple(max(p, s) for p, s in zip(self._peak, self._stable or self._peak)), now, self._clock)
         self._history.clear()
         self._stable = self._peak = self._below_since = self._above_since = self._fired = None
 
@@ -391,6 +413,21 @@ class ScoreWatcher:
         if gain <= 2 and t - self._scored_at[side] <= self.config.extra_point_s:
             return 0.0
         return self.config.field_goal_strength
+
+    @staticmethod
+    def _same_game_clock(before: tuple[int, float] | None, after: tuple[int, float] | None) -> bool:
+        """The clock read now continues the one read before the reset: it moved by no more than twice the time that passed (plus slack)."""
+        if before is None or after is None:
+            return False
+        return abs(after[0] - before[0]) <= 2 * max(after[1] - before[1], 0.0) + 2 * CLOCK_SLACK_S
+
+    @staticmethod
+    def _quarter_ends(clocks: list[str], sport: str | None) -> bool:
+        """American football: a clock at 0:00-0:10 is a quarter ending (the clock of the new period is not far from it), not a rewind."""
+        if (sport or "").strip().lower() != "american football":
+            return False
+        seconds = [s for s in map(clock_seconds, clocks) if s is not None]
+        return bool(seconds) and min(seconds) <= QUARTER_END_S
 
     def _clock_jumped(self, clocks: list[str], now: float) -> bool:
         seconds = [s for s in map(clock_seconds, clocks) if s is not None]
@@ -426,8 +463,10 @@ class ScoreWatcher:
         if replay and self._stable is None:
             return False   # a replay shows old action with its own graphics: with no score known there is nothing to compare it with
         game_clocks = [] if clocks and _no_scoreboard(texts, clocks) else clocks
-        if now is not None and not replay and self._clock_jumped(game_clocks, now):   # a replay's clock is an old moment's: no jump
-            self._reset()
+        if now is not None and not replay and (read := [s for s in map(clock_seconds, game_clocks) if s is not None]):
+            self._recent_clock = (read[0], now)
+        if now is not None and not replay and self._clock_jumped(game_clocks, now) and not self._quarter_ends(game_clocks, sport):   # a replay's clock is an old moment's: no jump
+            self._reset(now)
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
         score = find_score_geo(items, clocks) if items else None
@@ -449,7 +488,19 @@ class ScoreWatcher:
             return False
         current = (left, right)
         if self._stable is None:
+            before, self._before_reset = self._before_reset, None
             self._stable = self._peak = current
+            rises = [n - p for n, p in zip(current, before[0])] if before is not None else []
+            if before is not None and t - before[1] <= PRE_RESET_MEMORY_S and sorted(rises)[0] == 0 and 1 <= sorted(rises)[1] <= MAX_RISE                     and self._same_game_clock(before[2], self._recent_clock):
+                # ONE side rose by 1..MAX_RISE and the other did not move across a baseline reset (a clock jump swallowed the change), and the
+                # game clock fits the one before the reset: it is an event after all. Another game in the slot has other scores and a
+                # clock from somewhere else (Como-Roma at 90' -> Espanyol-Elche at 28': a false 0-2).
+                self._peak = before[0]
+                self.strength = self._event_size(current, before[0], t, sport)
+                self._peak = current
+                if self.strength > 0.0:
+                    self._fired = (current, t)
+                    return True
             return False
         if all(c <= p for c, p in zip(current, self._peak)):
             # not above the ceiling: a restored score, or a misread; a drop that lasts is believed in the end

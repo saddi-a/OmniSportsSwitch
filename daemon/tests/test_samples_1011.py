@@ -328,3 +328,138 @@ def test_american_football_touchdown_and_field_goal_during_a_replay():
     fired = watch_replay([EAGLES_FG] * 5, w2, replay=True, sport="american football")  # 17:50: JAX 10 (field goal, +3)
     assert len(fired) == 1 and w2._stable == (14, 10) and w2.strength == 0.6
     assert watch_replay([EAGLES_FG] * 8, w2, replay=True, sport="american football") == []
+
+
+# ---- the NFL play clock is not a score (Eagles-Jaguars 19:13:39-42, boxes.log) ------------------------------------------------------------------------
+# The play clock sits right of the game clock, in the same size as the clock text, so it was read as a score ("PHI 17" + '21' = (17, 21),
+# JAX '16' + '17' = (16, 17)). Real big digits of a centre-panel scorebug are taller than the panel text (ratio 1.4 to 2.7 on the logs).
+PLAY_CLOCK_A = boxes([("DIRECI", 24, 82, 46), ("bein spoeTS", 24, 86, 68), ("5", 198, 323, 43), ("ONY", 48, 962, 205), ("SCORING DRIVE", 30, 380, 786),
+                      ("9 PLAYS, 32 YDS, 1.27 TOP", 30, 656, 788), ("2-2", 24, 438, 844), ("PHI/ 17", 50, 474, 830), ("3-1", 24, 750, 844),
+                      ("21", 40, 1161, 835), ("LONDON", 42, 1264, 821)])
+PLAY_CLOCK_B = boxes([("NEW ORLEANS SAINTS", 24, 6, 30), ("MINNESOTA VIKINGS", 24, 230, 30), ("NFL", 22, 4, 54), ("5e journée", 20, 43, 55),
+                      ("bein spoets", 36, 121, 93), ("5", 64, 1111, 665), ("0", 64, 1237, 665), ("SCORING DRIVE", 37, 525, 1087),
+                      ("2-2 PHI", 59, 602, 1148), ("17", 64, 772, 1145), ("16", 62, 1202, 1148), ("Ath", 58, 1305, 1149), ("008", 52, 1423, 1151),
+                      ("17", 52, 1604, 1153), ("LIVE", 14, 83, 1209)])
+BEIN_BUG = boxes([("bein [spoRTS", 38, 122, 92), ("64", 42, 721, 513), ("2-2", 32, 606, 1166), ("PHI| 14", 72, 656, 1142), ("3-1", 36, 1039, 1165),
+                  ("JAX} 10", 72, 1082, 1142), ("Ath", 52, 1308, 1152), ("8:15", 54, 1421, 1151), ("05", 56, 1602, 1152), ("Ist & GOAL", 60, 1737, 1147)])
+CENTRE_PANEL = boxes([("HOUSTON", 30, 100, 800), ("31", 90, 330, 790), ("2nd", 36, 520, 800), ("10:45", 36, 600, 800), ("17", 90, 760, 790), ("K-STATE", 30, 880, 800)])
+
+
+def test_the_play_clock_beside_the_game_clock_is_not_a_second_score():
+    assert find_score_geo(BEIN_BUG, ["8:15"]) == (14, 10)            # '05' (same height as the clock, right of it) is ignored
+    assert find_score_geo(PLAY_CLOCK_B, []) != (16, 17)               # '17' right of 'Ath' '008' is the play clock
+    # PLAY_CLOCK_A (19:13:39: the clock and quarter text are hidden under the drive card) is a known gap: nothing to measure the '21' against;
+    # one such reading cannot make a baseline (3 of the last 5 readings must agree), see the sequence test below
+
+
+def test_a_centre_panel_scorebug_keeps_its_right_score():
+    # 'HOUSTON 31 [2nd 10:45] 17 K-STATE': the right score is right of the panel but much taller than its text
+    assert find_score_geo(CENTRE_PANEL, ["10:45"]) == (31, 17)
+
+
+# ---- the whole sequence of the last field goal, Eagles-Jaguars 19:09:30-19:14:40 (real boxes of tab 485660207, OCR items only) ----------------------------
+# PHI 14 JAX 16 -> a PHI field goal (17-16) at 19:12 -> the drive card and the play clock ('21', '25') read as scores, the game clock jumps to 0:00 ->
+# JAX field goal as time runs out (17-19, JAXE 19 on the scorebug for two readings, then the FINAL card). It was never announced.
+def _sequence_1914():
+    import json
+    import pathlib
+    path = pathlib.Path(__file__).parent / "fixtures" / "nfl_final_field_goal_1914.json"
+    for frame in json.loads(path.read_text(encoding="utf-8")):
+        yield frame["t"], [{"text": t, "x0": x, "y0": y, "x1": x + h * 0.55 * len(t), "y1": y + h} for t, h, x, y in frame["items"]]
+
+
+def test_the_last_field_goal_of_the_game_is_announced():
+    w = ScoreWatcher()
+    events = []
+    for t, items in _sequence_1914():
+        texts = [i["text"] for i in items]
+        if w.update(texts, find_clocks(texts), t, items, sport="american football"):
+            events.append((round(t), w.score, w.strength))
+    assert [(score, strength) for _, score, strength in events] == [((17, 16), 0.6), ((17, 19), 0.6)], events
+    assert events[-1][0] <= 19 * 3600 + 14 * 60 + 40       # before the FINAL card ends
+
+
+# ---- a clock jump does not swallow a score change (B) ------------------------------------------------------------------------------------------------
+
+def _board(left, right, clock):
+    return boxes([("2-2", 24, 438, 844), (f"PHI| {left}", 50, 474, 830), ("3-1", 26, 752, 844), (f"JAX| {right}", 50, 782, 830), ("3RD", 44, 946, 833),
+                  (clock, 60, 1029, 833), ("LONDON", 42, 1264, 821)])
+
+
+def _run(w, left, right, clock, start, n=4, sport="american football"):
+    fired = []
+    for i in range(n):
+        items = _board(left, right, clock)
+        texts = [it["text"] for it in items]
+        if w.update(texts, [clock], start + i * 3.0, items, sport=sport):
+            fired.append(start + i * 3.0)
+    return fired
+
+
+def _after_a_clock_jump(first_clock="9:39", jump_clock="14:55", sport="american football"):
+    w = ScoreWatcher()
+    assert _run(w, 17, 16, first_clock, 0.0, 5, sport) == []
+    assert w.score == (17, 16)
+    _run(w, 17, 16, jump_clock, 20.0, 3, sport)         # two confirmations of the jump
+    return w
+
+
+def test_a_clock_jump_resets_the_baseline_but_the_next_baseline_that_rose_is_an_event():
+    w = _after_a_clock_jump()
+    assert w.score is None                                 # reset
+    fired = _run(w, 17, 19, "14:50", 40.0, 4)              # JAX field goal while the baseline was gone
+    assert len(fired) == 1 and w.score == (17, 19) and w.strength == 0.6
+
+
+def test_a_new_baseline_that_is_lower_equal_or_too_far_is_no_event():
+    for left, right in ((17, 13), (14, 16), (17, 16), (17, 27), (30, 16)):    # lower, lower, same, +11, +13
+        w = _after_a_clock_jump()
+        assert _run(w, left, right, "14:50", 40.0, 4) == [], (left, right)
+        assert w.score == (left, right)
+
+
+def test_a_touchdown_that_happened_across_the_jump_is_a_full_event():
+    w = _after_a_clock_jump()
+    fired = _run(w, 17, 23, "14:50", 40.0, 4)
+    assert len(fired) == 1 and w.strength == 1.0
+
+
+def test_a_baseline_long_after_the_reset_is_no_event():
+    w = _after_a_clock_jump()
+    assert _run(w, 17, 19, "10:00", 600.0, 4) == []        # 10 minutes later: too old to say what changed
+
+
+def test_a_clock_jump_to_the_last_ten_seconds_of_an_nfl_quarter_does_not_reset():
+    w = _after_a_clock_jump(jump_clock="0:05")
+    assert w.score == (17, 16)                             # kept
+    fired = _run(w, 17, 19, "0:03", 40.0, 4)
+    assert len(fired) == 1 and w.score == (17, 19)         # and the field goal at 0:03 is an event on the normal path
+
+
+def test_other_sports_still_reset_on_a_jump_to_0_05():
+    w = _after_a_clock_jump(jump_clock="0:05", sport="football")
+    assert w.score is None
+
+
+def test_a_new_baseline_where_both_sides_differ_is_another_game_not_a_goal():
+    w = _after_a_clock_jump()
+    assert _run(w, 20, 17, "14:50", 40.0, 4) == []         # (17, 16) -> (20, 17): both moved
+
+
+# real frames for the play clock rule: the compact college bug keeps its right score (7:26 is 29 px, the right '7' is 40: ratio 1.38), and the
+# false (14, 25) score change of 18:56:13 (tab 485660207) is gone
+USC_PENN = boxes([("Da", 24, 1306, 64), ("ZN", 28, 1308, 86), ("19 USC", 24, 424, 706), ("5-1", 20, 477, 727), ("7", 44, 603, 703), ("7:26", 29, 675, 717),
+                  ("7", 40, 785, 705), ("PENN STATE", 26, 862, 704), ("3-2", 20, 863, 727)])
+FALSE_1856 = boxes([("DIRECI", 24, 80, 46), ("78", 77, 953, 116), ("GaTC", 34, 306, 235), ("2-2", 24, 438, 844), ("PHI| 14", 50, 476, 830),
+                    ("3-1", 26, 750, 842), ("Ath", 41, 947, 834), ("1:59", 42, 1031, 833), ("25", 42, 1161, 833), ("LONDON", 42, 1264, 821)])
+
+
+def test_a_compact_college_bug_keeps_its_right_score_beside_the_clock():
+    assert find_score_geo(USC_PENN, ["7:26"]) == (7, 7)
+
+
+def test_the_false_score_change_of_18_56_13_is_gone():
+    assert find_score_geo(FALSE_1856, ["1:59"]) is None
+    w = ScoreWatcher()
+    texts = [i["text"] for i in FALSE_1856]
+    assert [w.update(texts, ["1:59"], 1000.0 + 3 * n, FALSE_1856, sport="american football") for n in range(8)] == [False] * 8
