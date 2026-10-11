@@ -398,6 +398,9 @@ class Server:
             if tracker.scorebug_note:   # measuring only: DAZN hides the scorebug during replays
                 kind, secs = tracker.scorebug_note
                 log.info("scorebug %s tab %s tile %s: %.0f s", kind, tab_id, index, secs)
+            if tracker.clock_replay_note:   # measuring only unless scoring.replay_by_clock_s > 0
+                kind, secs = tracker.clock_replay_note
+                log.info("replay by clock tab %s tile %s: %s", tab_id, index, f"-{secs:.0f} s" if kind == "start" else f"ended after {secs:.0f} s")
             for cue in tracker.anticipation:   # measuring only while weights.anticipation is 0
                 log.info("anticipation %s tab %s tile %s", cue, tab_id, index)
                 self.scorer.set_anticipation(tab_id, now)
