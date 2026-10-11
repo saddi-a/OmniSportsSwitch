@@ -47,3 +47,11 @@ def test_a_message_without_page_info_or_with_junk_changes_nothing():
     assert server.page_text.get(7, "") in ("", "ok text")
     server.handle_message({"type": "unregister", "tab_id": 7})
     assert 7 not in server.page_text
+
+
+def test_the_media_session_title_wins_over_the_page_texts():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 8})
+    server.handle_message(rect_message(8, {"title": "Sport | CANAL+", "texts": ["Programme TV", "Cinéma", "Jeunesse"],
+                                          "media": {"title": "New Orleans Saints / Minnesota Vikings", "artist": "BEIN SPORTS 1", "album": ""}}))
+    assert server.page_text[8] == "New Orleans Saints / Minnesota Vikings | BEIN SPORTS 1"

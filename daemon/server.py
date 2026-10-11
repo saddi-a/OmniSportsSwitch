@@ -418,7 +418,8 @@ class Server:
         popup has no teams, and the sport by its league words. Every string is cut short."""
         media = info.get("media") if isinstance(info.get("media"), dict) else {}
         parts = [str(media.get(k) or "")[:120] for k in ("title", "artist", "album")]
-        parts += [str(t)[:120] for t in (info.get("texts") or [])[:12] if isinstance(t, str)]
+        if not media.get("title"):   # the media session names the match (CANAL+: "New Orleans Saints / Minnesota Vikings"); the page texts are only a fallback (menus, mostly)
+            parts += [str(t)[:120] for t in (info.get("texts") or [])[:12] if isinstance(t, str)]
         text = " | ".join(p for p in parts if p)
         if text != self.page_text.get(tab_id, ""):
             self.page_text[tab_id] = text
