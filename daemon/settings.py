@@ -96,7 +96,8 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------------------------------------------
 LOCAL_NAME = "settings.local.json"
 _DEFAULT_PROFILES = dict(game_state.PROFILES)
-_PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "big_play_words": game_state.BIG_PLAY_WORDS, "replay_words": game_state.REPLAY_WORDS}
+_PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "big_play_words": game_state.BIG_PLAY_WORDS, "replay_words": game_state.REPLAY_WORDS,
+                 "anticipation_words": game_state.ANTICIPATION_WORDS}
 _DEFAULT_PHRASES = {key: list(target) for key, target in _PHRASE_LISTS.items()}
 
 _SPORT_LABELS = {"football": "Football (soccer)", "american football": "American football",
@@ -134,6 +135,10 @@ LAYOUT = [
         ("scoring.extra_point_s", "Extra point window (s)", "American football: an extra point or two-point conversion this soon after a touchdown is not a new event."),
         ("scoring.scorebug_hidden_s", "Scorebug hidden (s)", "Only logged, changes nothing: a scorebug missing this long is written to the events log as hidden (DAZN hides it during replays)."),
         ("scoring.scorebug_memory_s", "Scorebug seen within (s)", "Only logged: the scorebug must have been seen this recently before the gap for it to be logged."),
+        ("scoring.anticipation_s", "Anticipation boost (s)", "How long a banner before a likely score boosts a stream (it fades). Only matters when its weight is above 0."),
+        ("scoring.anticipation_cooldown_s", "Anticipation cooldown (s)", "The same banner is not reported again this soon."),
+        ("scoring.anticipation_big_gain_yd", "Big gain graphic (yards)", "A \"+NN YDS\" graphic counts as a cue from this many yards."),
+        ("scoring.anticipation_goal_yd", "Yard line graphic (yards)", "A yard line graphic beside a down text counts as a cue up to this many yards."),
         ("scoring.replay_dampen", "Replay dampening", "While a replay is on screen over a live game, crowd noise and loudness count this fraction (0 = ignored, 1 = same as live)."),
         ("scoring.recent_ad_s", "No hopping between ads (s)", "MAIN is not handed to a stream that was showing an ad this recently."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
@@ -150,6 +155,7 @@ LAYOUT = [
         ("weights.crowd", "Crowd", "Weight of cheering, crowd and applause sound."),
         ("weights.speech", "Commentary", "Weight of speech (negative: talking is not excitement)."),
         ("weights.music", "Music", "Weight of music, ads and jingles (negative)."),
+        ("weights.anticipation", "Anticipation", "Weight of a banner that comes before a likely score (red zone, VAR, corner...), fading over its duration. 0 = off (it is only logged). Keep it small."),
         ("weights.shout", "Shouting", "Weight of shouting, yelling and screaming sound (0 = off). Ignored when music dominates, so it never helps an ad."),
         ("weights.event", "Score change", "Weight of a fresh goal or touchdown read from the scoreboard."),
         ("weights.favourite", "Favourite bonus", "Bonus per +1 of a favourite team's multiplier (a x2 team gets +0.4)."),
@@ -171,6 +177,7 @@ LAYOUT = [
     ("Banner phrases", [
         ("banners.break_phrases", "Ad break wording", "Text a player shows during an ad break (any case, inside a text). Add your service's wording."),
         ("banners.big_play_words", "Big play banners", "Banners flashed for a big play (the text must be just that phrase)."),
+        ("banners.anticipation_words", "Anticipation banners", "Banners that come before a likely score: red zone, VAR, corner, penalty, review... (the text must be just that phrase)."),
         ("banners.replay_words", "Replay banners", "Banners shown during a replay (English, French, Spanish, Portuguese; the text must be just that phrase)."),
     ]),
 ]

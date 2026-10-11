@@ -1029,3 +1029,34 @@ def test_set_tags_without_shout_still_works():
     warm_up(s)
     t = roar(s, 2, 60)
     assert s.components(2, t)["shout"] == 0.0
+
+
+# ---- anticipation (a banner before a likely score): wired, weight 0 until switched on --------------------------------
+
+def test_anticipation_is_off_by_default_and_fades_when_on():
+    assert Config().weights.anticipation == 0.0
+    s = make(weights=Weights(anticipation=0.2))
+    t = warm_up(s)
+    base = s.components(2, t)["score"]
+    s.set_anticipation(2, t)
+    assert s.components(2, t)["anticipation"] == pytest.approx(1.0)
+    assert s.components(2, t)["score"] == pytest.approx(base + 0.2)
+    later = steady(s, 2, 0.05, t, s.config.anticipation_s / 2)
+    assert s.components(2, later)["anticipation"] == pytest.approx(0.5)
+    end = steady(s, 2, 0.05, later, s.config.anticipation_s / 2 + 1)
+    assert s.components(2, end)["anticipation"] == 0.0
+
+
+def test_anticipation_at_weight_zero_changes_nothing():
+    s = make()
+    t = warm_up(s)
+    base = s.components(2, t)["score"]
+    s.set_anticipation(2, t)
+    assert s.components(2, t)["score"] == pytest.approx(base)
+
+
+def test_anticipation_alone_never_reaches_the_minimum_score_by_default_range():
+    s = make(weights=Weights(anticipation=0.2))
+    t = warm_up(s)
+    s.set_anticipation(2, t)
+    assert s.components(2, t)["score"] < s.config.min_score
