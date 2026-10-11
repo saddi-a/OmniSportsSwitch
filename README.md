@@ -4,7 +4,7 @@ An automated "live broadcast director" for people who watch several sports strea
 
 You open your streams in separate Edge windows (one per screen slot). OmniSportsSwitch listens to every stream, reads the scoreboards on screen, and automatically moves the most exciting game into the big centre window (Main). Everything runs locally on your PC: no accounts, no cloud, no API keys.
 
-> Status: personal project, working and under live testing (about 380 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
+> Status: personal project, working and under live testing (about 500 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
 
 ## How it works
 
@@ -24,7 +24,10 @@ What the daemon looks at:
 - **Closeness and time left**: a late, close game is worth more than a blowout.
 - **Cues before a big moment** (measuring only for now): red zone, 4th down, penalty, VAR, free kick, corner, flags and reviews read from the screen, and the same words heard from the commentators. They are written to the logs and change no score until you give them a weight in Settings.
 - **Replays and event size**: a replay inside a live game does not count its old cheers twice (and its graphics never count as a new score); in American football a touchdown is a full event, a field goal or safety a smaller one, and an extra point right after a touchdown none. Optional, off by default: levelling each stream's sound before the crowd detector hears it, and a small bonus for shouting (both in Settings).
+- **Outside game data (optional, measuring only for now)**: with `feed_mode = 1` in Settings the daemon also reads ESPN's public scoreboards (no key, no account), matches each stream to its game by team names and logs when the feed would have announced an event compared with what the screen showed. It changes no score and no swap, and it is off by default.
 - **Your preferences**: favourite teams (kept on Main unless something exciting happens elsewhere), per-sport weights, per-tab weights, and windows a team or tab may or may not use.
+
+The sport of a stream is learned from the scoreboard, from league words on screen (NFL, NBA, Ligue 1...), and from the last sport seen on that tab (remembered in `logs/sports.json`), so a restart does not slow the first break detection. A full-screen score card (two numbers and the quarter, no team names) is read as a score when the scorebug is hidden and the numbers fit the last score.
 
 Other features: freeze Main with a hotkey, **Make Main** to force a stream there for a while, DAZN multiview support (it clicks the right tile), window names remembered across restarts, sport detected from the picture, close and late games valued above blowouts, every setting editable in the popup, permanent logs.
 
@@ -183,7 +186,7 @@ In `logs/` (not committed): `events.log` (goals, swaps and why, game states, war
 .venv\Scripts\python -m pytest daemon -q
 ```
 
-About 380 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
+About 500 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
 
 ## What is where
 
