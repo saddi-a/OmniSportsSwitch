@@ -24,8 +24,10 @@ def restore_profiles():
     game_state.REPLAY_WORDS[:] = saved_replay
 
 
-def test_the_shipped_settings_file_equals_the_built_in_defaults():
-    settings = load_settings(SETTINGS_PATH)
+def test_the_shipped_settings_file_equals_the_built_in_defaults(tmp_path):
+    shipped = tmp_path / SETTINGS_PATH.name   # a copy, so the user's own settings.local.json (popup edits) does not count
+    shipped.write_bytes(SETTINGS_PATH.read_bytes())
+    settings = load_settings(shipped)
     assert dataclasses.asdict(settings.scoring) == dataclasses.asdict(Config())
     assert dataclasses.asdict(settings.focus) == dataclasses.asdict(FocusConfig())
     assert game_state.profile_for("football") == game_state.SportProfile(20, 45)
