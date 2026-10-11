@@ -417,3 +417,39 @@ def test_a_real_final_still_ends_the_game_once_the_scorebug_has_gone():
     for i in range(1, 12):
         g.update(i * 3.0, ["FINAL", "USC", "PENN STATE"], [])
     assert g.state == "over"
+
+
+# ---- an ad countdown shown alone is not the game clock (live log 02:18, LSU-Kentucky tab: texts == ['2:27']) -------
+
+def test_a_lone_countdown_clock_is_an_ad_not_a_live_game():
+    g = GameTracker("american football")
+    run(g, 0, 60, ticking, texts=["LSU", "44", "KENTUCKY", "14", "2nd & 5"])       # a normal game first
+    state = None
+    for i, clock in enumerate(("2:27", "2:24", "2:21", "2:18")):
+        state = g.update(100 + i * 3.0, [clock], [clock])
+    assert state == "break" and g.on_ad
+
+
+def test_one_lone_clock_reading_is_not_enough():
+    g = GameTracker("american football")
+    run(g, 0, 60, ticking, texts=["LSU", "44", "KENTUCKY", "14", "2nd & 5"])
+    assert g.update(100.0, ["2:27"], ["2:27"]) == "live"
+
+
+def test_a_clock_with_scoreboard_text_is_still_a_game_clock():
+    g = GameTracker("football")
+    state = None
+    for i in range(10):
+        state = g.update(i * 3.0, ["PSG", "1", "LYON", "0", f"{50 + i // 2}:{(i * 3) % 60:02d}"], [f"{50 + i // 2}:{(i * 3) % 60:02d}"])
+    assert state == "live" and not g.on_ad
+
+
+def test_the_game_comes_back_when_the_scorebug_returns():
+    g = GameTracker("american football")
+    run(g, 0, 60, ticking, texts=["LSU", "44", "KENTUCKY", "14", "2nd & 5"])
+    for i, clock in enumerate(("2:27", "2:24", "2:21")):
+        g.update(100 + i * 3.0, [clock], [clock])
+    state = None
+    for i in range(5):
+        state = g.update(120 + i * 3.0, ["LSU", "44", "KENTUCKY", "14", "3rd & 2"], [])
+    assert state == "live"

@@ -123,7 +123,10 @@ class GameTracker:
             self._break_seen = now
 
         lowered = [t.casefold() for t in texts]
-        self._ad_hits = self._ad_hits + 1 if any(p in t for t in lowered for p in AD_PHRASES) else 0
+        # A countdown clock that is the ONLY text on screen (no teams, no score) is the player's ad countdown ("2:27"), not a
+        # game clock: seen on two readings in a row it counts like an ad placeholder phrase.
+        lone_clock = bool(clocks) and bool(texts) and all(not t.strip() or t.strip() in clocks for t in texts)
+        self._ad_hits = self._ad_hits + 1 if lone_clock or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
         on_ad = now - self._ad_seen <= AD_MEMORY_S
