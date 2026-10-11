@@ -13,6 +13,13 @@ MODEL_DIR = pathlib.Path(__file__).resolve().parent.parent / "models" / "easyocr
 CLOCK_RE = re.compile(r"\b\d{1,3}\s?[:.,]\s?\d{2}\b")
 MIN_CONFIDENCE = 0.4
 TEAM_NAME_RE = re.compile(r"[A-Z][A-Z .'&-]{3,}")   # an uppercase word such as MARYLAND or K-STATE
+RANKED_NAME_RE = re.compile(r"\d{1,2}\s+[A-Za-z][A-Za-z .'&-]{2,}")   # a ranking and a name, any case: "2 Georgia", "6 ALABAMA"
+
+
+def looks_like_team_name(text: str) -> bool:
+    return bool(TEAM_NAME_RE.fullmatch(text) or RANKED_NAME_RE.fullmatch(text))
+
+
 DIGIT_MIN_CONFIDENCE = 0.7   # a number read beside a team name must be this sure
 DIGIT_SEARCH = 2.4           # how far (in text heights) to look beside a name
 
@@ -50,7 +57,7 @@ class ScreenReader:
         located by detection inside a small crop and read with a digits-only alphabet. Only a PAIR of numbers
         side by side counts (the two scores), so a stray number never comes back. Meant to be used only when the
         normal reading found no score at all."""
-        names = [it for it in items if TEAM_NAME_RE.fullmatch(it["text"]) and it["conf"] >= 0.6
+        names = [it for it in items if looks_like_team_name(it["text"]) and it["conf"] >= 0.6
                  and 14 <= it["y1"] - it["y0"] <= 90]
         for name in sorted(names, key=lambda it: it["y0"] - it["y1"])[:3]:
             h = name["y1"] - name["y0"]

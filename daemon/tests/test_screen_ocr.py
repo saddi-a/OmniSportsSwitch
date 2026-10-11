@@ -1,4 +1,4 @@
-from daemon.screen_ocr import find_clocks
+from daemon.screen_ocr import find_clocks, looks_like_team_name
 
 
 def test_finds_clock_strings():
@@ -47,3 +47,10 @@ def test_big_digits_beside_a_team_name_are_found_when_the_normal_reading_misses_
     assert extra[0]["x1"] < extra[1]["x0"]                                           # boxes do not overlap
     texts = [i["text"] for i in items + extra]
     assert find_score_geo(items + extra, find_clocks(texts)) == (16, 45)
+
+
+def test_team_names_for_the_digit_fallback_include_ranked_names_but_not_plain_words():
+    for name in ("MARYLAND", "K-STATE", "OHIO STATE", "2 Georgia", "6 ALABAMA", "10 Ohio State"):
+        assert looks_like_team_name(name), name
+    for text in ("Search", "Home", "3rd & 4", "12", "2nd", "1st & 10", "4-0", "Ath"):
+        assert not looks_like_team_name(text), text
