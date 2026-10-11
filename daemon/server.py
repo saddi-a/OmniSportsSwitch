@@ -43,7 +43,7 @@ from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
-from daemon.cues import SpeechMemory, cue_weight
+from daemon.cues import SpeechMemory, cue_weight, end_zone_factor
 from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer
 
@@ -468,7 +468,8 @@ class Server:
                 log.info("replay by clock tab %s tile %s: %s", tab_id, index, f"-{secs:.0f} s" if kind == "start" else f"ended after {secs:.0f} s")
             for cue in tracker.anticipation:
                 banner = tracker.anticipation_text.get(cue, cue)
-                weight = cue_weight(cue, banner, self.cue_speech.tier(tab_id, now), tracker.sport or None, self.scorer.config.weights)
+                zone = end_zone_factor(tracker.end_zone_yards, tracker.down, tracker.goal_to_go, self.scorer.config)   # None when the distance is unknown
+                weight = cue_weight(cue, banner, self.cue_speech.tier(tab_id, now), tracker.sport or None, self.scorer.config.weights, zone=zone)
                 log.info("anticipation %s tab %s tile %s weight %.2f", cue, tab_id, index, weight)
                 self.scorer.set_anticipation(tab_id, now, weight)
             ads.setdefault(tab_id, []).append(tracker.on_ad)
