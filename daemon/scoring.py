@@ -62,11 +62,11 @@ class Config:
     hold_break_score: float = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
     leverage_weight: float = 0.3      # closeness / time left: a late close game adds up to this to its score, a late blowout takes it away
     lev_us_football_close: float = 8.0      # points apart that still count as close (one score)...
-    lev_us_football_blowout: float = 24.0   # ...and as a blowout (three scores)
+    lev_us_football_blowout: float = 28.0   # ...and as a blowout (more than three touchdowns)
     lev_basketball_close: float = 6.0
     lev_basketball_blowout: float = 20.0
     lev_soccer_close: float = 1.0
-    lev_soccer_blowout: float = 3.0
+    lev_soccer_blowout: float = 4.0
     field_goal_strength: float = 0.6  # American football: a field goal or safety counts this much of a touchdown
     extra_point_s: float = 30.0  # an extra point / two-point conversion this soon after a touchdown is not a new event
     anticipation_s: float = 18.0   # a cue boosts a stream this long (fading)
