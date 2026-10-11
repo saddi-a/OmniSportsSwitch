@@ -356,6 +356,9 @@ class Server:
             if tracker.scorebug_note:   # measuring only: DAZN hides the scorebug during replays
                 kind, secs = tracker.scorebug_note
                 log.info("scorebug %s tab %s tile %s: %.0f s", kind, tab_id, index, secs)
+            for cue in tracker.anticipation:   # measuring only while weights.anticipation is 0
+                log.info("anticipation %s tab %s tile %s", cue, tab_id, index)
+                self.scorer.set_anticipation(tab_id, now)
             ads.setdefault(tab_id, []).append(tracker.on_ad)
             if tracker.big_play:
                 strength = self.scorer.config.big_play_strength
