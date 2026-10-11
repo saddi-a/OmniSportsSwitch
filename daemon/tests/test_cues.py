@@ -206,3 +206,13 @@ def test_a_new_goal_after_the_cooldown_fires_again():
     assert w.phrase(7, 101.0) is True
     w.surge(7, 0.9, 200.0)
     assert w.phrase(7, 201.0) is True
+
+
+def test_a_free_kick_has_its_own_weight_in_soccer():
+    from daemon.scoring import Weights
+    w = Weights()
+    assert w.cue_free_kick == 0.25 and w.cue_free_kick > w.cue_minor
+    assert cue_weight("free kick", "free kick", None, "football", w) == w.cue_free_kick
+    assert cue_weight("free kick", "free kick", None, None, w) == w.cue_free_kick             # sport unknown
+    assert cue_weight("free kick", "free kick", None, "american football", w) == w.cue_minor   # not a soccer cue there
+    assert cue_weight("corner", "corner", None, "football", w) == w.cue_minor                  # corners stay minor

@@ -34,7 +34,8 @@ class Weights:
     cue_review_mid: float = 0.20    # ...of offside, pass interference or a foul
     cue_review_low: float = 0.10    # ...with no subject known
     cue_chance: float = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
-    cue_minor: float = 0.10         # corner, free kick, flag, 4th down, big gain, added time, timeout...
+    cue_minor: float = 0.10         # corner, flag, 4th down, big gain, added time, timeout...
+    cue_free_kick: float = 0.25     # a free kick (soccer): the user finds minor (0.10) too low
     cue_zone_far: float = 0.15      # American football: a goal-to-go / yard line cue with the ball ~10 yards from the end zone
     cue_zone_near: float = 0.40     # ...and 1-3 yards from it (or a 4th down at the goal line); no distance read = cue_chance
     favourite: float = 0.4  # steady bonus per +1 of a favourite team's multiplier (x2 favourite = +0.4)

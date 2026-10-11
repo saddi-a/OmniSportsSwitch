@@ -14,6 +14,7 @@ CHANCE_CUES = frozenset({"red zone", "goal to go", "yard line", "field goal", "f
                          "lancer franc", "lancers francs", "tiro libre", "tiros libres", "tiro livre", "buzzer beater", "penalty shootout",
                          "tir au but", "tirs au but"})
 PENALTY_KICK_CUES = frozenset({"penalty", "pénalty", "penalti", "pênalti"})   # a chance in soccer; in American football a flag (minor)
+FREE_KICK_CUES = frozenset({"free kick", "coup franc", "coups francs"})   # soccer: its own weight (`Weights.cue_free_kick`)
 AMERICAN_FOOTBALL = "american football"
 
 ZONE_CUES = frozenset({"goal to go", "yard line", "red zone"})   # the cues graded by the distance to the end zone (American football)
@@ -118,6 +119,8 @@ def zone_weight(cue: str, factor: float | None, weights) -> float:
 def cue_weight(cue: str, banner: str, speech_tier: str | None, sport: str | None, weights, zone: float | None = None) -> float:
     """The weight of one cue (before leverage and the master scale). `banner` is the text on screen, `speech_tier` what `SpeechMemory.tier` says."""
     group = group_of(cue, sport)
+    if cue in FREE_KICK_CUES and not _is_american_football(sport) and (sport or "").strip().lower() != "basketball":
+        return weights.cue_free_kick
     if cue in ZONE_CUES and _is_american_football(sport):
         return zone_weight(cue, zone, weights)   # `zone` = end_zone_factor(...) or None
     if group == "chance":
