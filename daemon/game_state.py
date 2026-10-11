@@ -12,6 +12,7 @@ Rules (see PLAN.md):
 import re
 from dataclasses import dataclass
 
+from daemon.cues import banner_tier
 from daemon.score_watch import STAT_GRAPHIC_RE
 from daemon.scoring import Config
 
@@ -69,6 +70,10 @@ SCOREBUG_MEMORY_S = 6.0   # a clock / down / quarter on screen proves a live sco
 # (nearly) just that phrase, like the big-play banners; the cue is the phrase. Red card / penalty kick are big plays and not repeated here.
 ANTICIPATION_WORDS = ["red zone", "goal to go", "two minute warning", "two-minute warning", "field goal", "field goal attempt", "penalty", "flag", "flag on the play", "review", "under review", "replay review", "challenge", "big play", "var", "var check", "free kick", "corner", "corner kick", "penalty shootout", "avertissement de deux minutes", "tir de placement", "pénalité", "pénalty", "drapeau", "révision", "contestation", "assistance vidéo", "coup franc", "tir au but", "tirs au but", "penalti", "tiro libre", "saque de esquina", "escanteio", "tiro livre", "pênalti",
                       "free throw", "free throws", "technical foul", "flagrant foul", "flagrant", "buzzer beater", "timeout", "lancer franc", "lancers francs", "faute technique", "faute flagrante", "temps mort", "tiros libres", "falta técnica"]
+# A review banner that names its subject: "VAR: POSSIBLE GOAL", "REVIEW: TOUCHDOWN", "PENALTY CHECK" (the subject must be a known one).
+REVIEW_BANNER_RE = re.compile(r"^(var|video review|review|under review|replay review|v[ée]rification vid[ée]o|v[ée]rification|r[ée]vision)\b[\s:\-–—]*(.+)$", re.IGNORECASE)
+REVIEW_BANNER_END_RE = re.compile(r"^(.+?)[\s:\-]+(check|review|v[ée]rification|r[ée]vision)$", re.IGNORECASE)
+REVIEW_BANNER_MAX_CHARS = 40
 ANTICIPATION_SLACK = 4         # extra characters allowed around the phrase
 ANTICIPATION_CONFIRMATIONS = 2   # a cue must show on this many consecutive readings
 FOURTH_DOWN_RE = re.compile(r"(4th|ath)\s*&\s*(\d{1,2}|goal|inches)", re.IGNORECASE)   # "Ath" is how OCR reads "4th"
@@ -169,7 +174,9 @@ class GameTracker:
         self._cs_dir = 0                       # +1 the clock counts up (soccer), -1 down (American football, basketball), 0 not known yet
         self._cs_pending: tuple[float, float, float, float] | None = None   # (clock, time, seconds back, seconds since the clock before) of a back step waiting for confirmation
         self._clock_replay_start: float | None = None   # when the clock replay in progress was detected
-        self.anticipation: list[str] = []   # cues reported on this reading (measuring only: nothing but a log line reads them)
+        self.anticipation: list[str] = []   # cues reported on this reading
+        self.anticipation_text: dict[str, str] = {}   # ...and the banner text each came from (the subject of a review)
+        self._cue_texts: dict[str, str] = {}
         self._cue_hits: dict[str, int] = {}
         self._cue_at: dict[str, float] = {}
         self.big_play = ""   # set on the one reading where a new big-play banner appears (else "")
@@ -241,7 +248,7 @@ class GameTracker:
         self.big_play = ""
         if not on_ad and now - self._big_play_at >= BIG_PLAY_COOLDOWN_S:
             for text in texts:
-                hit = _banner_hit(text, BIG_PLAY_WORDS, BIG_PLAY_SLACK)
+                hit = _banner_hit(text, BIG_PLAY_WORDS, BIG_PLAY_SLACK) if not self._review_banner(text.strip()) else ""   # a review is not the play
                 if hit:
                     self.big_play, self._big_play_at = hit, now
                     break
@@ -366,11 +373,12 @@ class GameTracker:
     def _cues_in(self, texts: list[str]) -> list[str]:
         """The anticipation cues on screen in this reading, in a stable order."""
         cfg, found = self.config, []
+        self._cue_texts = {}
         has_down = any(DOWN_RE.fullmatch(t.strip()) for t in texts)
         phrases = sorted(ANTICIPATION_WORDS, key=len, reverse=True)   # "var check" before "var"
         for text in texts:
             t = text.strip()
-            if _banner_hit(t, BIG_PLAY_WORDS, BIG_PLAY_SLACK):
+            if _banner_hit(t, BIG_PLAY_WORDS, BIG_PLAY_SLACK) and not self._review_banner(t):
                 continue   # a big play banner: already counted as one
             if FOURTH_DOWN_RE.fullmatch(t):
                 found.append("4th down")
@@ -384,15 +392,29 @@ class GameTracker:
             elif ADDED_TIME_RE.fullmatch(t) and self.clock_minute is not None and any(self.clock_minute in r for r in ADDED_TIME_MINUTES):
                 cue = "added time"
             if not cue:
-                cue = _banner_hit(t, phrases, ANTICIPATION_SLACK)
+                cue = _banner_hit(t, phrases, ANTICIPATION_SLACK) or self._review_banner(t)
             if cue:
                 found.append(cue)
+                self._cue_texts.setdefault(cue, t)
         return list(dict.fromkeys(found))
+
+    def _review_banner(self, text: str) -> str:
+        """"var" or "review" when the text is a short review banner naming a subject (see REVIEW_BANNER_RE), else ""."""
+        if len(text) > REVIEW_BANNER_MAX_CHARS:
+            return ""
+        m = REVIEW_BANNER_RE.match(text)
+        if m and banner_tier(m.group(2), self.sport):
+            return "var" if m.group(1).casefold() == "var" else "review"
+        m = REVIEW_BANNER_END_RE.match(text)
+        if m and banner_tier(m.group(1), self.sport):
+            return "review"
+        return ""
 
     def _note_anticipation(self, now: float, texts: list[str], on_ad: bool) -> None:
         """Measuring only: reports each cue once when it has shown on `ANTICIPATION_CONFIRMATIONS` readings in a row, then not again for
         `anticipation_cooldown_s`. Nothing is reported during an ad, a break, the end of the game or a replay."""
         self.anticipation = []
+        self.anticipation_text = {}
         if on_ad or self.state != "live" or self.replay:
             self._cue_hits = {}
             return
@@ -402,6 +424,7 @@ class GameTracker:
             if self._cue_hits[cue] >= ANTICIPATION_CONFIRMATIONS and now - self._cue_at.get(cue, float("-inf")) >= self.config.anticipation_cooldown_s:
                 self._cue_at[cue] = now
                 self.anticipation.append(cue)
+                self.anticipation_text[cue] = self._cue_texts.get(cue, cue)
 
     def _note_hidden_scorebug(self, now: float, on_ad: bool) -> None:
         """Measuring only (nothing reads the result but a log line): DAZN hides the scorebug during replays. Reports ("hidden", s) on the

@@ -1,0 +1,118 @@
+import pytest
+
+from daemon.cues import SpeechMemory, banner_tier, cue_weight, group_of, speech_tiers
+from daemon.scoring import Weights
+
+W = Weights()
+AF, SOCCER = "american football", "football"
+
+
+# ---- the groups of the cues -------------------------------------------------------------------------------------------------------------
+
+def test_cue_groups():
+    for cue in ("review", "under review", "var", "var check", "challenge", "révision", "assistance vidéo"):
+        assert group_of(cue, AF) == "review"
+    for cue in ("red zone", "goal to go", "yard line", "field goal", "field goal attempt", "free throw", "buzzer beater", "penalty shootout", "tirs au but"):
+        assert group_of(cue, AF) == "chance"
+    for cue in ("corner", "flag", "4th down", "big gain", "added time", "timeout", "free kick", "drapeau", "coup franc"):
+        assert group_of(cue, SOCCER) == "minor"
+
+
+def test_a_penalty_banner_is_a_chance_in_soccer_but_a_foul_in_american_football():
+    assert group_of("penalty", SOCCER) == "chance" and group_of("pénalty", None) == "chance"
+    assert group_of("penalty", AF) == "minor" and group_of("pénalité", AF) == "minor"
+
+
+# ---- the subject of a banner ---------------------------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,sport,tier", [
+    ("VAR: POSSIBLE GOAL", SOCCER, "top"), ("REVIEW: TOUCHDOWN", AF, "top"), ("VAR - PENALTY", SOCCER, "top"), ("PENALTY CHECK", SOCCER, "top"),
+    ("RED CARD CHECK", SOCCER, "top"), ("VAR : BUT POSSIBLE", SOCCER, "top"), ("CARTON ROUGE", SOCCER, "top"),
+    ("REVIEW: INTERCEPTION", AF, "high"), ("FUMBLE REVIEW", AF, "high"), ("REVIEW: TURNOVER", AF, "high"),
+    ("OFFSIDE CHECK", SOCCER, "mid"), ("VAR: HORS-JEU", SOCCER, "mid"), ("REVIEW: PASS INTERFERENCE", AF, "mid"), ("REVIEW: FOUL", AF, "mid"),
+    ("PENALTY CHECK", AF, "mid"),       # a flag in American football, not a penalty kick
+    ("UNDER REVIEW", AF, None), ("VAR CHECK", SOCCER, None), ("REVIEW", AF, None), ("", AF, None),
+])
+def test_the_subject_of_a_banner(text, sport, tier):
+    assert banner_tier(text, sport) == tier
+
+
+# ---- the subject from the commentary ---------------------------------------------------------------------------------------------------------------
+
+def test_speech_subjects_by_sport():
+    assert speech_tiers(["touchdown"], "touchdown pour les Eagles", AF) == ["top"]
+    assert speech_tiers(["interception"], "sa première interception de la saison", AF) == ["high"]
+    assert speech_tiers(["goal"], "but !", SOCCER) == ["top"]
+    assert speech_tiers(["card"], "il prend un carton rouge", SOCCER) == ["top"]
+    assert speech_tiers(["card"], "carton jaune pour lui", SOCCER) == ["mid"]
+    assert speech_tiers(["offside"], "hors-jeu", SOCCER) == ["mid"]
+    assert speech_tiers(["penalty"], "c'est un penalty", SOCCER) == ["top"]
+    assert speech_tiers(["foul", "corner"], "faute", SOCCER) == ["mid"]          # a corner says nothing about a review
+
+
+def test_commentary_misheard_as_a_card_in_american_football_is_ignored():
+    # live 18:05:18: "ce troisième carton" is the third quarter ("quart-temps") misheard; there are no cards in American football
+    assert speech_tiers(["interception", "card"], "...de ce troisième carton. ... Après avoir intercepté cette balle...", AF) == ["high"]
+    assert speech_tiers(["card"], "fin de troisième carton", AF) == []
+
+
+# ---- the weight of a cue -----------------------------------------------------------------------------------------------------------------------------
+
+def test_the_subject_on_the_banner_wins_over_the_commentary():
+    assert cue_weight("review", "REVIEW: OFFSIDE", "top", SOCCER, W) == W.cue_review_mid
+    assert cue_weight("var", "VAR: POSSIBLE GOAL", None, SOCCER, W) == W.cue_review_top
+
+
+def test_a_bare_review_takes_its_subject_from_the_commentary_heard_lately():
+    assert cue_weight("under review", "UNDER REVIEW", "high", AF, W) == W.cue_review_high      # the 18:06:32 interception review
+    assert cue_weight("under review", "UNDER REVIEW", "top", AF, W) == W.cue_review_top
+    assert cue_weight("under review", "UNDER REVIEW", "mid", AF, W) == W.cue_review_mid
+
+
+def test_a_review_with_no_subject_is_low():
+    assert cue_weight("under review", "UNDER REVIEW", None, AF, W) == W.cue_review_low
+    assert cue_weight("var", "VAR", None, SOCCER, W) == W.cue_review_low
+
+
+def test_the_other_groups_do_not_look_at_the_subject():
+    assert cue_weight("red zone", "RED ZONE", "mid", AF, W) == W.cue_chance
+    assert cue_weight("flag", "FLAG", "top", AF, W) == W.cue_minor
+    assert cue_weight("corner", "CORNER", None, SOCCER, W) == W.cue_minor
+    assert cue_weight("penalty", "PENALTY", None, SOCCER, W) == W.cue_chance
+
+
+def test_the_tiers_go_down():
+    assert W.cue_review_top > W.cue_review_high > W.cue_review_mid > W.cue_review_low >= W.cue_minor
+
+
+# ---- what was heard in the last seconds -------------------------------------------------------------------------------------------------------------
+
+def test_the_commentary_of_the_last_20_seconds_counts_and_older_does_not():
+    m = SpeechMemory(window_s=20.0)
+    m.record(7, ["interception"], "sa première interception de la saison", AF, now=100.0)
+    assert m.tier(7, 110.0) == "high"
+    assert m.tier(7, 119.9) == "high"
+    assert m.tier(7, 121.0) is None            # a subject from long ago is not what is being reviewed
+    assert m.tier(8, 110.0) is None            # another tab
+
+
+def test_the_live_lines_of_18_06():
+    m = SpeechMemory(window_s=20.0)
+    m.record(485660207, ["interception"], "La puissance est la plus éteignée, mais l'interception sera validée.", AF, now=18 * 3600 + 6 * 60 + 5)
+    m.record(485660207, ["interception", "corner"], "Ça va pour le corner back des Eagles qui vient intercepter.", AF, now=18 * 3600 + 6 * 60 + 11.8)
+    m.record(485660207, ["card"], "Il est intercepté le Cotterback des Jaguars. Fin de troisième carton, les Eagles", AF, now=18 * 3600 + 6 * 60 + 18.3)
+    m.record(485660207, ["replay", "interception"], "On voit la situation précédente au ralenti ... cette interception.", AF, now=18 * 3600 + 6 * 60 + 31.3)
+    assert m.tier(485660207, 18 * 3600 + 6 * 60 + 32.7) == "high"       # "anticipation under review" at 18:06:32
+
+
+def test_contradictory_commentary_takes_the_highest_subject():
+    m = SpeechMemory(window_s=20.0)
+    m.record(1, ["interception"], "interception", AF, now=0.0)
+    m.record(1, ["touchdown"], "touchdown !", AF, now=5.0)         # a pick-six
+    assert m.tier(1, 8.0) == "top"
+
+
+def test_a_memory_with_no_subject_stays_empty():
+    m = SpeechMemory(window_s=20.0)
+    m.record(1, ["replay", "corner", "post"], "au ralenti", SOCCER, now=0.0)
+    assert m.tier(1, 1.0) is None
