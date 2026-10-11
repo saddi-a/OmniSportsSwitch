@@ -84,6 +84,10 @@ class Config:
     semantic_margin: float = 0.10        # ...and must beat its similarity to ordinary match talk by this much
     speech_cue_cooldown_s: float = 20.0  # the same cue on the same stream is logged at most this often
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
+    feed_mode: float = 0.0          # outside game data (ESPN): 0 = local only (nothing starts), 1 = record only (measuring, changes no score); needs a restart
+    feed_poll_s: float = 5.0        # a league with a live game is asked this often (never less than 5 s: the feed's own cache time)
+    feed_idle_poll_s: float = 120.0 # a league with nothing live or starting soon is asked this often
+    feed_summary_s: float = 10.0    # American football: the plays of each live game (up to 6) are fetched this often; 0 = off
 
 
 @dataclass
