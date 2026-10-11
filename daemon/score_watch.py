@@ -287,9 +287,12 @@ class ScoreWatcher:
         self._alt = (seconds[0], now)
         return False
 
-    def update(self, texts: list[str], clocks: list[str], now: float | None = None, items: list[dict] | None = None) -> bool:
+    def update(self, texts: list[str], clocks: list[str], now: float | None = None, items: list[dict] | None = None,
+               replay: bool = False) -> bool:
         # A countdown with no scoreboard beside it is the player's ad countdown: it is not a game clock and must not look like a
         # clock jump (that threw the score away at every commercial break, so a touchdown before the break was never seen).
+        if replay:
+            return False   # a replay shows old action with its own graphics: not a new score, and not a baseline either
         game_clocks = [] if clocks and _no_scoreboard(texts, clocks) else clocks
         if now is not None and self._clock_jumped(game_clocks, now):
             self._reset()

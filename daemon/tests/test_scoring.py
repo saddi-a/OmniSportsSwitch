@@ -938,3 +938,39 @@ def test_main_on_a_break_hands_over_even_if_the_others_had_an_ad_lately():
     s.set_on_ad(2, False, now + 4)
     s.set_auto_state(1, "break")
     assert s.decide(now + 5).promote == 2
+
+
+# ---- replays inside a live game: the old cheers on the replay must not count twice -----------------------------
+
+def test_replay_dampens_the_crowd_and_surge_of_a_stream():
+    s = make()
+    warm_up(s)
+    t = roar(s, 2, 60)
+    normal = s.components(2, t)
+    s.set_replay(2, True)
+    dampened = s.components(2, t)
+    factor = s.config.replay_dampen
+    assert 0 < factor < 1
+    assert dampened["crowd"] == pytest.approx(normal["crowd"] * factor)
+    assert dampened["surge"] == pytest.approx(normal["surge"] * factor)
+    assert dampened["score"] < normal["score"]
+    s.set_replay(2, False)
+    assert s.components(2, t)["score"] == pytest.approx(normal["score"])
+
+
+def test_a_roar_heard_on_a_replay_does_not_take_main():
+    s = make()
+    t = warm_up(s)
+    s.set_replay(2, True)
+    t = roar(s, 2, t, seconds=6)
+    assert s.decide(t) is None
+    s.set_replay(2, False)
+    assert s.decide(t) is not None   # the same roar on the live game does
+
+
+def test_replay_does_not_dampen_a_score_event():
+    s = make()
+    t = warm_up(s)
+    s.set_event(2, t)
+    s.set_replay(2, True)
+    assert s.components(2, t)["event"] == pytest.approx(1.0)

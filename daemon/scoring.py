@@ -56,6 +56,7 @@ class Config:
     lev_basketball_blowout: float = 20.0
     lev_soccer_close: float = 1.0
     lev_soccer_blowout: float = 3.0
+    replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
     audio_ad_margin: float = 0.15  # ...and music must exceed speech by this much (stadium music under commentary is not an ad)
@@ -85,6 +86,7 @@ class _Stream:
     audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
     leverage: float = 0.0   # -1 (late blowout) .. +1 (late close game), set from the scoreboard; 0 = unknown
     ad_at: float = float("-inf")        # when the stream was last seen on an ad (picture or sound)
+    replay: bool = False    # the picture shows a replay over a live scorebug
     music_hits: list = field(default_factory=list)  # recent readings: did each one look like an ad?
     favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
@@ -161,6 +163,10 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
 
+    def set_replay(self, tab_id: int, replay: bool) -> None:
+        if tab_id in self.streams:
+            self.streams[tab_id].replay = replay
+
     def set_on_ad(self, tab_id: int, on_ad: bool, now: float | None = None) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].on_ad = on_ad
@@ -199,6 +205,8 @@ class Scorer:
         surge = min(max(level / max(stream.baseline, MIN_BASELINE) - 1.0, 0.0), cfg.surge_cap)
         fresh = now - stream.tags_at <= cfg.stale_s
         crowd, speech, music = stream.tags if fresh else (0.0, 0.0, 0.0)
+        if stream.replay:   # the cheering on a replay belongs to the play that was already counted
+            crowd, surge = crowd * cfg.replay_dampen, surge * cfg.replay_dampen
 
         event = max(0.0, 1.0 - (now - stream.event_at) / cfg.event_s)
         w = cfg.weights
