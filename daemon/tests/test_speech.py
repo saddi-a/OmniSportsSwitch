@@ -10,6 +10,7 @@ GOAL_CALLS = [
     "Chelsea doubles their lead", "and Villa pull one back", "Goooooal!", "Gooool de Vinicius", "un golazo de Neymar", "Gooolo do Benfica",
 ]
 TALK = [
+    "La chance de pouvoir égaliser lui a filé entre les doigts dans cette partie",   # 2026-10-11 20:23:41: infinitive, a miss, not a goal
     "Il touche quatre ballons et il marque le but. Il va falloir être vigilant sur toute la totalité du match avec une concentration énorme",   # 18:27:05
     "en seconde période et puis tout a été très vite avec ce carton rouge donné à Gravenberg et l'ouverture du score coup cd",                   # 19:00:24 recap
     "et contrée par McAllister et Arlene Allende. Clinique au second poteau. Prend les bons appuis pour être très stable au sol et envoyer ce ballon au fond des filets.",

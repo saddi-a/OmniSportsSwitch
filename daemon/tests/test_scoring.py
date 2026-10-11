@@ -1129,3 +1129,18 @@ def test_default_cue_weights_follow_the_tiers():
     w = Config().weights
     assert w.cue_review_top > w.cue_review_high > w.cue_review_mid > w.cue_review_low >= w.cue_minor
     assert Config().cue_alone_cap < Config().min_score
+
+
+def test_a_tab_that_starts_playing_after_silence_is_not_a_surge():
+    # live log 2026-10-11 20:05:28: a tab opened by the user was silent while the video loaded, then its audio began: surge=1.00 and it won Main
+    # at once. Silence is not a baseline: the baseline and the warm-up start when the sound does.
+    s = make()
+    warm_up(s)
+    s.register(4)
+    steady(s, 4, 0.0005, 100, 18)              # tracked, but silent (video loading)
+    now = steady(s, 4, 0.05, 118, 6)           # the audio begins
+    comp = s.components(4, now, warmup=False)
+    assert comp is not None and comp["surge"] < 0.01
+    assert s.components(4, now) is None        # still warming up: its warm-up started with the sound
+    now = steady(s, 4, 0.05, now, 25)
+    assert s.components(4, now)["surge"] < 0.01

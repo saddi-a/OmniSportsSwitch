@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 
 SHOUT_CLASSES = ["Shout", "Yell", "Screaming"]   # AudioSet classes whose strongest probability is the `shout` tag
 MIN_BASELINE = 0.002  # floor so near-silence cannot make the surge explode
+SILENT_BASELINE = 0.008   # a baseline below this is silence (a tab still loading), not a normal level: real sound re-seeds it and restarts the warm-up
+SOUND_LEVEL = 0.02        # a sample at least this loud is real sound
 STATUS_MULT = {"live": 1.0, "break": 0.25, "over": 0.0}  # how much a stream counts in each game state
 
 
@@ -189,8 +191,13 @@ class Scorer:
         if stream.baseline is None:
             stream.baseline, stream.first_seen = level, now
         else:
-            alpha = 1 - math.exp(-(now - stream.last_sample) / self.config.baseline_s)
-            stream.baseline += alpha * (level - stream.baseline)
+            if stream.baseline < SILENT_BASELINE and level >= SOUND_LEVEL:
+                stream.baseline, stream.first_seen = level, now   # the audio begins after silence: that is not a surge
+                stream.samples.clear()
+                stream.samples.append((now, level))
+            else:
+                alpha = 1 - math.exp(-(now - stream.last_sample) / self.config.baseline_s)
+                stream.baseline += alpha * (level - stream.baseline)
         stream.last_sample = now
 
     def baseline_of(self, tab_id: int) -> float | None:

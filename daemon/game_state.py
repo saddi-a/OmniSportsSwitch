@@ -86,6 +86,7 @@ GOAL_WORD_RE = re.compile(r"go{1,4}a{1,2}l|but|gol|golo|gool", re.IGNORECASE)   
 GOAL_PAIR_RE = re.compile(r"go{0,3}a{1,2}l", re.IGNORECASE)   # two items side by side that OCR broke GOAL into: "G" + "AL"
 GOAL_LONE = {"al", "oal", "goa", "gal"}   # what is left of the banner when it hides the first team code
 GOAL_BANNER_COOLDOWN_S = 30.0
+DIGITS_ONLY_RE = re.compile(r"\d{1,2}")   # a scorebug digit
 NOT_TEAM_CODES = {"LIVE", "MORE", "NEWS", "HOME", "PLAY", "FREE", "SHOP", "VOIR", "PLUS", "AVEC", "POUR", "DAZN", "BEIN", "WATCH", "FULL", "TIME", "HALF", "STAT", "STATS"}
 CODE_PAIR_MEMORY_S = 10.0   # two team codes read together this recently mean a scorebug is on screen
 END_ZONE_MAX_YD = 25   # a yard line graphic beyond the red zone says nothing about the end zone
@@ -442,8 +443,10 @@ class GameTracker:
                 if 1 <= len(a) <= 3 and 1 <= len(b) <= 3 and len(a + b) >= 3 and GOAL_PAIR_RE.fullmatch(a + b):
                     hit = (a + b).upper()
                     break
-        if not hit and recent_pair and len(codes) == 1 and next(iter(codes)) in previous[0]:
-            hit = next((t.upper() for t in letters if t.casefold() in GOAL_LONE), "")   # the banner hides the other team code
+        if not hit and recent_pair and len(codes) == 1 and next(iter(codes)) in previous[0] and not any(DIGITS_ONLY_RE.fullmatch(t) for t in items):
+            # the banner hides the other team code AND the digits: a lone scorebug digit on screen means the scorebug is intact and "al" is a
+            # sponsor word (live log 2026-10-11 20:24:06 BET-OSA, 19:54:34)
+            hit = next((t.upper() for t in letters if t.casefold() in GOAL_LONE), "")
         if hit:
             self.goal_banner, self._goal_banner_at = hit, now
 

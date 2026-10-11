@@ -1037,3 +1037,17 @@ def test_no_goal_banner_in_american_football_basketball_or_unknown_sports():
     for sport in ("American football", "Basketball", None):
         assert goal_banner_after(["GOAL", "LIV", "0", "MCI"], sport=sport).goal_banner == "", sport
 
+
+
+def test_a_sponsor_al_beside_an_intact_scorebug_is_not_a_goal_banner():
+    # live log 2026-10-11 20:24:06 (BET-OSA, 88:57) and 19:54:34: a lone "al" with a sponsor word read as a team code, the score digit still there
+    g = GameTracker("football")
+    g.update(0.0, ["BET", "OSA", "2", "2", "GREE", "GAME"], [])
+    g.update(3.0, ["BET", "2", "DA", "ZN", "GREE", "GAME", "AIME"], [])
+    g.update(7.0, ["BET", "DA", "ZN", "2", "al", "#RealBetisOsasuna"], [])
+    assert g.goal_banner == ""
+    g2 = GameTracker("football")
+    g2.update(0.0, ["SAS", "HIL"], [])
+    g2.update(3.0, ["CION", "GREE", "LDER"], [])
+    g2.update(7.0, ["GREE", "ny", "3", "98", "88.05", "ADESITAL", "Al"], [])
+    assert g2.goal_banner == ""
