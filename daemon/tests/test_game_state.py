@@ -820,3 +820,19 @@ def test_a_countdown_that_only_happens_to_match_does_not_hold_for_long():
         c = f"3:{10 - 5 * i:02d}" if 10 - 5 * i >= 0 else f"2:{60 + 10 - 5 * i:02d}"
         g.update(5.0 * i, [c], [c])
     assert g.on_ad
+
+
+def test_ft_in_a_stats_graphic_beside_a_running_clock_is_not_the_end():
+    # Como-Roma 14:28:57: a MATCH MOMENTUM graphic showed "45'" and "FT" while the 94:26 clock was still running.
+    g = GameTracker("football")
+    texts = ["94.26", "+7", "COM", "0-0", "ROM", "MATCH MOMENTUM", "45'", "FT"]
+    state = None
+    for i in range(6):
+        s = 94 * 60 + 26 + i * 8
+        state = g.update(i * 8.0, texts, [f"{s // 60}:{s % 60:02d}"])
+    assert state == "live"
+
+
+def test_ft_with_no_clock_still_means_over():
+    g = GameTracker("football")
+    assert run(g, 0, 6, lambda t: None, texts=["COMO", "0", "0", "ROMA", "FT"]) == "over"

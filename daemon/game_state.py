@@ -179,7 +179,9 @@ class GameTracker:
             self._in_play_seen = now   # down and distance or the quarter on the scorebug: this game is being played
         # "Final" next to a live scorebug is a results ticker about other games, not the end of this one.
         ticker = now - self._in_play_seen <= IN_PLAY_MEMORY_S
-        self._over_hits = self._over_hits + 1 if any(OVER_RE.fullmatch(t) for t in items) and not ticker else 0
+        # A bare "FT" is also a label in stats graphics ("45'  FT" in a match-momentum chart): with the game clock still running it is not the end.
+        running = bool(clocks) and self._clock_changed_at is not None and (clocks[0] != self._clock or now - self._clock_changed_at <= 3.0)
+        self._over_hits = self._over_hits + 1 if any(OVER_RE.fullmatch(t) and not (running and t.upper() == "FT") for t in items) and not ticker else 0
         if ticker:
             self._over_seen = float("-inf")
         self._break_hits = self._break_hits + 1 if any(BREAK_RE.fullmatch(t) for t in items) else 0
