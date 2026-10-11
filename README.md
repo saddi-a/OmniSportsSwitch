@@ -217,4 +217,4 @@ The design, the scoring rules and the hand-over notes for development are in [PL
 
 ## Licence
 
-No licence has been chosen yet, so by default all rights are reserved: you can read the code, but you may not reuse or redistribute it without asking. Broadcast frames and team logos that appear in the test fixtures belong to their owners.
+The code is released under the [MIT licence](LICENSE): you may use, copy, modify and share it, keeping the copyright notice. The licence covers the code only: broadcast frames and team logos that appear in the test fixtures belong to their owners.
