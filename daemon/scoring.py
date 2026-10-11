@@ -88,6 +88,7 @@ class Config:
     feed_poll_s: float = 5.0        # a league with a live game is asked this often (never less than 5 s: the feed's own cache time)
     feed_idle_poll_s: float = 120.0 # a league with nothing live or starting soon is asked this often
     feed_summary_s: float = 10.0    # American football: the plays of each live game (up to 6) are fetched this often; 0 = off
+    feed_lead_s: float = 10.0       # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
 
 
 @dataclass
