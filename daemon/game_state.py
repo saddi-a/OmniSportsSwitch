@@ -62,6 +62,7 @@ REPLAY_WORDS = ["replay", "instant replay", "action replay", "slo-mo", "slow mot
 REPLAY_SLACK = 4        # extra characters allowed around the phrase (a sentence about "the replay" must not count)
 REPLAY_CONFIRMATIONS = 2   # the banner must show on this many consecutive readings
 REPLAY_MEMORY_S = 6.0   # a replay banner counts this long after it was last seen (OCR misses it now and then)
+REPLAY_GAP_S = 6.0   # a clock read this long after the one before (the scorebug was hidden) may stand alone as a replay's clock
 SCOREBUG_MEMORY_S = 6.0   # a clock / down / quarter on screen proves a live scorebug this long: a replay in a live game
 # Anticipation cues (measuring only): banners and graphics that come just before a likely score. A phrase counts when a text item is
 # (nearly) just that phrase, like the big-play banners; the cue is the phrase. Red card / penalty kick are big plays and not repeated here.
@@ -150,6 +151,12 @@ class GameTracker:
         self._gap_start: float | None = None   # when the scorebug was last seen before the current gap
         self._gap_announced = False
         self._gap_dead = False                 # the gap was an ad / break / stale: never reported
+        self.clock_replay_note: tuple[str, float] | None = None   # ("start", s back) / ("end", s long) on the reading that detects a replay by its clock
+        self._cs_last: float | None = None     # last game clock in seconds, and when it was read
+        self._cs_time = 0.0
+        self._cs_dir = 0                       # +1 the clock counts up (soccer), -1 down (American football, basketball), 0 not known yet
+        self._cs_pending: tuple[float, float, float, float] | None = None   # (clock, time, seconds back, seconds since the clock before) of a back step waiting for confirmation
+        self._clock_replay_start: float | None = None   # when the clock replay in progress was detected
         self.anticipation: list[str] = []   # cues reported on this reading (measuring only: nothing but a log line reads them)
         self._cue_hits: dict[str, int] = {}
         self._cue_at: dict[str, float] = {}
@@ -160,6 +167,7 @@ class GameTracker:
         self.profile = profile_for(sport)
 
     def update(self, now: float, texts: list[str], clocks: list[str]) -> str:
+        self.clock_replay_note = None
         if self._first_seen is None:
             self._first_seen = now
 
@@ -227,6 +235,7 @@ class GameTracker:
             if clocks[0] != self._clock:
                 self._clock, self._clock_changed_at = clocks[0], now
             self._last_clock_seen = now
+            self._track_clock_replay(now, clocks)
 
         if now - self._over_seen <= KEYWORD_MEMORY_S:
             self.state = "over"
@@ -253,6 +262,57 @@ class GameTracker:
         self._note_hidden_scorebug(now, on_ad)
         self._note_anticipation(now, texts, on_ad)
         return self.state
+
+    def _track_clock_replay(self, now: float, clocks: list[str]) -> None:
+        """A replay shown with its scorebug has the clock of the moment being replayed: it goes back `replay_clock_min_s` to
+        `replay_clock_max_s` (against the direction the clock runs in) and then runs on from there. A step back confirmed by the next
+        reading is reported as ("start", seconds back); ("end", seconds) comes when the live clock returns (a jump forward). A rewind of
+        minutes by the viewer is not one. With `replay_by_clock_s` above 0 `self.replay` is also set for that long (0 = log only)."""
+        cfg = self.config
+        seconds = [int(m.group(1)) * 60 + int(m.group(2)) for c in clocks if (m := re.fullmatch(r"(\d{1,3}):(\d{2})", c.strip()))]
+        if not seconds:
+            return
+        if self._cs_last is None:
+            self._cs_last, self._cs_time = seconds[0], now
+            return
+        last, elapsed = self._cs_last, now - self._cs_time
+        direction = self._cs_dir
+        c = min(seconds, key=lambda s: abs(direction * (s - last) - elapsed) if direction else abs(s - last))   # the clock that fits best
+        if self._cs_pending is not None:
+            c1, t1, back, gap = self._cs_pending
+            self._cs_pending = None
+            if -1 <= direction * (c - c1) <= (now - t1) + 4:   # the clock runs on from the odd value: a replay
+                self.clock_replay_note = ("start", back)
+                self._clock_replay_start = now
+                self._cs_last, self._cs_time = c, now
+                self._apply_clock_replay(now)
+                return
+            if gap >= REPLAY_GAP_S and abs(direction * (c - last) - elapsed) <= 5:
+                # one reading of an earlier clock between two gaps of the scorebug, then the live clock again: the replay is already over
+                self.clock_replay_note = ("start", back)
+                self._cs_last, self._cs_time = c, now
+                return
+        if not direction and elapsed <= 4.5 and 1 <= abs(c - last) <= elapsed + 2:
+            direction = self._cs_dir = 1 if c > last else -1     # the clock moves as time passes: learn which way (once)
+        if direction:
+            progress = direction * (c - last)
+            if self._clock_replay_start is not None and progress - elapsed >= cfg.replay_clock_min_s:
+                self.clock_replay_note = ("end", now - self._clock_replay_start)   # the live clock is back
+                self._clock_replay_start = None
+            elif self._clock_replay_start is None and -cfg.replay_clock_max_s <= progress <= -cfg.replay_clock_min_s:
+                self._cs_pending = (c, now, -progress, elapsed)   # wait for the next reading before believing it
+                return
+        self._cs_last, self._cs_time = c, now
+        self._apply_clock_replay(now)
+
+    def _apply_clock_replay(self, now: float) -> None:
+        cfg = self.config
+        if self._clock_replay_start is None:
+            return
+        if cfg.replay_by_clock_s > 0 and now - self._clock_replay_start <= cfg.replay_by_clock_s:
+            self.replay = True
+        elif now - self._clock_replay_start > max(cfg.replay_by_clock_s, 60.0):
+            self._clock_replay_start = None   # no live clock seen again for a minute: the replay is long over
 
     def _cues_in(self, texts: list[str]) -> list[str]:
         """The anticipation cues on screen in this reading, in a stable order."""

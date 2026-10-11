@@ -65,6 +65,9 @@ class Config:
     anticipation_cooldown_s: float = 30.0   # the same cue is not reported again this soon
     anticipation_big_gain_yd: float = 20.0  # a "+NN YDS" graphic counts as a cue from this many yards
     anticipation_goal_yd: float = 10.0      # a yard line graphic counts as a cue up to this many yards, beside a down text
+    replay_by_clock_s: float = 0.0   # a clock that goes back 10-30 s while the scorebug shows is a replay: 0 = only logged, above 0 = also treated as a replay this long
+    replay_clock_min_s: float = 10.0   # the smallest step back of the game clock that counts
+    replay_clock_max_s: float = 30.0   # the largest (more is the viewer rewinding)
     scorebug_hidden_s: float = 6.0   # measuring only: a scorebug missing this long (seen a moment before) is logged as hidden
     scorebug_memory_s: float = 60.0  # ...if it was seen within this long before; a later first sight of the gap is stale and not logged
     replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
