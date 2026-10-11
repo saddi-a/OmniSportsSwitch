@@ -32,7 +32,9 @@ CUES = {
     "corner": [r"\bcorner\b"],
     "offside": [r"off ?side", r"hors[- ]jeu"],
     "var": [r"\bvar\b", r"video assistant"],
-    "card": [r"red card", r"carton rouge", r"yellow card", r"carton jaune", r"sent off", r"expuls"],
+    "card": [r"red card", r"carton rouge", r"yellow card", r"carton jaune", r"sent off", r"sending off", r"dismissed", r"expuls", r"\bexclu(e|s|es)?\b", r"exclusion", r"\bcarton\b", r"expulsado", r"\bà dix\b", r"infériorité numérique", r"a man down"],
+    "replay": [r"revoyons", r"on revoit", r"au ralenti", r"\bralenti\b", r"\breplay\b", r"another look", r"\bcan we see that again\b"],
+    "foul": [r"\btacle\b", r"\btackle\b", r"\bfaute\b", r"\bfoul\b"],
     "goal": [r"\bgo+a{2,}l+\b", r"\bgo{2,}a+l+\b", r"\bgoal ?!", r"\bbut ?!", r"\bbu{2,}t\b", r"ouvre le score", r"égalise", r"opens the scoring", r"equali[sz]es?"],   # plain "goal" is too common (first and goal)
     "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b", r"\bpoteaux?\b", r"\bla barre\b", r"\btransversale\b"],
     "chance": [r"what a (big )?chance", r"big chance", r"so close", r"just wide", r"just over", r"just past", r"(great|what a|brilliant) save",

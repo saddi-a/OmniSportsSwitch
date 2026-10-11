@@ -547,3 +547,20 @@ def test_semantic_level_uses_the_best_ordinary_talk_as_base_and_a_stricter_mid_m
     assert level({"high": 0.95, "mid": 0.5, "low": 0.5, "neutral": 0.6}, 0.75, 0.10) == "high"
     assert level({"high": 0.5, "mid": 0.78, "low": 0.4, "neutral": 0.4}, 0.75, 0.10, 0.80) == ""   # below the mid minimum
     assert level({"high": 0.5, "mid": 0.85, "low": 0.4, "neutral": 0.4}, 0.75, 0.10, 0.80) == "mid"
+
+
+def test_a_sending_off_is_a_card_cue_in_french_and_english():
+    from daemon.speech import find_speech_cues
+
+    assert find_speech_cues("sans l'emputeur, Daniel Malin exclu.") == ["card"]
+    assert find_speech_cues("He has been sent off, a straight red.") == ["card"]
+    assert find_speech_cues("Le joueur est expulsé après le tackle") == ["card", "foul"]
+    assert find_speech_cues("Il ne faut pas exclure cette option") == []        # a verb, not a sending off
+
+
+def test_a_replay_announcement_and_a_foul_are_speech_cues():
+    from daemon.speech import find_speech_cues
+
+    assert find_speech_cues("Alors, revoyons-le là, il manque de maîtrise sur ce tacle.") == ["replay", "foul"]
+    assert find_speech_cues("On joue à dix maintenant.") == ["card"]
+    assert find_speech_cues("The replay shows a late tackle.") == ["replay", "foul"]
