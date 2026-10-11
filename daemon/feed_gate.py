@@ -34,6 +34,9 @@ REWIND_READINGS = 2
 REWIND_MAX_S = 600.0      # a rewind that lasts this long is given up (a wrong period read must not block a tile for good)
 CAP_ACTIONS = 4           # at most this many feed actions per tile ...
 CAP_WINDOW_S = 600.0      # ... in this many seconds
+HOLD_S = 20.0              # a feed goal with no readable stream clock this long is reported once
+HOLD_MAX_S = 120.0        # ...but only while it is this recent (a tile mapped late must not report the day's old goals)
+OVER_WINDOW_S = 600.0     # a feed goal this recent, with no OCR change, is reported feed-only when the tile turns over
 REFEREE_N = 10            # readings in a row that disagree with the feed before the referee speaks
 
 
@@ -100,6 +103,11 @@ def _elapsed(sport: str, clock_s: float, period: int | None) -> float | None:
     return clock_s if sport == "soccer" else feed.game_elapsed_s(sport, period, clock_s)
 
 
+def _lag_text(lag_s: float) -> str:
+    """The feed's lag against the picture: feed time minus the time of the screen's score change (+ = the feed was behind)."""
+    return f"feed lag {lag_s:+.0f} s (the feed was {'behind the picture' if lag_s > 0 else 'ahead of the picture'})"
+
+
 def _clock_text(clock_s: float) -> str:
     return f"{int(clock_s // 60)}:{int(clock_s % 60):02d}"
 
@@ -120,6 +128,9 @@ class FeedGate:
         self.messages: list[str] = []                # log lines from `confirmations`
         self.fired: list[Fired] = []
         self.acted: dict[tuple, list] = {}           # (tab, tile) -> times of the actions queued (for the cap)
+        self.held: set[tuple] = set()                # (tab, tile, event key) already reported as held
+        self.over_done: set[tuple] = set()           # (tab, tile, event key) already reported feed-only at game over
+        self.last_change: dict[tuple, float] = {}    # (tab, tile) -> when the OCR watcher last saw a score change
         self.disagree: dict[tuple, int] = {}         # (tab, tile) -> readings in a row that disagree with the feed score
         self.pending: dict[str, list[_Pending]] = {}
         self.done: set[tuple] = set()                # (tab, tile, event key) decided
@@ -192,7 +203,9 @@ class FeedGate:
         return out
 
     def forget(self, tab_id: int) -> None:
-        for store in (self.fires, self.mapped, self.stream, self.waiting, self.rewind, self.acted, self.disagree):
+        self.held = {k for k in self.held if k[0] != tab_id}
+        self.over_done = {k for k in self.over_done if k[0] != tab_id}
+        for store in (self.fires, self.mapped, self.stream, self.waiting, self.rewind, self.acted, self.disagree, self.last_change):
             for key in [k for k in store if k[0] == tab_id]:
                 del store[key]
         self.claimed = {k for k in self.claimed if k[0] != tab_id}
@@ -211,6 +224,8 @@ class FeedGate:
             return msgs
         self.mapped[tile_key] = game_id
         clock_s = parse_clock_s(clocks)
+        if clock_s is None and not replay:
+            msgs += self._held(tab_id, tile, game_id, now)
         if replay or clock_s is None:
             return msgs                                  # unknown clock = hold
         self.stream[tile_key] = (clock_s, period, now)
@@ -244,6 +259,42 @@ class FeedGate:
             else:
                 self.armed.pop(key, None)
         return msgs + self._end_zone(tab_id, tile, game_id, clock_s, period)
+
+    def _held(self, tab_id: int, tile: int, game_id: str, now: float) -> list[str]:
+        """Log only: a feed goal the tile cannot be compared with because its stream clock cannot be read (banners, replays,
+        the final board). Once per goal, after HOLD_S, while it is recent."""
+        tile_key = (tab_id, tile)
+        last_clock = self.stream.get(tile_key, (None, None, float("-inf")))[2]
+        msgs = []
+        for p in self.pending.get(game_id, ()):
+            key = (tab_id, tile, p.key)
+            age = now - p.added
+            if p.event.kind not in SCORING or key in self.held or key in self.done or last_clock >= p.added:
+                continue
+            if HOLD_S <= age <= HOLD_MAX_S:
+                self.held.add(key)
+                msgs.append(f"feed goal held tab {tab_id} tile {tile} {p.league} {p.label}: {p.event.kind} {p.event.display} "
+                            f"{p.event.team}".rstrip() + f", no readable stream clock for {age:.0f} s")
+        return msgs
+
+    def game_over(self, tab_id: int, tile: int, now: float) -> list[str]:
+        """Log only: the tile shows a final/over board. A recent feed goal that the screen never changed for stands alone."""
+        tile_key = (tab_id, tile)
+        game_id = self.mapped.get(tile_key)
+        if game_id is None:
+            return []
+        changed_at = self.last_change.get(tile_key, float("-inf"))
+        msgs = []
+        for p in self.pending.get(game_id, ()):
+            key = (tab_id, tile, p.key)
+            if (p.event.kind not in SCORING or key in self.claimed or key in self.over_done or now - p.added > OVER_WINDOW_S
+                    or changed_at >= p.added - 60.0):
+                continue
+            self.over_done.add(key)
+            msgs.append(f"feed-only tab {tab_id} tile {tile} {p.league} {p.label}: {p.event.kind} {p.event.display} "
+                        f"{p.event.team}".rstrip() + f", the tile shows the game over and the screen never changed its score for it "
+                        f"(the feed event stands alone, seen {now - p.added:.0f} s ago)")
+        return msgs
 
     def _fire(self, tab_id, tile, tile_key, p: _Pending, gap, clock_s, now, where, what, guessed) -> str:
         fire = _Fire(p, now, gap)
@@ -353,6 +404,7 @@ class FeedGate:
     def real_change(self, tab_id: int, tile: int, now: float) -> Change:
         """The OCR watcher saw a real score change on this tile: does the feed agree?"""
         tile_key = (tab_id, tile)
+        self.last_change[tile_key] = now
         game_id, seen = self.mapped.get(tile_key), self.stream.get(tile_key)
         if game_id is None or game_id not in self.fresh or seen is None or now - seen[2] > CLOCK_FRESH_S:
             return Change("unknown", [])
@@ -365,12 +417,13 @@ class FeedGate:
                 self.claimed.add((tab_id, tile, f.pending.key))
                 p = f.pending
                 return Change("confirmed", [f"feed confirmed {where} {p.league} {p.label}: {p.event.kind} {p.event.display}, "
-                                            f"the real score change came {now - f.at:.0f} s after would-fire"], f.acted)
+                                            f"the real score change came {now - f.at:.0f} s after would-fire, "
+                                            f"{_lag_text(p.added - now)}"], f.acted)
         p = self._match(tab_id, tile, game_id, seen[0], seen[1])
         if p is not None:
             self.claimed.add((tab_id, tile, p.key))
             return Change("confirmed", [f"feed confirmed {where} {p.league} {p.label}: {p.event.kind} {p.event.display}, "
-                                        f"the feed event was there before the score change"])
+                                        f"the feed event was there before the score change, {_lag_text(p.added - now)}"])
         self.waiting.setdefault(tile_key, []).append(_Wait(now, game_id, seen[0], seen[1]))
         return Change("ocr-only", [f"feed ocr-only score change {where}: no feed event came first, "
                                    f"the feed has {self.confirm_s:.0f} s to confirm it"])
@@ -388,7 +441,8 @@ class FeedGate:
                     if tile_key not in out:
                         out.append(tile_key)
                     self.messages.append(f"feed confirmed later tab {tile_key[0]} tile {tile_key[1]} {p.league} {p.label}: "
-                                         f"{p.event.kind} {p.event.display}, {now - w.at:.0f} s after the OCR change")
+                                         f"{p.event.kind} {p.event.display}, {now - w.at:.0f} s after the OCR change, "
+                                         f"{_lag_text(p.added - w.at)}")
                 elif now - w.at > self.confirm_s:
                     self.messages.append(f"feed not confirmed tab {tile_key[0]} tile {tile_key[1]}: no feed event within "
                                          f"{self.confirm_s:.0f} s of the OCR score change")
