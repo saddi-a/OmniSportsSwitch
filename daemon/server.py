@@ -33,6 +33,7 @@ from daemon.feed import FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
 from daemon.feed_map import FeedMapper
 from daemon.logsetup import LOG_DIR
+from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
@@ -105,6 +106,7 @@ class Server:
         self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
         self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
+        self.sport_memory = SportMemory(LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
         self.clients = set()
@@ -425,7 +427,13 @@ class Server:
         for (tab_id, index), r in results.items():
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id), self.scorer.config))
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
-            tracker.set_sport(self.sports.get(tab_id) or detected)  # a sport chosen in the popup wins
+            det = self.sport_detectors[(tab_id, index)]
+            now_wall = time.time()
+            if detected:   # only hard detections are remembered
+                self.sport_memory.remember(tab_id, detected, now_wall)
+            # popup choice > hard cue > league words on screen > remembered sport
+            tracker.set_sport(self.sports.get(tab_id) or detected or det.weak_sport or self.sport_memory.get(tab_id, now_wall))
+            self.sport_memory.save()
             if detected != self.sport_seen.get((tab_id, index)):
                 log.info("sport detected tab %s tile %s: %s", tab_id, index, detected or "unknown")
                 self.sport_seen[(tab_id, index)] = detected
