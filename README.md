@@ -4,7 +4,7 @@ An automated "live broadcast director" for people who watch several sports strea
 
 You open your streams in separate Edge windows (one per screen slot). OmniSportsSwitch listens to every stream, reads the scoreboards on screen, and automatically moves the most exciting game into the big centre window (Main). Everything runs locally on your PC: no accounts, no cloud, no API keys.
 
-> Status: personal project, working and under live testing (about 500 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
+> Status: personal project, working and under live testing (about 680 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
 
 ## How it works
 
@@ -187,7 +187,7 @@ In `logs/` (not committed): `events.log` (goals, swaps and why, game states, war
 .venv\Scripts\python -m pytest daemon -q
 ```
 
-About 500 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
+About 680 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
 
 ## What is where
 
