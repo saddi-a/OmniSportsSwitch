@@ -24,8 +24,8 @@ audio_ad_window = 5    # ...among the last this many (a single reading is never 
 classifier_target_rms = 0.0   # above 0: the sound is levelled to this normal loudness (try 0.05) before the crowd/speech/music classifier hears it; 0 = off
 speech_interval_s = 6.0       # the commentary listener (measuring only: it only logs) transcribes each stream this often; 0 = off
 speech_window_s = 8.0         # ...the last this many seconds of sound
-semantic_min_sim = 0.75       # semantic reading of the commentary (measuring only): this similar to the high / mid reference phrases counts...
-semantic_mid_sim = 0.80       # ...mid level: stricter, no true mid example seen yet
+semantic_min_sim = 0.85       # semantic reading of the commentary (measuring only): this similar to the high / mid reference phrases counts...
+semantic_mid_sim = 0.99       # ...mid level: effectively off (0 of 5 mid alarms were true in Como-Roma)
 semantic_margin = 0.10        # ...and must beat the similarity to ordinary match talk by this much
 speech_cue_cooldown_s = 20.0  # the same spoken cue on the same stream is logged at most this often
 classifier_max_gain = 8.0     # ...by at most this factor up or down

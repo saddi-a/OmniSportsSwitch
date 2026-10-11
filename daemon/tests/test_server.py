@@ -525,7 +525,7 @@ async def test_the_loop_logs_the_semantic_reading_and_a_level_once_per_cooldown(
 
     class FakeMatcher:
         def match(self, text):
-            return {"high": 0.8, "mid": 0.3, "low": 0.2, "phrase": "il touche la barre", "piece": text}
+            return {"high": 0.95, "mid": 0.3, "low": 0.2, "phrase": "il touche la barre", "piece": text}
 
     config = Config(speech_interval_s=0.01, speech_window_s=1.0, speech_cue_cooldown_s=60.0)
     server = Server(Scorer(config), speech=FakeListener(), semantic=FakeMatcher())
