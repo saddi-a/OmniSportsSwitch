@@ -37,6 +37,13 @@ MIN_RATIO = 1.5        # ...and this many times the runner-up
 MAX_STEP_S = 15        # a running clock moves by at most this between two readings
 
 
+def sport_from_title(title: str | None) -> str | None:
+    """The sport a tab title points to by its league words ("... - NFL", "... | Premier League | DAZN"); None when it names no league
+    or the words of two sports."""
+    hits = [sport for sport, pattern in LEAGUE_RES.items() if pattern.search(title or "")]
+    return hits[0] if len(hits) == 1 else None
+
+
 class SportDetector:
     def __init__(self):
         self._evidence = {FOOTBALL: 0.0, SOCCER: 0.0, BASKETBALL: 0.0}

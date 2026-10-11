@@ -138,3 +138,21 @@ def test_a_hard_cue_is_not_overridden_by_league_words():
         sec = 52 * 60 + 54 + 3 * i
         d.update(["PSG", "1", "LMFC", "0", "NFL"], [f"{sec // 60}:{sec % 60:02d}"])
     assert d.sport == SOCCER                               # the hard answer is its own; the caller ranks the sources
+
+
+# ---- the tab title (sent by the extension): whole league words, a title naming two sports gives nothing -------------------------------------------
+
+def test_sport_from_title():
+    from daemon.sport_detect import sport_from_title
+    assert sport_from_title("JACKSONVILLE JAGUARS / PHILADELPHIA EAGLES - NFL") == FOOTBALL
+    assert sport_from_title("NFL - 5e journée") == FOOTBALL
+    assert sport_from_title("Liverpool v Manchester City | Premier League | DAZN") == SOCCER
+    assert sport_from_title("Ligue 1 : PSG - OM en direct") == SOCCER
+    assert sport_from_title("Lakers - Celtics | NBA") == BASKETBALL
+    assert sport_from_title("NCAA Football: Ohio State at Penn State") == FOOTBALL
+
+
+def test_a_title_with_no_league_word_or_with_two_sports_gives_none():
+    from daemon.sport_detect import sport_from_title
+    for title in ("DAZN", "Prime Video", "", None, "bein SPORTS 1", "NFL and NBA highlights", "INFLATION report"):
+        assert sport_from_title(title) is None, title
