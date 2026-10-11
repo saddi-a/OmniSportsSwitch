@@ -289,7 +289,7 @@ class Scorer:
         or None if the stream already is MAIN. Raises ValueError with a message for the user if it cannot be."""
         stream = self.streams.get(tab_id)
         if stream is None:
-            raise ValueError("this tab is not tracked")
+            raise ValueError("the daemon does not track this tab: press Ctrl+Shift+Y in its window, then try again")
         if not stream.can_main:
             raise ValueError("this tab is not allowed in Main (its slot rules)")
         self.hold_tab, self.hold_until = tab_id, now + self.config.manual_hold_s

@@ -91,8 +91,8 @@ class ScreenReader:
 def _trim_padding(x0: int, y0: int, x1: int, y1: int) -> tuple[int, int, int, int]:
     """The text detector pads its boxes by a fixed fraction (about 20% of the width on each side, measured on a real
     scoreboard), so two neighbouring numbers overlap. Take the padding off again."""
-    dx, dy = int(0.2 * (x1 - x0)), int(0.08 * (y1 - y0))
-    return x0 + dx, y0 + dy, x1 - dx, y1 - dy
+    dx = int(0.2 * (x1 - x0))
+    return x0 + dx, y0, x1 - dx, y1   # the height stays as detected: the names' boxes are padded the same way
 
 
 def reading_order(found: list) -> list:
