@@ -440,3 +440,32 @@ def test_a_real_clock_jump_with_scores_still_resets_the_baseline():
         w.update(["OHIO STATE", "45", "MARYLAND", "16", f"12:{50 - i * 3:02d}"], [f"12:{50 - i * 3:02d}"], t)
         t += 3
     assert w.score in (None, (45, 16))
+
+
+# ---- two scores merged into ONE OCR item with a space ("28 9", "10 24"): FOX Houston/K-State, Big Ten Maryland/OSU ----
+
+HOUSTON_MERGED = boxes([("HOUSTON", 42, 655, 731), ("28 9", 76, 770, 720), ("3,46", 36, 757, 809), ("21", 40, 829, 807), ("3R0 &3", 38, 887, 811)])
+MARYLAND_MERGED = boxes([("M", 72, 417, 641), ("MARYLAND", 38, 525, 661), ("10 24", 72, 648, 648), ("OHIO STATE", 32, 786, 664),
+                         ("41", 20, 787, 695), ("5.55", 36, 727, 731)])
+
+
+def test_two_scores_merged_into_one_ocr_item_are_split_into_the_score():
+    assert _geo(HOUSTON_MERGED) == (28, 9)         # digits 76 px vs the name 42 px = 1.8x
+    assert _geo(MARYLAND_MERGED) == (10, 24)       # 72 px vs 38 px = 1.9x
+
+
+def test_a_touchdown_is_seen_on_a_merged_score_item():
+    w = ScoreWatcher()
+    feed_items(w, [MARYLAND_MERGED], 5)
+    assert w.score == (10, 24)
+    seven_more = [dict(it, text="17 24") if it["text"] == "10 24" else it for it in MARYLAND_MERGED]
+    assert feed_items(w, [seven_more], 5) != []
+
+
+def test_a_merged_item_as_small_as_the_names_is_not_a_score():
+    records = boxes([("TEXAS", 36, 700, 1112), ("4 0", 30, 878, 1162), ("OKLAHOMA", 36, 1618, 1112), ("2 2", 30, 1500, 1162)])
+    assert _geo(records) is None
+
+
+def test_two_numbers_in_one_item_without_team_names_are_not_a_score():
+    assert _geo(boxes([("28 9", 76, 770, 720), ("3,46", 36, 757, 809)])) is None

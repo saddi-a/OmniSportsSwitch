@@ -27,6 +27,8 @@ NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")
 STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b", re.I)   # overlays full of numbers
 RANKED_TEAM_RE = re.compile(r"^\d{1,2}\s+[^\W\d_]{3,}(?:[ .'\-][^\W\d_]+)*$")   # "2 Georgia", "6 ALABAMA": a ranking and a name
 DIGIT_WITH_MARKS_RE = re.compile(r"^(\d{1,3})\s?[:=;|!]+$")   # the score digit read together with the dashes drawn beside it ("0 =")
+MERGED_PAIR_RE = re.compile(r"^(\d{1,3})\s+(\d{1,3})$")   # two scores read as ONE item ("28 9", "10 24")
+MERGED_VS_LABEL = 1.5   # such a pair must be at least this much taller than the team names (measured 1.8-2.25 on real boards)
 NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", "period", "round", "set", "game", "shots",
               "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
@@ -130,6 +132,17 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     """
     skip = set(clocks)
     items = [dict(it, text=m.group(1)) if (m := DIGIT_WITH_MARKS_RE.match(it["text"].strip())) else it for it in items]
+    split = []
+    for n, it in enumerate(items):
+        m = MERGED_PAIR_RE.match(it["text"].strip())
+        if m:   # two scores merged by OCR: cut the box at the space into two numbers, remembered as halves of the same item
+            a, b = m.group(1), m.group(2)
+            char = (it["x1"] - it["x0"]) / (len(a) + 1 + len(b))
+            split.append(dict(it, text=a, x1=it["x0"] + len(a) * char, merged=n))
+            split.append(dict(it, text=b, x0=it["x1"] - len(b) * char, merged=n))
+        else:
+            split.append(it)
+    items = split
     live = [it for it in items if it["text"].strip() not in skip and not CLOCK_RE.match(it["text"].strip())
             and not LOGO_RE.match(it["text"].strip())]
 
@@ -199,7 +212,8 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             if labels and min(ha, hb) < SCORE_VS_LABEL * max(labels):
                 # As small as the team labels: usually a record ("4-0" read as 40), a down and distance, a quarter. Except a
                 # compact scorebug (USC 7 ... 7 PENN STATE) whose digits sit on the names' own row, right beside each name.
-                if not inline(left, right, line_h):
+                halves = left.get("merged") is not None and left.get("merged") == right.get("merged")
+                if not inline(left, right, line_h) and not (halves and min(ha, hb) >= MERGED_VS_LABEL * max(labels)):
                     continue
             between = sum(1 for it in live if not NUMBER_RE.match(it["text"].strip()) and left["x1"] <= it["x0"] and it["x1"] <= right["x0"]
                           and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
