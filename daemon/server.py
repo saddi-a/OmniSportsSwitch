@@ -309,7 +309,7 @@ class Server:
                 now = time.monotonic()
                 if self.semantic is not None:
                     match = await asyncio.to_thread(self.semantic.match, text)
-                    tier = semantic_level(match, cfg.semantic_min_sim, cfg.semantic_margin)
+                    tier = semantic_level(match, cfg.semantic_min_sim, cfg.semantic_margin, cfg.semantic_mid_sim)
                     log.info("semantic heard tab %s: high=%.2f mid=%.2f low=%.2f best='%s'", tab_id, match["high"], match["mid"],
                              match["low"], match["phrase"])
                     if tier and now - self.speech_cue_at.get((tab_id, "semantic " + tier), float("-inf")) >= cfg.speech_cue_cooldown_s:

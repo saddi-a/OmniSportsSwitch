@@ -21,7 +21,7 @@ HIGH = [
     "goal! he scores", "what a goal", "it's in the net", "he opens the scoring", "they equalise", "touchdown", "he is in the red zone",
     "penalty for the home team", "he hits the post", "it hits the crossbar", "what a chance", "so close, just wide", "great save by the goalkeeper",
     "but ! quel but", "il ouvre le score", "ils égalisent", "penalty pour la Roma", "quelle occasion", "juste à côté du poteau",
-    "il touche la barre", "quel arrêt du gardien", "quelle parade", "touchdown, quelle course",
+    "il touche la barre", "quel arrêt du gardien", "quelle parade",
 ]
 MID = [
     "free kick near the box", "corner kick", "yellow card", "red card", "the referee checks the video", "a dangerous attack",
@@ -31,6 +31,15 @@ MID = [
 LOW = [
     "the team is playing a tactical game", "he passes the ball back to the keeper", "they are keeping possession",
     "ils jouent avec un bloc bas", "la possession est à Côme", "ils ont fait des changements tactiques", "le travail défensif est bon",
+]
+# Ordinary talk of a match, so that "he talks about the match" does not look like "something is happening" (the evaluation on
+# 109 real transcripts: without these, 45% of all chunks raised an alarm; with them and the stricter thresholds, 4 of 109, all true).
+NEUTRAL = [
+    "il passe le ballon à son coéquipier", "ils gardent la possession", "le match est très tactique", "c'est un match engagé",
+    "le joueur a fait une petite erreur", "il faut analyser le jeu", "bon placement défensif", "le coach a fait des changements",
+    "la série A est un championnat difficile", "depuis le début de la saison", "il récupère le ballon au milieu",
+    "he passes the ball to his teammate", "the match is very tactical", "he made a small mistake", "good defensive positioning",
+    "this is a tough league", "since the start of the season", "he wins the ball in midfield",
 ]
 
 _PIECES = re.compile(r"[.!?;…]+|,|\bmais\b|\bbut\b")
@@ -58,7 +67,7 @@ class SemanticMatcher:
         self.tokenizer.enable_padding()
         self.session = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
         self.names = {i.name for i in self.session.get_inputs()}
-        self.refs = {"high": HIGH, "mid": MID, "low": LOW}
+        self.refs = {"high": HIGH, "mid": MID, "low": LOW, "neutral": NEUTRAL}
         self.vectors = {tier: self.embed(phrases) for tier, phrases in self.refs.items()}
 
     def embed(self, texts: list[str]) -> np.ndarray:
@@ -75,12 +84,12 @@ class SemanticMatcher:
     def match(self, text: str) -> dict:
         """{'high': s, 'mid': s, 'low': s, 'phrase': best reference phrase, 'piece': the piece that matched} from the
         best similarity of any piece of the text to the phrases of each level; zeros for an empty text."""
-        result = {"high": 0.0, "mid": 0.0, "low": 0.0, "phrase": "", "piece": ""}
+        result = {"high": 0.0, "mid": 0.0, "low": 0.0, "neutral": 0.0, "phrase": "", "piece": ""}
         parts = pieces(text)
         if not parts:
             return result
         vectors = self.embed(parts)
-        for tier in ("high", "mid", "low"):
+        for tier in ("high", "mid", "low", "neutral"):
             sims = vectors @ self.vectors[tier].T
             result[tier] = float(sims.max())
             if tier == "high":
@@ -89,10 +98,12 @@ class SemanticMatcher:
         return result
 
 
-def level(match: dict, min_sim: float, margin: float) -> str:
-    """'high', 'mid' or '' : a level counts when its similarity reaches `min_sim` and beats the ordinary-talk similarity by `margin`."""
-    if match["high"] >= min_sim and match["high"] - match["low"] >= margin:
+def level(match: dict, min_sim: float, margin: float, mid_sim: float | None = None) -> str:
+    """'high', 'mid' or '' : a level counts when its similarity reaches its minimum (`min_sim` for high, `mid_sim` for mid,
+    default the same) and beats the best ordinary-talk similarity (low or neutral phrases) by `margin`."""
+    base = max(match["low"], match.get("neutral", 0.0))
+    if match["high"] >= min_sim and match["high"] - base >= margin:
         return "high"
-    if match["mid"] >= min_sim and match["mid"] - match["low"] >= margin:
+    if match["mid"] >= (min_sim if mid_sim is None else mid_sim) and match["mid"] - base >= margin:
         return "mid"
     return ""

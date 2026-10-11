@@ -537,3 +537,13 @@ async def test_the_loop_logs_the_semantic_reading_and_a_level_once_per_cooldown(
     messages = [r.getMessage() for r in caplog.records]
     assert sum(m.startswith("semantic heard") for m in messages) >= 2
     assert sum(m.startswith("semantic high") for m in messages) == 1
+
+
+def test_semantic_level_uses_the_best_ordinary_talk_as_base_and_a_stricter_mid_minimum():
+    from daemon.semantic import level
+
+    ordinary = {"high": 0.78, "mid": 0.4, "low": 0.5, "neutral": 0.74}
+    assert level(ordinary, 0.75, 0.10) == ""                                   # as close to neutral talk as to the phrase
+    assert level({"high": 0.95, "mid": 0.5, "low": 0.5, "neutral": 0.6}, 0.75, 0.10) == "high"
+    assert level({"high": 0.5, "mid": 0.78, "low": 0.4, "neutral": 0.4}, 0.75, 0.10, 0.80) == ""   # below the mid minimum
+    assert level({"high": 0.5, "mid": 0.85, "low": 0.4, "neutral": 0.4}, 0.75, 0.10, 0.80) == "mid"

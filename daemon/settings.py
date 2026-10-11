@@ -120,6 +120,7 @@ LAYOUT = [
         ("scoring.speech_interval_s", "Commentary listener every (s, 0 = off)", "Measuring only, it changes no score: the words of the commentators are written to the logs this often. Turning it on or off needs a daemon restart (the model is loaded at start)."),
         ("scoring.speech_window_s", "Commentary listener window (s)", "How many of the last seconds of sound are transcribed each time."),
         ("scoring.semantic_min_sim", "Semantic match: minimum similarity", "Measuring only: commentary at least this similar to the example phrases of a big moment (0 to 1) is written to the logs as high or mid."),
+        ("scoring.semantic_mid_sim", "Semantic match: minimum for mid", "Measuring only: the stricter minimum similarity for the mid level (a notable event rather than a big moment)."),
         ("scoring.semantic_margin", "Semantic match: margin over ordinary talk", "...and it must beat its similarity to ordinary match talk by this much."),
         ("scoring.speech_cue_cooldown_s", "Spoken cue cooldown (s)", "The same spoken cue on the same stream is logged at most this often."),
         ("scoring.classifier_max_gain", "Levelling limit (x)", "The levelling never raises or lowers the sound by more than this factor."),
