@@ -346,13 +346,16 @@ class Server:
         per_tab: dict[int, list[str]] = {}
         ads: dict[int, list[bool]] = {}
         for (tab_id, index), r in results.items():
-            tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id)))
+            tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id), self.scorer.config))
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
             tracker.set_sport(self.sports.get(tab_id) or detected)  # a sport chosen in the popup wins
             if detected != self.sport_seen.get((tab_id, index)):
                 log.info("sport detected tab %s tile %s: %s", tab_id, index, detected or "unknown")
                 self.sport_seen[(tab_id, index)] = detected
             per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
+            if tracker.scorebug_note:   # measuring only: DAZN hides the scorebug during replays
+                kind, secs = tracker.scorebug_note
+                log.info("scorebug %s tab %s tile %s: %.0f s", kind, tab_id, index, secs)
             ads.setdefault(tab_id, []).append(tracker.on_ad)
             if tracker.big_play:
                 strength = self.scorer.config.big_play_strength

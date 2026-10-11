@@ -11,7 +11,7 @@ import pathlib
 
 LOG_DIR = pathlib.Path(__file__).resolve().parent.parent / "logs"
 FORMAT = "%(asctime)s %(message)s"
-EVENT_WORDS = ("score change", "big play", "sport detected", "swap:", "arrange:", "swap refused", "focus tile", "game state", "freeze",
+EVENT_WORDS = ("score change", "big play", "sport detected", "swap:", "arrange:", "swap refused", "focus tile", "game state", "scorebug ", "freeze",
                "audio classifier ready", "screen reader ready", "listening on", "extension connected",
                "extension disconnected")
 
