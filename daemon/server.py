@@ -75,7 +75,7 @@ def leveling_gain(baseline: float | None, target: float, max_gain: float) -> flo
 
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None,
-                 speech=None, semantic=None):
+                 speech=None, semantic=None, sport_memory_path=None):
         self.scorer = scorer or Scorer()
         self.speech = speech                    # SpeechListener or None: the commentary listener (measuring only)
         self.semantic = semantic                # SemanticMatcher or None: how close the commentary is to big-moment phrases (measuring only)
@@ -106,7 +106,7 @@ class Server:
         self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
         self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
-        self.sport_memory = SportMemory(LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
+        self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
         self.clients = set()

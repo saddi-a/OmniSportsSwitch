@@ -564,3 +564,28 @@ def test_a_replay_announcement_and_a_foul_are_speech_cues():
     assert find_speech_cues("Alors, revoyons-le là, il manque de maîtrise sur ce tacle.") == ["replay", "foul"]
     assert find_speech_cues("On joue à dix maintenant.") == ["card"]
     assert find_speech_cues("The replay shows a late tackle.") == ["replay", "foul"]
+
+
+def test_the_tests_never_touch_the_real_sports_file(tmp_path):
+    import hashlib
+
+    from daemon import logsetup
+    real = logsetup.LOG_DIR / "sports.json"
+    before = hashlib.md5(real.read_bytes()).hexdigest() if real.exists() else None
+    server = Server()
+    assert server.sport_memory.path is not None and logsetup.LOG_DIR not in server.sport_memory.path.parents
+    server.handle_message({"type": "register", "tab_id": 8})
+    for i in range(3):
+        server._update_game_states({(8, 0): {"texts": ["HOUSTON", "0", "K-STATE", "0", "1ST & GOAL"], "clocks": ["10:45"]}}, 100.0 + i * 3)
+    assert server.sport_memory.get(8, time.time()) == "American football"   # remembered, but in the test's own folder
+    after = hashlib.md5(real.read_bytes()).hexdigest() if real.exists() else None
+    assert before == after
+
+
+def test_the_memory_file_can_be_given_to_the_server(tmp_path):
+    path = tmp_path / "mine.json"
+    server = Server(sport_memory_path=path)
+    server.handle_message({"type": "register", "tab_id": 8})
+    for i in range(3):
+        server._update_game_states({(8, 0): {"texts": ["HOUSTON", "0", "K-STATE", "0", "1ST & GOAL"], "clocks": ["10:45"]}}, 100.0 + i * 3)
+    assert path.exists()
