@@ -218,3 +218,51 @@ Owner: the main session for `server.py` and the restart; the API session can wri
 - Quirks: timeouts and kickoffs carry `down` -1 or 0 and a copy of the next state; a goal-line start can have `yardsToEndzone` 0 (read as 1); the `end` state of a scrimmage play equals the next play's `start` in only 80 of 103 cases (penalties, touchdowns and change of possession break it), so the **start** state of each play is used, not the end state.
 - 36 of 165 plays end within 20 yards of the end zone, 18 are "Goal" situations.
 - Code: `feed.parse_situations` -> `Situation(play_id, period, clock_s, down, distance, yards_to_endzone, goal_to_go, offense)`; `FeedGate._end_zone` logs `feed end zone would raise cue: N yds, D & X (...)` in shadow, with the same release rule as events. Measuring only.
+
+## 13. Stage 3 plan (feed as referee and lead for goals and touchdowns): OPTIONS, nothing built (2026-10-11)
+
+### Today's data (18:00-18:58, daemon.log / events.log)
+
+| Moment | What the log shows |
+|---|---|
+| Man City goal 65' (tab 485660202) | feed event first seen 18:53:27; the gate said "already 32 s behind the stream" a second later. The feed was BEHIND the picture by about 20-30 s (user saw it first). |
+| Half-time (same stream) | feed 9 s AHEAD of the daemon's break. The delay swings with the stream and the moment. |
+| Man City goal 69' | feed SCORE change 18:57:05, the goal EVENT 18:57:16 (11 s later) |
+| REN-AUX 54' | score 18:26:38, event 18:26:49 (event 11 s later) |
+| BET-OSA 10' penalty | event 18:44:19, score 18:44:30 (score 11 s later) |
+| JAX-PHI touchdown 3:20 | event 18:51:12, score 18:51:18; the screen never confirmed it (OCR baseline lost at the restart) |
+| Duplicate events | the same goal arrives as "Goal" and later "Goal - Volley" (SCF-S04 30' was logged 3 times, LIV-MNC 65' twice): the tracker key contains the text. Stage 3 must key a goal by game + team + clock + family, not by text. |
+| False OCR changes | 18:16 and 18:41 (stats graphic, sponsor text), 18:56 ('2-2', '3-1' beside 'PHI 14'): the feed never confirmed them |
+
+Consequences: (a) the feed is sometimes ahead of the stream, sometimes behind: a lead exists only when it is ahead; when it is behind the feed is only a referee. (b) The score change and the goal event come in either order, 5-11 s apart: the trigger is the FIRST of the two (same game, same side, within 60 s). (c) The duplicate-event key must be fixed first.
+
+### Decisions (user chooses)
+
+**1. Release timing of a feed goal/touchdown**
+| Option | Pros | Cons |
+|---|---|---|
+| A. Raw: act when first seen | simplest | the lead swings 5-50 s per stream; spoils when the feed is ahead of a slow stream; rejected earlier |
+| **B. Clock gate with lead (recommended)**: act when the stream clock is within `lead_s` before the event; if the stream clock is already past the event the feed is behind: no swap, referee only; no readable clock: hold | uses the lead only when it exists; no spoiler; same rule as the shadow gate we measured | needs a readable clock (OCR) |
+| C. Clock gate, lead 0 | zero spoiler risk | no early switch; the feed would only referee |
+
+**2. What a feed event does to scoring**
+| Option | Pros | Cons |
+|---|---|---|
+| A. `set_event` with the OCR strengths (goal/touchdown 1.0, field goal 0.6, red card/penalty `big_play_strength`) | same behaviour as a screen event | no way to tune |
+| **B. Same, times a setting `feed_event_weight` (recommended; 0 = shadow, 1 = full)** | staged roll-out; popup control | one more setting |
+Both: once per event (key above), claimed by the OCR change that confirms it (no double count), never on a replay, ad or unreadable clock. The swap rules (dwell, Make Main, Freeze) stay as they are.
+
+**3. Reconciling with OCR**: feed first, OCR later = one event (OCR change confirmed, nothing added). OCR first = reduced until the feed confirms (built, `feed_unconfirmed_factor`). Feed event and the OCR never changes (JAX touchdown) = the feed event stands alone, logged `feed-only`. Different scores = logged (point 4). Not an option, just the rule.
+
+**4. Referee: feed score against OCR score**
+| Option | Pros | Cons |
+|---|---|---|
+| **A. Log only (recommended first)**: mapped tile whose OCR score differs from the feed score at the stream clock for N readings (N = 10, about 25 s) logs `feed referee: OCR 0-0, feed 1-0` | safe, gives data | does not repair the lost-baseline case |
+| B. Also correct the OCR baseline to the feed score (no event) | fixes the restart case (JAX touchdown at 18:52:05) | a wrong mapping would pollute the OCR; needs the shadow data first |
+| C. B only after the mapping has been verified for K minutes | safest repair | more code |
+Recommendation: A now, C once a few games of `feed referee` lines show no false disagreements.
+
+**5. Safety**: feed stale or off = no effect (already: `fresh`); cap: at most 4 feed-fired events per tile per 10 minutes; settings in the popup (`feed_event_weight`, `feed_lead_s`, `feed_unconfirmed_factor`); a shadow line first: `feed lead would fire ... swap would be LEFT -> MAIN` (needs a dry-run of the scorer by the main session) for at least one game day before `feed_event_weight` is above 0.
+
+### Order of work
+3a: fix the event key (duplicates), merge score change + event into one "feed goal", log `feed referee` lines, add the swap estimate to the shadow line. 3b: after one game day of 3a: `feed_event_weight` default 0.5 on, then 1.0. 3c (optional): baseline correction.
