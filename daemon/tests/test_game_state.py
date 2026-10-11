@@ -874,3 +874,20 @@ def test_a_plausible_clock_in_a_stats_graphic_beside_no_scoreboard_does_not_coun
 def test_a_real_scoreboard_under_a_stats_overlay_still_counts():
     g = GameTracker("american football")
     assert feed_for(g, 0, 200, BOARD_TEXTS + STATS_TEXTS + ["3RD & 4"], board_clock) == "live"
+
+
+# Liverpool-Man City (17:54, daemon.log): the compact scorebug stays on screen but its clock is read on only 1 frame in 5
+# ('2109', '21-20', '22*45'), so 45 s without a clock gave a false 3 s break (and a swap).
+SOCCER_BUG = ["LIV", "0", "0", "MCI", "CANAL+", "Premier League", "2026/27"]
+
+
+def test_a_scorebug_with_two_team_codes_but_no_readable_clock_is_not_a_break_for_a_while():
+    g = GameTracker("football")
+    feed_for(g, 0, 30, SOCCER_BUG, lambda t: f"{20 + int(t // 60)}:{int(t % 60):02d}")
+    assert feed_for(g, 30, 80, SOCCER_BUG) == "live"   # 80 s without a clock, 2 x no_clock_s (45) is the limit
+
+
+def test_the_same_screen_is_a_break_once_the_scorebug_has_been_clockless_too_long():
+    g = GameTracker("football")
+    feed_for(g, 0, 30, SOCCER_BUG, lambda t: f"{20 + int(t // 60)}:{int(t % 60):02d}")
+    assert feed_for(g, 30, 120, SOCCER_BUG) == "break"
