@@ -15,11 +15,13 @@ def restore_profiles():
     saved = copy.deepcopy(game_state.PROFILES)
     saved_phrases = list(game_state.AD_PHRASES)
     saved_big = list(game_state.BIG_PLAY_WORDS)
+    saved_replay = list(game_state.REPLAY_WORDS)
     yield
     game_state.PROFILES.clear()
     game_state.PROFILES.update(saved)
     game_state.AD_PHRASES[:] = saved_phrases
     game_state.BIG_PLAY_WORDS[:] = saved_big
+    game_state.REPLAY_WORDS[:] = saved_replay
 
 
 def test_the_shipped_settings_file_equals_the_built_in_defaults():
@@ -34,6 +36,9 @@ def test_the_shipped_settings_file_equals_the_built_in_defaults():
                                      "de retour dans", "watch now", "ondazn"]
     assert game_state.BIG_PLAY_WORDS == ["takeaway", "interception", "intercepted", "fumble", "sack", "red card",
                                          "carton rouge", "penalty kick"]
+    assert game_state.REPLAY_WORDS == ["replay", "instant replay", "action replay", "slo-mo", "slow motion", "ralenti", "reprise", "reprise vidéo",
+                                      "reprise video", "repetición", "repeticion", "ralentí", "câmera lenta", "camera lenta", "cámara lenta",
+                                      "camara lenta", "repetição", "repeticao"]
 
 
 def test_missing_file_gives_defaults(tmp_path):

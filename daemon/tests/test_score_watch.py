@@ -554,3 +554,16 @@ def test_other_sports_and_unknown_sports_keep_full_events():
         assert len(events) == 1 and events[0][1] == 1.0, sport
         late = show(w, (2, 3), 40, sport=sport)
         assert len(late) == 1 and late[0][1] == 1.0, sport
+
+
+# ---- replays: the graphics of a replay are not new score changes -------------------------------------------------
+
+def test_readings_during_a_replay_neither_fire_nor_change_the_baseline():
+    w = ScoreWatcher()
+    assert feed_items(w, [BOARD], 5) == []
+    replay_board = boxes([("HOUSTON", 30, 100, 800), ("38", 60, 330, 790), ("17", 60, 430, 790), ("K-STATE", 30, 520, 800), ("2nd", 30, 700, 800)])
+    for _ in range(6):   # the replay graphic shows a score that is not the game's
+        texts = [it["text"] for it in replay_board]
+        assert w.update(texts, [], items=replay_board, replay=True) is False
+    assert w.score == (31, 17)
+    assert feed_items(w, [BOARD], 4) == []   # back to the live board: nothing happened

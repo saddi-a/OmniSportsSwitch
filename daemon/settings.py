@@ -78,13 +78,13 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
                 log.warning("settings: unknown key [sports.%s] %s ignored", name, k)
         game_state.PROFILES[key] = edited
     banners = data.get("banners", {})
-    for key, target in (("break_phrases", game_state.AD_PHRASES), ("big_play_words", game_state.BIG_PLAY_WORDS)):
+    for key, target in _PHRASE_LISTS.items():
         phrases = banners.get(key)
         if isinstance(phrases, list) and all(isinstance(p, str) and p.strip() for p in phrases):
             target[:] = [p.strip().casefold() for p in phrases]
         elif phrases is not None:
             log.warning("settings: [banners] %s must be a list of non-empty strings, ignored", key)
-    for key in set(banners) - {"break_phrases", "big_play_words"}:
+    for key in set(banners) - set(_PHRASE_LISTS):
         log.warning("settings: unknown key [banners] %s ignored", key)
     known_unknown = set(data) - {"scoring", "weights", "multiview", "sports", "banners"}
     for section in known_unknown:
@@ -96,7 +96,8 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------------------------------------------
 LOCAL_NAME = "settings.local.json"
 _DEFAULT_PROFILES = dict(game_state.PROFILES)
-_DEFAULT_PHRASES = {"break_phrases": list(game_state.AD_PHRASES), "big_play_words": list(game_state.BIG_PLAY_WORDS)}
+_PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "big_play_words": game_state.BIG_PLAY_WORDS, "replay_words": game_state.REPLAY_WORDS}
+_DEFAULT_PHRASES = {key: list(target) for key, target in _PHRASE_LISTS.items()}
 
 _SPORT_LABELS = {"football": "Football (soccer)", "american football": "American football",
                  "basketball": "Basketball", "generic": "Other sports"}
@@ -114,6 +115,8 @@ LAYOUT = [
         ("scoring.window_s", "Loudness window (s)", "Loudness is averaged over this many seconds."),
         ("scoring.baseline_s", "Normal loudness window (s)", "Each stream's normal loudness is averaged over about this long."),
         ("scoring.surge_cap", "Loudness surge cap", "Upper limit of the loudness signal (1.0 = loudness doubled)."),
+        ("scoring.classifier_target_rms", "Level the sound (0 = off)", "Above 0, every stream's normal loudness is brought to this level before the crowd / speech / music detector hears it, so a quietly mixed broadcast is judged like a loud one. Try 0.05."),
+        ("scoring.classifier_max_gain", "Levelling limit (x)", "The levelling never raises or lowers the sound by more than this factor."),
         ("scoring.event_s", "Goal boost (s)", "How long a goal or touchdown boosts a stream (it fades)."),
         ("scoring.big_play_strength", "Big play strength", "A big play banner counts this much of a goal (1.0 = the same as a goal)."),
         ("scoring.stale_s", "Silence limit (s)", "A stream with no audio for this long is ignored."),
@@ -127,6 +130,9 @@ LAYOUT = [
         ("scoring.lev_basketball_blowout", "Basketball: blowout (points)", "This many points apart or more counts as a blowout."),
         ("scoring.lev_soccer_close", "Soccer: close (goals)", "At most this many goals apart counts as a close game."),
         ("scoring.lev_soccer_blowout", "Soccer: blowout (goals)", "This many goals apart or more counts as a blowout."),
+        ("scoring.field_goal_strength", "Field goal strength", "American football: a field goal or safety counts this much of a touchdown (1.0 = the same)."),
+        ("scoring.extra_point_s", "Extra point window (s)", "American football: an extra point or two-point conversion this soon after a touchdown is not a new event."),
+        ("scoring.replay_dampen", "Replay dampening", "While a replay is on screen over a live game, crowd noise and loudness count this fraction (0 = ignored, 1 = same as live)."),
         ("scoring.recent_ad_s", "No hopping between ads (s)", "MAIN is not handed to a stream that was showing an ad this recently."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
@@ -162,6 +168,7 @@ LAYOUT = [
     ("Banner phrases", [
         ("banners.break_phrases", "Ad break wording", "Text a player shows during an ad break (any case, inside a text). Add your service's wording."),
         ("banners.big_play_words", "Big play banners", "Banners flashed for a big play (the text must be just that phrase)."),
+        ("banners.replay_words", "Replay banners", "Banners shown during a replay (English, French, Spanish, Portuguese; the text must be just that phrase)."),
     ]),
 ]
 _IDS = {item[0] for _, items in LAYOUT for item in items}
@@ -199,7 +206,7 @@ def get_value(settings: Settings, setting_id: str):
         return getattr(settings.focus, key)
     if section == "sports":
         return getattr(game_state.PROFILES[name], key)
-    return list(game_state.AD_PHRASES if key == "break_phrases" else game_state.BIG_PLAY_WORDS)
+    return list(_PHRASE_LISTS[key])
 
 
 def _set(settings: Settings, setting_id: str, value) -> None:
@@ -210,7 +217,7 @@ def _set(settings: Settings, setting_id: str, value) -> None:
     if section == "banners":
         if not isinstance(value, list) or not all(isinstance(p, str) and p.strip() for p in value):
             raise ValueError("must be a list of non-empty phrases")
-        target = game_state.AD_PHRASES if key == "break_phrases" else game_state.BIG_PLAY_WORDS
+        target = _PHRASE_LISTS[key]
         target[:] = [p.strip().casefold() for p in value]
         return
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):

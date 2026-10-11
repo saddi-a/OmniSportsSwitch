@@ -55,6 +55,15 @@ log = logging.getLogger("daemon")
 boxes_log = logging.getLogger("daemon.boxes")
 
 
+def leveling_gain(baseline: float | None, target: float, max_gain: float) -> float:
+    """Factor that brings a stream's normal loudness to `target` before the sound classifier hears it, so a quietly
+    mixed broadcast is judged like a loud one. It follows the slow baseline, not the last seconds, so a roar still
+    sounds louder than normal. 1.0 when off (target 0) or while nothing is known."""
+    if target <= 0 or baseline is None or baseline <= 0:
+        return 1.0
+    return min(max(target / baseline, 1.0 / max_gain), max_gain)
+
+
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None):
         self.scorer = scorer or Scorer()
@@ -253,7 +262,10 @@ class Server:
             ready = [t for t, b in self.buffers.items() if len(b) >= CLASSIFY_WINDOW]
             if not ready:
                 continue
-            batch = np.stack([self.buffers[t] for t in ready])
+            cfg = self.scorer.config
+            batch = np.stack([self.buffers[t] * leveling_gain(self.scorer.baseline_of(t), cfg.classifier_target_rms,
+                                                              cfg.classifier_max_gain) for t in ready])
+            np.clip(batch, -1.0, 1.0, out=batch)
             probs = await asyncio.to_thread(self.classifier.predict, batch)
             idx = self.classifier.index
             now = time.monotonic()
@@ -333,7 +345,8 @@ class Server:
             rule = match_slots(r["texts"], self.favourites)
             if rule:
                 self.rule_seen[(tab_id, index)] = (rule, now)
-            changed = self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now, r.get("items"))
+            changed = self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now, r.get("items"),
+                                                                                 replay=tracker.replay)
             if changed and per_tab[tab_id][-1] != "live":
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
             elif changed:
@@ -343,6 +356,7 @@ class Server:
         for tab_id, states in per_tab.items():
             self._update_favourite(tab_id, now)
             self.scorer.set_on_ad(tab_id, all(ads.get(tab_id, [False])), now)   # the whole tab is on an ad
+            self.scorer.set_replay(tab_id, any(self.trackers[key].replay for key in results if key[0] == tab_id))
             state = combine(states)
             stream = self.scorer.streams.get(tab_id)
             if stream is not None and stream.auto_state != state:

@@ -50,6 +50,14 @@ AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "public
 BIG_PLAY_WORDS = ["takeaway", "interception", "intercepted", "fumble", "sack", "red card", "carton rouge", "penalty kick"]
 BIG_PLAY_SLACK = 10     # extra characters allowed around the phrase in the same text item
 BIG_PLAY_COOLDOWN_S = 20.0   # the same banner lingering on screen counts once
+# Banners of a replay (English, French, Spanish, Portuguese). Like big-play banners a text item counts only if it is (nearly) just that
+# phrase; hyphens, accents' case and punctuation are ignored ("slo-mo" matches "SLO MO" and "slomo").
+REPLAY_WORDS = ["replay", "instant replay", "action replay", "slo-mo", "slow motion", "ralenti", "reprise", "reprise vidéo", "reprise video",
+                "repetición", "repeticion", "ralentí", "câmera lenta", "camera lenta", "cámara lenta", "camara lenta", "repetição", "repeticao"]
+REPLAY_SLACK = 4        # extra characters allowed around the phrase (a sentence about "the replay" must not count)
+REPLAY_CONFIRMATIONS = 2   # the banner must show on this many consecutive readings
+REPLAY_MEMORY_S = 6.0   # a replay banner counts this long after it was last seen (OCR misses it now and then)
+SCOREBUG_MEMORY_S = 6.0   # a clock / down / quarter on screen proves a live scorebug this long: a replay in a live game
 AD_CONFIRMATIONS = 2   # the phrase must show on this many consecutive readings
 AD_MEMORY_S = 8.0      # a break placeholder counts this long after it was last seen
 
@@ -70,6 +78,16 @@ PROFILES = {
 
 def profile_for(sport: str | None) -> SportProfile:
     return PROFILES.get((sport or "").strip().lower(), PROFILES["generic"])
+
+
+def _banner_hit(text: str, phrases: list[str], slack: int) -> str:
+    """The phrase that `text` is (nearly) just, as whole words ignoring case, hyphens and punctuation; else ''."""
+    words = re.sub(r"[^a-zà-ÿ ]", "", text.casefold()).strip()
+    for phrase in phrases:
+        phrase = re.sub(r"[^a-zà-ÿ ]", "", phrase.casefold())
+        if re.search("(?<![a-zà-ÿ])" + re.escape(phrase) + "(?![a-zà-ÿ])", words) and len(words) <= len(phrase) + slack:
+            return phrase
+    return ""
 
 
 class GameTracker:
@@ -97,6 +115,10 @@ class GameTracker:
         self._ad_hits = 0
         self._ad_seen = float("-inf")
         self.on_ad = False   # True while the player's ad placeholder is showing
+        self.replay = False   # True while a replay is shown over a live game (scorebug still visible); a replay with no scorebug is a break
+        self._replay_hits = 0
+        self._replay_seen = float("-inf")
+        self._scorebug_seen = float("-inf")
         self.big_play = ""   # set on the one reading where a new big-play banner appears (else "")
         self._big_play_at = float("-inf")
 
@@ -146,16 +168,21 @@ class GameTracker:
         on_ad = now - self._ad_seen <= AD_MEMORY_S
         self.on_ad = on_ad
 
+        # A replay: the banner on two readings in a row. With the scorebug still on screen it is a replay inside the live game
+        # (`replay`: its crowd noise and score graphics are old news); without one it is a studio show or a replay package = a break.
+        if any(DOWN_RE.fullmatch(t.strip()) or QUARTER_RE.fullmatch(t.strip()) for t in texts) or (clocks and not on_ad):
+            self._scorebug_seen = now
+        self._replay_hits = self._replay_hits + 1 if not on_ad and any(_banner_hit(t, REPLAY_WORDS, REPLAY_SLACK) for t in texts) else 0
+        if self._replay_hits >= REPLAY_CONFIRMATIONS:
+            self._replay_seen = now
+        replaying = now - self._replay_seen <= REPLAY_MEMORY_S and not on_ad
+        self.replay = replaying and now - self._scorebug_seen <= SCOREBUG_MEMORY_S
+        replay_break = replaying and not self.replay
+
         self.big_play = ""
         if not on_ad and now - self._big_play_at >= BIG_PLAY_COOLDOWN_S:
             for text in texts:
-                words = re.sub(r"[^a-zà-ÿ ]", "", text.casefold()).strip()
-                hit = ""
-                for phrase in BIG_PLAY_WORDS:
-                    whole_word = re.search("(?<![a-zà-ÿ])" + re.escape(phrase) + "(?![a-zà-ÿ])", words)
-                    if whole_word and len(words) <= len(phrase) + BIG_PLAY_SLACK:
-                        hit = phrase
-                        break
+                hit = _banner_hit(text, BIG_PLAY_WORDS, BIG_PLAY_SLACK)
                 if hit:
                     self.big_play, self._big_play_at = hit, now
                     break
@@ -171,6 +198,8 @@ class GameTracker:
         if now - self._over_seen <= KEYWORD_MEMORY_S:
             self.state = "over"
         elif on_ad:
+            self.state = "break"
+        elif replay_break:
             self.state = "break"
         elif now - self._break_seen <= KEYWORD_MEMORY_S:
             self.state = "break"
