@@ -469,3 +469,16 @@ def test_a_merged_item_as_small_as_the_names_is_not_a_score():
 
 def test_two_numbers_in_one_item_without_team_names_are_not_a_score():
     assert _geo(boxes([("28 9", 76, 770, 720), ("3,46", 36, 757, 809)])) is None
+
+
+# ---- replays: the graphics of a replay are not new score changes -------------------------------------------------
+
+def test_readings_during_a_replay_neither_fire_nor_change_the_baseline():
+    w = ScoreWatcher()
+    assert feed_items(w, [BOARD], 5) == []
+    replay_board = boxes([("HOUSTON", 30, 100, 800), ("38", 60, 330, 790), ("17", 60, 430, 790), ("K-STATE", 30, 520, 800), ("2nd", 30, 700, 800)])
+    for _ in range(6):   # the replay graphic shows a score that is not the game's
+        texts = [it["text"] for it in replay_board]
+        assert w.update(texts, [], items=replay_board, replay=True) is False
+    assert w.score == (31, 17)
+    assert feed_items(w, [BOARD], 4) == []   # back to the live board: nothing happened

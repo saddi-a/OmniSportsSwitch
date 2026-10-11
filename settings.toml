@@ -23,6 +23,7 @@ audio_ad_votes = 3     # a music-only ad needs this many music readings...
 audio_ad_window = 5    # ...among the last this many (a single reading is never enough)
 classifier_target_rms = 0.0   # above 0: the sound is levelled to this normal loudness (try 0.05) before the crowd/speech/music classifier hears it; 0 = off
 classifier_max_gain = 8.0     # ...by at most this factor up or down
+replay_dampen = 0.3     # during a replay inside a live game, crowd noise and loudness count this much (the replay's old cheers)
 recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)
 audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)
 big_play_strength = 0.7   # a big play (banner like TAKEAWAY!) counts this much of a goal (1.0 = same as a goal)
@@ -64,6 +65,10 @@ break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "pub
 # Banners flashed for a big play. A text item counts when it is just that phrase (a few extra characters are
 # allowed), so sentences and stat labels like "TURNOVERS" do not trigger it.
 big_play_words = ["takeaway", "interception", "intercepted", "fumble", "sack", "red card", "carton rouge", "penalty kick"]
+
+# Banners of a replay (English, French, Spanish, Portuguese), same rule: the text must be just that phrase. A replay over a live
+# scorebug has its crowd noise dampened and its graphics ignored; a replay with no scorebug (studio show) counts as a break.
+replay_words = ["replay", "instant replay", "action replay", "slo-mo", "slow motion", "ralenti", "reprise", "reprise vidéo", "reprise video", "repetición", "repeticion", "ralentí", "câmera lenta", "camera lenta", "cámara lenta", "camara lenta", "repetição", "repeticao"]
 
 # When does a stopped game clock mean a break?  freeze_s: clock unchanged this long.  no_clock_s: scoreboard
 # without a readable clock this long. Soccer's clock only stops at half-time; American football and basketball

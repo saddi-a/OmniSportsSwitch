@@ -541,3 +541,64 @@ def test_ad_phrases_in_more_languages():
         for i in range(3):
             g.update(i * 3.0, [text], [])
         assert g.on_ad, text
+
+
+# ---- replays: a live one (scorebug still there) and one in a studio show / break (no scorebug) ----------------------
+
+def feed(g, start, texts, clock=None, readings=3, step=2.0):
+    """Feed identical readings; returns the state after the last one."""
+    state = None
+    for i in range(readings):
+        state = g.update(start + i * step, list(texts), [clock] if clock else [])
+    return state
+
+
+def test_replay_banner_over_a_live_scorebug_is_flagged_and_the_game_stays_live():
+    g = GameTracker("American football")
+    feed(g, 0, ["TEXAS", "14", "7", "OKLAHOMA", "2nd & 4"], "8:41", readings=2)
+    assert g.replay is False
+    assert feed(g, 4, ["REPLAY", "TEXAS", "14", "7", "OKLAHOMA", "2nd & 4"], "8:41", readings=2) == "live"
+    assert g.replay is True
+
+
+def test_replay_ends_a_few_seconds_after_the_banner_goes():
+    g = GameTracker("American football")
+    feed(g, 0, ["REPLAY", "TEXAS", "14", "7", "OKLAHOMA", "2nd & 4"], "8:41")
+    assert g.replay is True
+    g.update(30, ["TEXAS", "14", "7", "OKLAHOMA", "2nd & 4"], ["8:30"])
+    assert g.replay is False
+
+
+def test_replay_without_a_scorebug_is_a_break_like_an_ad():
+    g = GameTracker("football")
+    feed(g, 0, ["TEXAS", "1", "0", "OKLAHOMA"], "12:00", readings=2)
+    assert feed(g, 4, ["ACTION REPLAY"], None, readings=6) == "break"   # after the scorebug memory (6 s) ran out
+    assert g.replay is False   # `replay` means a replay inside a live game; this one is plainly not live
+    assert g.update(40, ["TEXAS", "1", "0", "OKLAHOMA"], ["12:20"]) == "live"
+
+
+def test_replay_banners_in_english_french_spanish_portuguese():
+    for word in ["REPLAY", "INSTANT REPLAY", "SLO-MO", "SLOW MOTION", "RALENTI", "RALENTI!", "REPRISE", "REPRISE VIDÉO",
+                 "ACTION REPLAY", "REPETICIÓN", "CÂMERA LENTA", "REPETIÇÃO"]:
+        g = GameTracker("football")
+        feed(g, 0, [word, "PSG", "1", "0", "LYON"], "30:00")
+        assert g.replay is True, word
+
+
+def test_sentences_and_other_words_are_not_replays():
+    for texts in (["Watch the replay on our app tonight"], ["Reprise du jeu dans quelques minutes"], ["REPLAYS"], ["Highlights"]):
+        g = GameTracker("football")
+        feed(g, 0, texts + ["PSG", "1", "0", "LYON"], "30:00")
+        assert g.replay is False, texts
+
+
+def test_a_single_reading_of_the_banner_is_not_enough():
+    g = GameTracker("football")
+    g.update(0, ["REPLAY", "PSG", "1", "0", "LYON"], ["30:00"])
+    assert g.replay is False
+
+
+def test_a_replay_banner_inside_an_ad_placeholder_is_ignored():
+    g = GameTracker("football")
+    feed(g, 0, ["COMMERCIAL BREAK IN PROGRESS", "REPLAY"], "0:30")
+    assert g.replay is False
