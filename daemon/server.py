@@ -562,6 +562,9 @@ class Server:
                     log.info("%s", line)
             for line in self.feed_gate.observe(tab_id, index, mapped.game_id if mapped else None, r["clocks"], tracker.period, tracker.replay, now):
                 log.info("%s", line)
+            if per_tab[tab_id][-1] == "over":   # measuring only: a feed goal the screen never showed, at the end of the game
+                for line in self.feed_gate.game_over(tab_id, index, now):
+                    log.info("%s", line)
             if changed and per_tab[tab_id][-1] != "live":
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
             elif changed:
