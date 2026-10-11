@@ -37,6 +37,10 @@ feed_lead_s = 10.0      # shadow gate: an event 'would fire' when the stream clo
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event
 anticipation_s = 18.0       # a cue boosts a stream this long (fading)
+cue_alone_cap = 0.30        # a cue with no other sign of excitement adds at most this (below min_score)
+cue_support = 0.10          # crowd + surge + shouting + score change worth this much lift that cap
+cue_leverage_gain = 0.5     # a cue is worth x(1 + gain * leverage): up to x1.5 in a late close game, x0.5 in a blowout
+cue_speech_window_s = 20.0  # commentary heard this recently tells what a bare review is about
 anticipation_cooldown_s = 30.0   # the same cue is not reported again this soon
 anticipation_big_gain_yd = 20.0  # a "+NN YDS" graphic is a cue from this many yards
 anticipation_goal_yd = 10.0      # a yard line graphic (beside a down text) is a cue up to this many yards
@@ -68,7 +72,13 @@ crowd = 1.0          # cheering / crowd / applause sound
 speech = -0.2        # commentary (negative: talking is not excitement)
 music = -0.5         # music, ads and jingles (negative)
 event = 0.8          # a fresh goal / touchdown read from the scoreboard
-anticipation = 0.0   # a banner before a likely score (red zone, VAR, corner...), 0 = off; only logged until switched on (try 0.15)
+anticipation = 1.0   # master scale of the cues before a likely score (red zone, VAR, corner...), 0 = off (they are only logged)
+cue_review_top = 0.50    # a review (VAR, challenge) of a possible goal / touchdown, a penalty kick or a red card
+cue_review_high = 0.35   # ...of an interception, fumble or turnover
+cue_review_mid = 0.20    # ...of offside, pass interference or a foul
+cue_review_low = 0.10    # ...with no subject known
+cue_chance = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
+cue_minor = 0.10         # corner, free kick, flag, 4th down, big gain, added time, timeout...
 shout = 0.0          # shouting / yelling / screaming (0 = off; try 0.2 after checking it on live games)
 favourite = 0.4      # steady bonus per +1 of a favourite team's multiplier (x2 team = +0.4)
 

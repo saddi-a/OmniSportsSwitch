@@ -28,7 +28,13 @@ class Weights:
     music: float = -0.5
     event: float = 0.8    # a fresh score change (goal, touchdown) read from the picture
     shout: float = 0.0    # shouting / yelling (not commentary); off until it has been checked on live games
-    anticipation: float = 0.0   # a cue before a likely score (red zone, VAR, corner...); off until its log has been checked. Keep it small: alone it must stay under min_score
+    anticipation: float = 1.0   # master scale of every cue before a likely score (red zone, VAR, corner...); 0 = off (cues are only logged)
+    cue_review_top: float = 0.50    # a review (VAR, challenge) of a possible goal / touchdown, a penalty kick or a red card
+    cue_review_high: float = 0.35   # ...of an interception, fumble or turnover
+    cue_review_mid: float = 0.20    # ...of offside, pass interference or a foul
+    cue_review_low: float = 0.10    # ...with no subject known
+    cue_chance: float = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
+    cue_minor: float = 0.10         # corner, free kick, flag, 4th down, big gain, added time, timeout...
     favourite: float = 0.4  # steady bonus per +1 of a favourite team's multiplier (x2 favourite = +0.4)
 
 
@@ -62,6 +68,10 @@ class Config:
     field_goal_strength: float = 0.6  # American football: a field goal or safety counts this much of a touchdown
     extra_point_s: float = 30.0  # an extra point / two-point conversion this soon after a touchdown is not a new event
     anticipation_s: float = 18.0   # a cue boosts a stream this long (fading)
+    cue_alone_cap: float = 0.30    # a cue with no other sign of excitement (crowd, surge, shouting, a score) adds at most this: below min_score
+    cue_support: float = 0.10      # crowd + surge + shouting + score change worth this much lift that cap
+    cue_leverage_gain: float = 0.5  # a cue is worth x(1 + gain * leverage): up to x1.5 in a late close game, down to x0.5 in a late blowout
+    cue_speech_window_s: float = 20.0   # commentary heard this recently tells what a bare review is about
     anticipation_cooldown_s: float = 30.0   # the same cue is not reported again this soon
     anticipation_big_gain_yd: float = 20.0  # a "+NN YDS" graphic counts as a cue from this many yards
     anticipation_goal_yd: float = 10.0      # a yard line graphic counts as a cue up to this many yards, beside a down text
@@ -108,6 +118,7 @@ class _Stream:
     tags: tuple[float, float, float] = (0.0, 0.0, 0.0)  # crowd, speech, music
     tags_at: float = float("-inf")
     anticipation_at: float = float("-inf")   # when a cue (banner before a likely score) was last seen
+    anticipation_value: float = 0.0   # its weight (before leverage and the master scale)
     shout: float = 0.0   # 0..1 probability of shouting / yelling / screaming
     event_at: float = float("-inf")  # when a score change was last seen
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
@@ -197,9 +208,16 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
 
-    def set_anticipation(self, tab_id: int, now: float) -> None:
-        if tab_id in self.streams:
-            self.streams[tab_id].anticipation_at = now
+    def set_anticipation(self, tab_id: int, now: float, value: float | None = None) -> None:
+        """A cue before a likely score; `value` is its weight (`daemon.cues.cue_weight`), `None` = a minor cue. A weaker cue does not
+        replace a stronger one that is still fading."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return
+        value = self.config.weights.cue_minor if value is None else value
+        fading = stream.anticipation_value * max(0.0, 1.0 - (now - stream.anticipation_at) / self.config.anticipation_s)
+        if value >= fading:
+            stream.anticipation_at, stream.anticipation_value = now, value
 
     def set_replay(self, tab_id: int, replay: bool) -> None:
         if tab_id in self.streams:
@@ -250,7 +268,13 @@ class Scorer:
         event = max(0.0, 1.0 - (now - stream.event_at) / cfg.event_s)
         cue = max(0.0, 1.0 - (now - stream.anticipation_at) / cfg.anticipation_s)
         w = cfg.weights
-        excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.shout * shout + w.anticipation * cue + w.event * event)
+        support = w.surge * surge + w.crowd * crowd + w.shout * shout + w.event * event
+        cue_part = w.anticipation * stream.anticipation_value * cue * min(max(1.0 + cfg.cue_leverage_gain * stream.leverage, 0.5), 1.5)
+        if support < cfg.cue_support:
+            # a cue alone must not take MAIN, even with the leverage bonus beside it: it only strengthens other signs of excitement
+            room = cfg.min_score - 0.01 - max(0.0, cfg.leverage_weight * stream.leverage)
+            cue_part = min(cue_part, cfg.cue_alone_cap, max(room, 0.0))
+        excitement = max(0.0, support + w.speech * speech + w.music * music + cue_part)
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
         raw += cfg.leverage_weight * stream.leverage                 # a late close game is worth more, a late blowout less
         status = stream.override or stream.auto_state
@@ -261,7 +285,7 @@ class Scorer:
         elif audio_ad:
             score = -cfg.ad_penalty / 2         # music-dominated sound without a crowd: probably an ad too
         return {"score": score, "ad": stream.on_ad or audio_ad, "surge": surge, "crowd": crowd,
-                "speech": speech, "music": music, "shout": shout, "anticipation": cue, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
+                "speech": speech, "music": music, "shout": shout, "anticipation": cue, "cue": cue_part, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
 
     def score(self, tab_id: int, now: float) -> float | None:
         c = self.components(tab_id, now)

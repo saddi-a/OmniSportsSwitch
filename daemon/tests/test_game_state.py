@@ -891,3 +891,40 @@ def test_the_same_screen_is_a_break_once_the_scorebug_has_been_clockless_too_lon
     g = GameTracker("football")
     feed_for(g, 0, 30, SOCCER_BUG, lambda t: f"{20 + int(t // 60)}:{int(t % 60):02d}")
     assert feed_for(g, 30, 120, SOCCER_BUG) == "break"
+
+
+# ---- review banners that name their subject: the cue is the review, the banner text goes with it --------------------------------------
+
+def test_a_review_banner_with_its_subject_is_a_review_cue_and_keeps_its_text():
+    for text, cue in (("VAR: POSSIBLE GOAL", "var"), ("REVIEW: TOUCHDOWN", "review"), ("PENALTY CHECK", "review"), ("GOAL CHECK", "review"),
+                      ("OFFSIDE CHECK", "review"), ("VAR - PENALTY", "var"), ("REVIEW: INTERCEPTION", "review"), ("VAR : BUT POSSIBLE", "var")):
+        g = GameTracker("football")
+        g.update(0, [text, "COM", "0", "ROM"], ["30:00"])
+        g.update(2, [text, "COM", "0", "ROM"], ["30:00"])
+        assert g.anticipation == [cue], text
+        assert g.anticipation_text == {cue: text}
+
+
+def test_a_bare_review_banner_has_no_subject_text_to_add():
+    g = GameTracker("American football")
+    g.update(0, ["UNDER REVIEW", "PHI", "14", "JAX"], ["6:00"])
+    g.update(2, ["UNDER REVIEW", "PHI", "14", "JAX"], ["6:00"])
+    assert g.anticipation == ["under review"] and g.anticipation_text == {"under review": "UNDER REVIEW"}
+
+
+def test_sentences_with_a_review_word_are_not_cues():
+    g = GameTracker("football")
+    assert cues_over(g, 0, ["THE VAR DECISION WAS A GOAL FOR THE HOME TEAM LAST WEEK", "COM", "0", "ROM"], "30:00") == []
+    assert cues_over(g, 10, ["CHECK OUT OUR APP", "COM", "0", "ROM"], "30:06") == []
+
+
+def test_a_review_of_a_big_play_is_a_review_cue_not_a_big_play():
+    # "REVIEW: INTERCEPTION" / "VAR: RED CARD" contain a big-play phrase but only say that it is being checked
+    for text in ("REVIEW: INTERCEPTION", "VAR: RED CARD", "FUMBLE REVIEW"):
+        g = GameTracker("football")
+        plays = []
+        for i in range(2):
+            g.update(i * 2.0, [text, "COM", "0", "ROM"], ["30:00"])
+            plays.append(g.big_play)
+        assert plays == ["", ""], text
+        assert g.anticipation and g.anticipation_text, text

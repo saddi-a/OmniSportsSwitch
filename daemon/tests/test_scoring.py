@@ -1031,32 +1031,101 @@ def test_set_tags_without_shout_still_works():
     assert s.components(2, t)["shout"] == 0.0
 
 
-# ---- anticipation (a banner before a likely score): wired, weight 0 until switched on --------------------------------
+# ---- anticipation (a banner before a likely score): weight by cue, fading, alone under min_score ---------------------------
 
-def test_anticipation_is_off_by_default_and_fades_when_on():
-    assert Config().weights.anticipation == 0.0
-    s = make(weights=Weights(anticipation=0.2))
+def test_a_cue_fades_over_anticipation_s():
+    s = make()
     t = warm_up(s)
     base = s.components(2, t)["score"]
-    s.set_anticipation(2, t)
+    s.set_anticipation(2, t, 0.2)
     assert s.components(2, t)["anticipation"] == pytest.approx(1.0)
     assert s.components(2, t)["score"] == pytest.approx(base + 0.2)
     later = steady(s, 2, 0.05, t, s.config.anticipation_s / 2)
     assert s.components(2, later)["anticipation"] == pytest.approx(0.5)
+    assert s.components(2, later)["cue"] == pytest.approx(0.1, abs=0.01)
     end = steady(s, 2, 0.05, later, s.config.anticipation_s / 2 + 1)
-    assert s.components(2, end)["anticipation"] == 0.0
+    assert s.components(2, end)["anticipation"] == 0.0 and s.components(2, end)["cue"] == 0.0
 
 
-def test_anticipation_at_weight_zero_changes_nothing():
+def test_the_master_scale_zero_switches_every_cue_off():
+    s = make(weights=Weights(anticipation=0.0))
+    t = warm_up(s)
+    base = s.components(2, t)["score"]
+    s.set_anticipation(2, t, 0.5)
+    assert s.components(2, t)["score"] == pytest.approx(base)
+
+
+def test_the_master_scale_scales_every_cue():
+    s = make(weights=Weights(anticipation=0.5))
+    t = warm_up(s)
+    base = s.components(2, t)["score"]
+    s.set_anticipation(2, t, 0.2)
+    assert s.components(2, t)["score"] == pytest.approx(base + 0.1)
+
+
+def test_a_cue_without_a_value_is_a_minor_cue():
     s = make()
     t = warm_up(s)
     base = s.components(2, t)["score"]
     s.set_anticipation(2, t)
-    assert s.components(2, t)["score"] == pytest.approx(base)
+    assert s.components(2, t)["score"] == pytest.approx(base + s.config.weights.cue_minor)
 
 
-def test_anticipation_alone_never_reaches_the_minimum_score_by_default_range():
-    s = make(weights=Weights(anticipation=0.2))
+def test_the_strongest_cue_wins_while_it_fades_and_a_weaker_one_does_not_replace_it():
+    s = make()
+    t = roar(s, 2, warm_up(s))                            # other excitement: the cap does not hide the values
+    s.set_anticipation(2, t, 0.5)
+    s.set_anticipation(2, t + 2, 0.1)                     # a corner right after a possible-goal review
+    s.add_audio(2, 0.15, t + 2)
+    s.set_tags(2, 0.8, 0.1, 0.0, t + 2)
+    assert s.components(2, t + 2)["cue"] == pytest.approx(0.5 * (1 - 2 / s.config.anticipation_s))
+    s.set_anticipation(2, t + 2, 0.5)                     # the same strength again: refreshed
+    assert s.components(2, t + 2)["cue"] == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("value", [0.1, 0.25, 0.35, 0.5, 0.9, 5.0])
+def test_a_cue_alone_never_reaches_the_minimum_score(value):
+    s = make()
     t = warm_up(s)
-    s.set_anticipation(2, t)
-    assert s.components(2, t)["score"] < s.config.min_score
+    s.set_anticipation(2, t, value)
+    c = s.components(2, t)
+    assert c["score"] < s.config.min_score, c
+    assert c["cue"] <= s.config.cue_alone_cap + 1e-9
+
+
+def test_even_in_a_late_close_game_a_cue_alone_stays_under_the_minimum_score():
+    s = make()
+    t = warm_up(s)
+    s.set_leverage(2, 1.0)
+    s.set_anticipation(2, t, 0.5)
+    c = s.components(2, t)
+    assert c["lev"] == 1.0 and c["cue"] < s.config.cue_alone_cap   # the leverage bonus (0.3) is already counted: less room for the cue
+    assert c["score"] < s.config.min_score                         # cue + leverage together stay under min_score
+
+
+def test_with_other_excitement_the_cap_is_lifted_and_the_full_weight_counts():
+    s = make()
+    t = roar(s, 2, warm_up(s))                                     # a crowd roaring: support above cue_support
+    s.set_anticipation(2, t, 0.5)
+    c = s.components(2, t)
+    assert c["crowd"] > 0.2
+    assert c["cue"] == pytest.approx(0.5)
+
+
+def test_leverage_scales_a_cue_when_it_is_not_capped():
+    results = {}
+    for lev in (-1.0, 0.0, 1.0):
+        s = make()
+        t = roar(s, 2, warm_up(s))
+        s.set_leverage(2, lev)
+        s.set_anticipation(2, t, 0.2)
+        results[lev] = s.components(2, t)["cue"]
+    assert results[0.0] == pytest.approx(0.2)
+    assert results[1.0] == pytest.approx(0.3)                      # x1.5
+    assert results[-1.0] == pytest.approx(0.1)                     # x0.5
+
+
+def test_default_cue_weights_follow_the_tiers():
+    w = Config().weights
+    assert w.cue_review_top > w.cue_review_high > w.cue_review_mid > w.cue_review_low >= w.cue_minor
+    assert Config().cue_alone_cap < Config().min_score
