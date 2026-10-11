@@ -52,6 +52,7 @@ DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
+GAP_RETRY_S = 1.5          # the gap pass (strip between two team codes) looks again this often on a tile where it found no score
 ZOOM_RETRY_S = 6.0         # the zoom pass looks again this often on a tile where it found no score
 DIGIT_RETRY_S = 6.0       # the digit fallback looks again this often on a tile where it found nothing
 FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use are corrected
@@ -101,6 +102,8 @@ class Server:
         self.limits: dict[int, set[str] | None] = {}   # tab id -> slots it may really use: tab choice + team rules
         self.digit_try_at: dict[tuple[int, int], float] = {}  # (tab, video) -> when the digit fallback last looked
         self.zoom_try_at: dict[tuple[int, int], float] = {}   # (tab, video) -> when the zoom pass last looked
+        self.gap_try_at: dict[tuple[int, int], float] = {}    # (tab, video) -> when the gap pass last looked
+        self.gap_found: set[tuple[int, int]] = set()            # tiles where the gap pass currently finds the score
         self.zoom_found: set[tuple[int, int]] = set()           # tiles where the zoom pass currently finds the score
         self.digit_found: set[tuple[int, int]] = set()          # tiles where the digit fallback currently finds the score
         self.rule_seen: dict[tuple[int, int], tuple[set[str], float]] = {}  # (tab, video) -> (slots of a team rule, when seen)
@@ -111,6 +114,7 @@ class Server:
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
         self.cue_speech = SpeechMemory(self.scorer.config.cue_speech_window_s)   # review subjects the commentary named lately, per tab
         self.tab_titles: dict[int, str] = {}   # tab id -> page title sent by the extension (league words are weak evidence of the sport)
+        self.unconfirmed: dict[tuple[int, int], tuple[float, float]] = {}   # (tab, tile) -> (full strength, when): OCR score changes the feed has not confirmed
         self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
@@ -156,9 +160,12 @@ class Server:
             self.sports.pop(msg["tab_id"], None)
             self.team_text.pop(msg["tab_id"], None)
             self.feed_map.forget(msg["tab_id"])
+            for key in [k for k in self.unconfirmed if k[0] == msg["tab_id"]]:
+                del self.unconfirmed[key]
             self.feed_gate.forget(msg["tab_id"])
             self.digit_found = {k for k in self.digit_found if k[0] != msg["tab_id"]}
             self.zoom_found = {k for k in self.zoom_found if k[0] != msg["tab_id"]}
+            self.gap_found = {k for k in self.gap_found if k[0] != msg["tab_id"]}
             for seen in (self.fav_seen, self.rule_seen, self.digit_try_at):
                 for key in [k for k in seen if k[0] == msg["tab_id"]]:
                     del seen[key]
@@ -326,6 +333,16 @@ class Server:
                 log.warning("%s", message)
             self.feed.messages.clear()
             self.feed_gate.fresh = self.feed.fresh_game_ids(time.monotonic())
+            now = time.monotonic()
+            for tab_id, tile in self.feed_gate.confirmations(now):   # the feed confirmed an OCR score change later: full strength
+                full = self.unconfirmed.pop((tab_id, tile), None)
+                if full is not None:
+                    self.scorer.set_event(tab_id, now, full[0])
+            for key in [k for k, (_, at) in self.unconfirmed.items() if now - at > self.scorer.config.feed_confirm_s]:
+                del self.unconfirmed[key]
+            for line in self.feed_gate.messages:
+                log.info("%s", line)
+            self.feed_gate.messages.clear()
             try:
                 self.feed_map.set_games(self.feed.games())
                 for game_id, situations in self.feed.situations().items():
@@ -405,6 +422,22 @@ class Server:
                             items, texts = merged, [it["text"] for it in merged]
                         else:
                             self.zoom_found.discard(key)
+            if hasattr(self.screen_reader, "gap_pass") and find_score_geo(items, find_clocks(texts)) is None:
+                # Team codes at both ends and the scores between them, with a digit missed (thin white digit on a pale panel, a
+                # logo between the scores): read only the strip between the codes again, at twice the size, digits only.
+                key, now_s = (tab_id, index), time.monotonic()
+                if now_s - self.gap_try_at.get(key, float("-inf")) >= GAP_RETRY_S:
+                    gap = self.screen_reader.gap_pass(image, items)
+                    self.gap_try_at[key] = now_s
+                    if gap is not None:
+                        merged = merge_zoom(items, *gap)
+                        if find_score_geo(merged, find_clocks([it["text"] for it in merged])) is not None:
+                            if key not in self.gap_found:
+                                log.info("gap pass tab %s tile %s: score found", tab_id, index)
+                            self.gap_found.add(key)
+                            items, texts = merged, [it["text"] for it in merged]
+                        else:
+                            self.gap_found.discard(key)
             if hasattr(self.screen_reader, "read_digits_beside_names") and find_score_geo(items, find_clocks(texts)) is None:
                 # The big score digits of some scoreboards are not read at all. Look right beside the team names, but
                 # not on every pass when nothing is there (it costs GPU time).
@@ -501,9 +534,14 @@ class Server:
             if changed and per_tab[tab_id][-1] != "live":
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
             elif changed:
-                for line in self.feed_gate.real_change(tab_id, index, now).lines:
+                change = self.feed_gate.real_change(tab_id, index, now)
+                for line in change.lines:
                     log.info("%s", line)
                 strength = watcher.strength
+                factor = self.scorer.config.feed_unconfirmed_factor
+                if change.verdict == "ocr-only" and factor < 1.0:   # mapped game, no feed event first: counts less until the feed confirms
+                    self.unconfirmed[(tab_id, index)] = (strength, now)
+                    strength *= factor
                 self.event_at[(tab_id, index)] = now - (1.0 - strength) * self.scorer.config.event_s
                 self.scorer.set_event(tab_id, now, strength)
                 log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
