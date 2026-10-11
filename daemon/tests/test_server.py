@@ -476,3 +476,10 @@ def test_audio_is_buffered_for_the_listener_only_when_there_is_one():
 
 
 SAMPLE_RATE_FOR_TEST = 32000
+
+
+def test_a_french_post_is_found_with_any_article():
+    from daemon.speech import find_speech_cues
+
+    assert find_speech_cues("le ballon a rebondi sur son poteau") == ["post"]
+    assert find_speech_cues("il touche la transversale") == ["post"]

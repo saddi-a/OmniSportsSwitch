@@ -34,7 +34,7 @@ CUES = {
     "var": [r"\bvar\b", r"video assistant"],
     "card": [r"red card", r"carton rouge", r"yellow card", r"carton jaune", r"sent off", r"expuls"],
     "goal": [r"\bgo+a{2,}l+\b", r"\bgo{2,}a+l+\b", r"\bgoal ?!", r"\bbut ?!", r"\bbu{2,}t\b"],   # plain "goal" is too common (first and goal)
-    "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b", r"le poteau", r"la barre", r"la transversale"],
+    "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b", r"poteau", r"la barre", r"transversale"],
     "free throw": [r"free throws?", r"lancers? francs?"],
     "timeout": [r"time ?out", r"temps mort"],
 }
