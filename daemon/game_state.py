@@ -25,6 +25,8 @@ OVERTIME_MEMORY_S = 30.0
 DOWN_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*(&\s*(\d{1,2}|goal|inches)|down)", re.IGNORECASE)   # also "2nd Down"
 # The quarter on its own ("4th", read "Ath"; "1st", read "Ist") sits on the same scorebug: also proof that it is on screen.
 QUARTER_RE = re.compile(r"(1st|ist|isr|lst|2nd|znd|3rd|3r0|jrd|4th|ath|q[1-4])", re.IGNORECASE)
+# A score ("44"), a score pair ("2-0") or a down/quarter beside a clock means a scoreboard; ad copy beside a countdown has none.
+SCOREBOARD_ITEM_RE = re.compile(r"\d{1,3}|\d{1,3}\s?[-/]\s?\d{1,3}")
 DOWN_MEMORY_S = 20.0
 IN_PLAY_MEMORY_S = 15.0   # a "Final" caption is ignored this long after the scorebug of a game in play was seen
 PERIOD_OF = {"1st": 1, "ist": 1, "isr": 1, "lst": 1, "2nd": 2, "znd": 2, "3rd": 3, "3r0": 3, "jrd": 3, "4th": 4, "ath": 4, "q1": 1, "q2": 2, "q3": 3, "q4": 4}
@@ -125,7 +127,8 @@ class GameTracker:
         lowered = [t.casefold() for t in texts]
         # A countdown clock that is the ONLY text on screen (no teams, no score) is the player's ad countdown ("2:27"), not a
         # game clock: seen on two readings in a row it counts like an ad placeholder phrase.
-        lone_clock = bool(clocks) and bool(texts) and all(not t.strip() or t.strip() in clocks for t in texts)
+        lone_clock = bool(clocks) and bool(texts) and not any(SCOREBOARD_ITEM_RE.fullmatch(t.strip()) or DOWN_RE.fullmatch(t.strip())
+                                                              or QUARTER_RE.fullmatch(t.strip()) for t in texts if t.strip() not in clocks)
         self._ad_hits = self._ad_hits + 1 if lone_clock or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now

@@ -88,13 +88,13 @@ def test_combine_tab_state_from_tiles():
 
 def test_caption_inside_a_sentence_is_ignored():
     g = GameTracker("football")
-    assert run(g, 0, 30, ticking, texts=["Pret pour la mi-temps ?", "Final countdown", "PSG"]) == "live"
+    assert run(g, 0, 30, ticking, texts=["Pret pour la mi-temps ?", "Final countdown", "PSG", "1", "LMFC", "0"]) == "live"
 
 
 def test_caption_must_appear_on_consecutive_readings():
     g = GameTracker("football")
     g.update(0, ["FINAL"], ["00:01"])
-    assert g.update(3, ["PSG"], ["00:04"]) == "live"  # appeared once only (e.g. a popup flashing past)
+    assert g.update(3, ["PSG", "1", "LMFC", "0"], ["00:04"]) == "live"  # appeared once only (e.g. a popup flashing past)
     g.update(6, ["FINAL"], ["00:07"])
     assert g.update(9, ["FINAL"], ["00:10"]) == "over"
 
@@ -129,8 +129,8 @@ def test_commercial_placeholder_with_its_countdown_is_a_break():
 def test_a_single_ad_phrase_in_other_text_does_not_make_a_break():
     g = GameTracker("football")
     g.update(0, ["Right back after this?"], ["00:01"])           # seen once, e.g. a slogan or a flash of text
-    assert g.update(3, ["PSG", "LMFC"], ["00:04"]) == "live"
-    assert g.update(6, ["PSG", "LMFC"], ["00:07"]) == "live"
+    assert g.update(3, ["PSG", "1", "LMFC", "0"], ["00:04"]) == "live"
+    assert g.update(6, ["PSG", "1", "LMFC", "0"], ["00:07"]) == "live"
 
 
 def test_game_returns_to_live_a_few_seconds_after_the_placeholder_goes():
@@ -453,3 +453,38 @@ def test_the_game_comes_back_when_the_scorebug_returns():
     for i in range(5):
         state = g.update(120 + i * 3.0, ["LSU", "44", "KENTUCKY", "14", "3rd & 2"], [])
     assert state == "live"
+
+
+# ---- an ad countdown with the ad's own text beside it (live log 02:29, LSU-Kentucky tab) ----------------------------
+
+AD_COPY = [["hulu", "THE TESTAMENTS", "TOUS LES ÉPISODES DISPONIBLES EN EXCLUSIVITÉ"], ["Vivez les plus grandes histoires", "02026 Disney et ses sociétés affiliées ."],
+           ["Eminence", "TLE", "Shadow", "Nouvelle série"], ["L'ÉPOPÉE D'UN COLLEC", "IF\"", "LIBÉRATION"], []]
+
+
+def test_an_ad_countdown_with_the_ads_own_text_stays_a_break():
+    g = GameTracker("american football")
+    run(g, 0, 60, ticking, texts=["LSU", "44", "KENTUCKY", "14", "2nd & 5"])
+    states = []
+    for i in range(24):                      # the countdown 1:48, 1:45, ... with ad copy on some readings, alone on others
+        clock = f"1:{48 - i * 2:02d}" if i < 24 else "0:00"
+        copy = AD_COPY[i % len(AD_COPY)]
+        states.append(g.update(100 + i * 3.0, [*copy, clock], [clock]))
+    assert states[3:] == ["break"] * 21
+
+
+def test_a_game_clock_with_scores_is_not_taken_for_an_ad_countdown():
+    g = GameTracker("american football")
+    state = None
+    for i in range(10):
+        clock = f"{12 - i // 3}:{(59 - i * 3) % 60:02d}"
+        state = g.update(i * 3.0, ["LSU", "44", "KENTUCKY", "14", clock], [clock])
+    assert state == "live" and not g.on_ad
+
+
+def test_a_game_clock_with_a_quarter_but_no_scores_read_is_not_an_ad():
+    g = GameTracker("american football")
+    state = None
+    for i in range(10):
+        clock = f"{9 - i // 3}:{(59 - i * 3) % 60:02d}"
+        state = g.update(i * 3.0, ["LSU", "Ath", "KENTUCKY", clock], [clock])
+    assert state == "live" and not g.on_ad
