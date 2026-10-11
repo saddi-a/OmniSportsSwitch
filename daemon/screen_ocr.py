@@ -9,8 +9,13 @@ import re
 import mss
 import numpy as np
 
+from daemon.game_state import DOWN_RE
+
 MODEL_DIR = pathlib.Path(__file__).resolve().parent.parent / "models" / "easyocr"
 CLOCK_RE = re.compile(r"\b\d{1,3}\s?[:.,]\s?\d{2}\b")
+COLON_AS_DIGIT_RE = re.compile(r"(\d{2})[38](\d{2})")   # a clock whose colon was read as a 3 or an 8: 12853 = 12:53
+ZOOM_SPAN = 14   # the zoom pass looks this many text heights left and right of the clock / down-and-distance text...
+ZOOM_BAND = 3    # ...and this many above and below it (a scorebug is a strip around the clock)
 MIN_CONFIDENCE = 0.4
 TEAM_NAME_RE = re.compile(r"[A-Z][A-Z .'&-]{3,}")   # an uppercase word such as MARYLAND or K-STATE
 RANKED_NAME_RE = re.compile(r"\d{1,2}\s+[A-Za-z][A-Za-z .'&-]{2,}")   # a ranking and a name, any case: "2 Georgia", "6 ALABAMA"
@@ -60,6 +65,29 @@ class ScreenReader:
                           "x0": int(min(xs)), "y0": int(min(ys)), "x1": int(max(xs)), "y1": int(max(ys))})
         return items
 
+    def zoom_pass(self, image: np.ndarray, items: list[dict]) -> tuple[tuple[int, int, int, int], list[dict]] | None:
+        """A second reading of the scorebug at twice the size. Small digits (a score beside three-letter team codes,
+        the left digit of 7-7) are missed at normal size but read fine enlarged. The crop is a strip around the clock or
+        the down-and-distance text. Returns the crop (x0, y0, x1, y1) and the items found in it, in the coordinates of
+        `image`; None when there is no clock or down text to anchor on."""
+        from PIL import Image
+
+        anchors = [it for it in items if find_clocks([it["text"]]) or DOWN_RE.fullmatch(it["text"].strip())]
+        if not anchors:
+            return None
+        anchor = min(anchors, key=lambda it: it["y0"])
+        h = max(1, anchor["y1"] - anchor["y0"])
+        height, width = image.shape[:2]
+        x0, x1 = max(0, anchor["x0"] - ZOOM_SPAN * h), min(width, anchor["x1"] + ZOOM_SPAN * h)
+        y0, y1 = max(0, anchor["y0"] - ZOOM_BAND * h), min(height, anchor["y1"] + ZOOM_BAND * h)
+        crop = image[y0:y1, x0:x1]
+        if crop.size == 0:
+            return None
+        big = np.asarray(Image.fromarray(crop).resize((crop.shape[1] * 2, crop.shape[0] * 2), Image.LANCZOS))
+        found = [dict(it, x0=x0 + it["x0"] // 2, x1=x0 + it["x1"] // 2, y0=y0 + it["y0"] // 2, y1=y0 + it["y1"] // 2)
+                 for it in self.read_items(big)]
+        return (x0, y0, x1, y1), found
+
     def read_digits_beside_names(self, image: np.ndarray, items: list[dict]) -> list[dict]:
         """A fallback for scoreboards whose big score digits the normal reading misses (white italic digits with a
         shadow on a coloured plate). The team names are read fine, so look right beside a name: the digits are
@@ -104,6 +132,13 @@ class ScreenReader:
         return [(item["text"], item["conf"]) for item in self.read_items(image)]
 
 
+def merge_zoom(items: list[dict], crop: tuple[int, int, int, int], zoomed: list[dict]) -> list[dict]:
+    """The zoomed reading replaces the normal one inside the crop (its centre lies in the crop); the rest stays."""
+    x0, y0, x1, y1 = crop
+    outside = [it for it in items if not (x0 <= (it["x0"] + it["x1"]) / 2 <= x1 and y0 <= (it["y0"] + it["y1"]) / 2 <= y1)]
+    return sorted(outside + zoomed, key=lambda it: (round((it["y0"] + it["y1"]) / 2 / 10), it["x0"]))
+
+
 def _trim_padding(x0: int, y0: int, x1: int, y1: int) -> tuple[int, int, int, int]:
     """The text detector pads its boxes by a fixed fraction (about 20% of the width on each side, measured on a real
     scoreboard), so two neighbouring numbers overlap. Take the padding off again."""
@@ -139,5 +174,9 @@ def find_clocks(texts: list[str]) -> list[str]:
     """Game-clock-looking strings such as '32:19' or '3:08' in the OCR output."""
     clocks = []
     for text in texts:
-        clocks += [re.sub(r"[.,]", ":", m.replace(" ", "")) for m in CLOCK_RE.findall(text)]
+        found = [re.sub(r"[.,]", ":", m.replace(" ", "")) for m in CLOCK_RE.findall(text)]
+        glued = COLON_AS_DIGIT_RE.fullmatch(text.strip())
+        if not found and glued and int(glued[2]) < 60:
+            found = [f"{glued[1]}:{glued[2]}"]
+        clocks += found
     return clocks

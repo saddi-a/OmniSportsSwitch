@@ -33,7 +33,7 @@ from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
-from daemon.screen_ocr import find_clocks, grab
+from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.scoring import SHOUT_CLASSES, Scorer
 
 HOST, PORT = "127.0.0.1", 8765
@@ -41,6 +41,7 @@ DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
+ZOOM_RETRY_S = 6.0         # the zoom pass looks again this often on a tile where it found no score
 DIGIT_RETRY_S = 6.0       # the digit fallback looks again this often on a tile where it found nothing
 FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use are corrected
 EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
@@ -80,6 +81,8 @@ class Server:
         self.allowed: dict[int, set[str] | None] = {}  # tab id -> slots it may use (None = any), as ticked on the tab
         self.limits: dict[int, set[str] | None] = {}   # tab id -> slots it may really use: tab choice + team rules
         self.digit_try_at: dict[tuple[int, int], float] = {}  # (tab, video) -> when the digit fallback last looked
+        self.zoom_try_at: dict[tuple[int, int], float] = {}   # (tab, video) -> when the zoom pass last looked
+        self.zoom_found: set[tuple[int, int]] = set()           # tiles where the zoom pass currently finds the score
         self.digit_found: set[tuple[int, int]] = set()          # tiles where the digit fallback currently finds the score
         self.rule_seen: dict[tuple[int, int], tuple[set[str], float]] = {}  # (tab, video) -> (slots of a team rule, when seen)
         self.trackers: dict[tuple[int, int], GameTracker] = {}  # (tab id, video index) -> game state
@@ -127,6 +130,7 @@ class Server:
             self.sports.pop(msg["tab_id"], None)
             self.team_text.pop(msg["tab_id"], None)
             self.digit_found = {k for k in self.digit_found if k[0] != msg["tab_id"]}
+            self.zoom_found = {k for k in self.zoom_found if k[0] != msg["tab_id"]}
             for seen in (self.fav_seen, self.rule_seen, self.digit_try_at):
                 for key in [k for k in seen if k[0] == msg["tab_id"]]:
                     del seen[key]
@@ -288,6 +292,22 @@ class Server:
                 image = np.asarray(Image.fromarray(image).resize(size, Image.LANCZOS))
             items = self.screen_reader.read_items(image)
             texts = [item["text"] for item in items]
+            if hasattr(self.screen_reader, "zoom_pass") and find_score_geo(items, find_clocks(texts)) is None:
+                # Small digits next to three-letter team codes are missed at normal size: read the strip around the clock
+                # again at twice the size (not on every pass when nothing is there; it costs GPU time).
+                key, now_s = (tab_id, index), time.monotonic()
+                if now_s - self.zoom_try_at.get(key, float("-inf")) >= ZOOM_RETRY_S or key in self.zoom_found:
+                    zoom = self.screen_reader.zoom_pass(image, items)
+                    self.zoom_try_at[key] = now_s
+                    if zoom is not None:
+                        merged = merge_zoom(items, *zoom)
+                        if find_score_geo(merged, find_clocks([it["text"] for it in merged])) is not None:
+                            if key not in self.zoom_found:
+                                log.info("zoom pass tab %s tile %s: score found", tab_id, index)
+                            self.zoom_found.add(key)
+                            items, texts = merged, [it["text"] for it in merged]
+                        else:
+                            self.zoom_found.discard(key)
             if hasattr(self.screen_reader, "read_digits_beside_names") and find_score_geo(items, find_clocks(texts)) is None:
                 # The big score digits of some scoreboards are not read at all. Look right beside the team names, but
                 # not on every pass when nothing is there (it costs GPU time).

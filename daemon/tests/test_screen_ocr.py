@@ -60,3 +60,55 @@ def test_banner_words_are_not_team_names():
     for text in ("RULING ON FIELD", "Targeting", "REPLAY REVIEW", "INSTANT REPLAY", "COMMERCIAL BREAK", "FINAL"):
         assert not looks_like_team_name(text), text
     assert looks_like_team_name("OHIO STATE") and looks_like_team_name("2 Georgia") and looks_like_team_name("K-STATE")
+
+
+def test_a_clock_whose_colon_was_read_as_a_digit_is_recovered():
+    assert find_clocks(["12853"]) == ["12:53"]
+    assert find_clocks(["09331"]) == ["09:31"]
+    assert find_clocks(["14848"]) == ["14:48"]
+    assert find_clocks(["12:53"]) == ["12:53"]      # a normal clock is untouched
+    assert find_clocks(["12963"]) == []             # the middle digit must be a 3 or an 8
+    assert find_clocks(["12877"]) == []             # seconds of 60 or more are not a clock
+    assert find_clocks(["128530"]) == []            # exactly five digits
+
+
+def _item(text, x0, y0, x1, y1):
+    return {"text": text, "conf": 0.9, "x0": x0, "y0": y0, "x1": x1, "y1": y1}
+
+
+def test_the_zoom_pass_reads_a_strip_around_the_clock_and_maps_boxes_back():
+    import numpy as np
+    from daemon.screen_ocr import ScreenReader, merge_zoom
+
+    reader = ScreenReader.__new__(ScreenReader)
+    seen = {}
+
+    def fake_read_items(image):
+        seen["shape"] = image.shape
+        return [_item("7", 40, 20, 60, 50)]       # in the enlarged crop
+
+    reader.read_items = fake_read_items
+    image = np.zeros((400, 800, 3), dtype=np.uint8)
+    items = [_item("12:53", 400, 100, 460, 120), _item("TEX", 300, 100, 340, 120)]
+    crop, zoomed = reader.zoom_pass(image, items)
+    x0, y0, x1, y1 = crop
+    assert (x1 - x0) * 2 == seen["shape"][1] and (y1 - y0) * 2 == seen["shape"][0]   # twice the size
+    assert zoomed == [_item("7", x0 + 20, y0 + 10, x0 + 30, y0 + 25)]
+    merged = merge_zoom(items, crop, zoomed)
+    assert [it["text"] for it in merged] == ["7"]   # the clock and the code lie inside the crop: the zoomed reading replaces them
+
+
+def test_the_zoom_pass_needs_a_clock_or_a_down_to_anchor_on():
+    import numpy as np
+    from daemon.screen_ocr import ScreenReader
+
+    reader = ScreenReader.__new__(ScreenReader)
+    assert reader.zoom_pass(np.zeros((100, 100, 3), dtype=np.uint8), [_item("TEX", 1, 1, 30, 20)]) is None
+
+
+def test_merge_zoom_keeps_what_is_outside_the_crop():
+    from daemon.screen_ocr import merge_zoom
+
+    items = [_item("HEADLINE", 0, 0, 100, 20), _item("TEX", 300, 100, 340, 120), _item("OKL", 360, 100, 400, 120)]
+    merged = merge_zoom(items, (280, 90, 420, 130), [_item("TEX", 300, 100, 340, 120), _item("7", 345, 100, 358, 120)])
+    assert sorted(it["text"] for it in merged) == ["7", "HEADLINE", "TEX"]
