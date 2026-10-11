@@ -159,6 +159,7 @@ LAYOUT = [
         ("scoring.feed_poll_s", "Live league every (s)", "A league with a live game is asked this often (5 s at the least: the feed refreshes its cache every 5 s)."),
         ("scoring.feed_idle_poll_s", "Quiet league every (s)", "A league with no live game and none starting soon is asked this often."),
         ("scoring.feed_summary_s", "Football plays every (s, 0 = off)", "American football: the plays of each live game are fetched this often."),
+        ("scoring.feed_lead_s", "Shadow lead (s)", "Measuring only: a feed event is logged as \"would fire\" when the stream's clock is this many seconds before it."),
     ]),
     ("Manual control", [
         ("scoring.manual_hold_s", "Hold time for Make Main (s)", "How long a stream you put on Main with the popup button stays there."),
