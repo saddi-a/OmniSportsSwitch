@@ -34,6 +34,7 @@ from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
+from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer
 
 HOST, PORT = "127.0.0.1", 8765
@@ -66,8 +67,12 @@ def leveling_gain(baseline: float | None, target: float, max_gain: float) -> flo
 
 
 class Server:
-    def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None):
+    def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None,
+                 speech=None):
         self.scorer = scorer or Scorer()
+        self.speech = speech                    # SpeechListener or None: the commentary listener (measuring only)
+        self.speech_buffers: dict[int, np.ndarray] = {}   # tab id -> last speech_window_s seconds of audio
+        self.speech_cue_at: dict[tuple[int, str], float] = {}  # (tab, cue) -> when it was last logged
         self.settings = settings  # daemon.settings.Settings; the popup edits it live
         self.ui_clients = set()   # sockets of the popup: they get settings replies, not arrange commands
         self.classifier = classifier
@@ -123,6 +128,7 @@ class Server:
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
+            self.speech_buffers.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
             for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.sport_detectors, self.sport_seen):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
@@ -168,6 +174,10 @@ class Server:
             old = self.buffers.get(tab_id)
             buf = samples if old is None else np.concatenate([old, samples])
             self.buffers[tab_id] = buf[-CLASSIFY_WINDOW:]
+        if self.speech is not None:
+            old = self.speech_buffers.get(tab_id)
+            buf = samples if old is None else np.concatenate([old, samples])
+            self.speech_buffers[tab_id] = buf[-int(self.scorer.config.speech_window_s * SAMPLE_RATE):]
 
     def handle_settings_message(self, msg: dict) -> dict | None:
         """The popup's settings requests. Returns the reply, or None if the message is not about settings."""
@@ -278,6 +288,27 @@ class Server:
                 crowd = float(max(p[idx[name]] for name in CROWD_CLASSES))
                 shout = float(max(p[idx[name]] for name in SHOUT_CLASSES))
                 self.scorer.set_tags(tab_id, crowd, float(p[idx["Speech"]]), float(p[idx["Music"]]), now, shout=shout)
+
+    async def _speech_loop(self) -> None:
+        """Measuring only: write down what the commentators say, and which cues (penalty, corner, red zone...) it holds."""
+        while True:
+            cfg = self.scorer.config
+            await asyncio.sleep(max(cfg.speech_interval_s, 1.0))
+            if cfg.speech_interval_s <= 0:
+                continue
+            need = int(0.6 * cfg.speech_window_s * SAMPLE_RATE)
+            for tab_id, buf in list(self.speech_buffers.items()):
+                if len(buf) < need:
+                    continue
+                text, language = await asyncio.to_thread(self.speech.transcribe, buf.copy())
+                if not text:
+                    continue
+                log.info("speech heard tab %s [%s]: %s", tab_id, language, text)
+                now = time.monotonic()
+                for cue in find_speech_cues(text):
+                    if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= cfg.speech_cue_cooldown_s:
+                        self.speech_cue_at[(tab_id, cue)] = now
+                        log.info("speech cue %s tab %s: %s", cue, tab_id, text)
 
     def _ocr_pass(self, jobs: list[tuple[int, int, dict]]) -> dict:
         """Runs in a worker thread: screenshot each video area and read its text."""
@@ -542,6 +573,8 @@ class Server:
                 loops.append(self._classify_loop())
             if self.screen_reader is not None:
                 loops.append(self._ocr_loop())
+            if self.speech is not None:
+                loops.append(self._speech_loop())
             await asyncio.gather(*loops)
 
 
@@ -560,8 +593,16 @@ if __name__ == "__main__":
     log.info("audio classifier ready on %s", classifier.device)
     screen_reader = ScreenReader()
     log.info("screen reader ready")
+    speech = None
+    if settings.scoring.speech_interval_s > 0:   # the commentary listener is optional (measuring only)
+        try:
+            from daemon.speech import SpeechListener
+            speech = SpeechListener()
+            log.info("commentary listener ready on %s", speech.device)
+        except Exception as error:   # package or model missing: the daemon runs as before
+            log.warning("commentary listener not available (%s: %s); continuing without it", type(error).__name__, error)
     try:
         asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
-                           focuser=TileFocuser(settings.focus), settings=settings).run())
+                           focuser=TileFocuser(settings.focus), settings=settings, speech=speech).run())
     except KeyboardInterrupt:
         pass

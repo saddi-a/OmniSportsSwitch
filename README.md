@@ -13,7 +13,7 @@ Two parts talk over a local WebSocket (`ws://127.0.0.1:8765`):
 | Part | What it does |
 |---|---|
 | **Edge extension** (`extension/`, Manifest V3, plain JavaScript, no build step) | Captures each tab's audio, reports where the video sits on screen, moves tabs between windows, mutes all but `MAIN`, and has a popup for your settings. |
-| **Python daemon** (`daemon/`) | Scores every stream and decides who goes where. Audio is classified on the GPU with PANNs (crowd, speech, music...). Scoreboards are read with EasyOCR on screenshots of the video area. |
+| **Python daemon** (`daemon/`) | Scores every stream and decides who goes where. Audio is classified on the GPU with PANNs (crowd, speech, music...). Scoreboards are read with EasyOCR on screenshots of the video area. An optional listener (faster-whisper, on the GPU) writes down what the commentators say, for measuring only. |
 
 What the daemon looks at:
 
@@ -22,6 +22,7 @@ What the daemon looks at:
 - **Game state**: live, break, or over, from the clock, the scoreboard (down and distance, quarter, overtime), captions such as FINAL or HALF TIME, and the picture.
 - **Commercials**: a stream on an ad (a placeholder in the picture, an ad countdown, or music-only sound) gets a negative score and is never promoted. A stream in `Main` that shows an ad is replaced by a live one.
 - **Closeness and time left**: a late, close game is worth more than a blowout.
+- **Cues before a big moment** (measuring only for now): red zone, 4th down, penalty, VAR, free kick, corner, flags and reviews read from the screen, and the same words heard from the commentators. They are written to the logs and change no score until you give them a weight in Settings.
 - **Replays and event size**: a replay inside a live game does not count its old cheers twice (and its graphics never count as a new score); in American football a touchdown is a full event, a field goal or safety a smaller one, and an extra point right after a touchdown none. Optional, off by default: levelling each stream's sound before the crowd detector hears it, and a small bonus for shouting (both in Settings).
 - **Your preferences**: favourite teams (kept on Main unless something exciting happens elsewhere), per-sport weights, per-tab weights, and windows a team or tab may or may not use.
 
@@ -32,7 +33,7 @@ The daemon understands English and French scoreboards and banners.
 ## Requirements
 
 - Windows 11 and Microsoft Edge.
-- An NVIDIA GPU with a recent driver (audio classification and OCR use CUDA).
+- An NVIDIA GPU with a recent driver (audio classification, OCR and the commentary listener use CUDA). The three models together need roughly 6 GB of video memory (the speech model is the newest and its share is still an estimate).
 - Python 3.10 to 3.13 (3.12 is what it was built with).
 - Edge **hardware acceleration must be OFF** (`edge://settings/system`). Streaming sites protect their video, so the daemon reads the screen instead. With acceleration on, the screen capture comes out black.
 - No other window may cover a stream, because the daemon reads what is on screen.
@@ -45,7 +46,7 @@ Run this once from the repository folder in PowerShell (it needs Python 3.10 to 
 scripts\setup.ps1
 ```
 
-It creates the `.venv`, installs PyTorch from the CUDA index first (otherwise pip may install a CPU-only build), installs the other packages, downloads the models (the PANNs audio checkpoint, about 330 MB, into `models\panns\`, and the English and French OCR models into `models\easyocr\`), then runs the tests. Every step is skipped when it is already done, so you can run it again. Useful switches:
+It creates the `.venv`, installs PyTorch from the CUDA index first (otherwise pip may install a CPU-only build), installs the other packages, downloads the models (the PANNs audio checkpoint, about 330 MB, into `models\panns\`, and the English and French OCR models into `models\easyocr\`; the speech model, about 460 MB, downloads into `models\whisper\` the first time the daemon starts), then runs the tests. Every step is skipped when it is already done, so you can run it again. Useful switches:
 
 | Switch | What it does |
 |---|---|
@@ -61,7 +62,7 @@ If Windows says "running scripts is disabled": `powershell -ExecutionPolicy Bypa
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-.venv\Scripts\python -m pip install websockets numpy mss pillow easyocr torchlibrosa matplotlib pytest pytest-asyncio
+.venv\Scripts\python -m pip install websockets numpy mss pillow easyocr torchlibrosa matplotlib faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 pytest pytest-asyncio
 .venv\Scripts\python -m pip install --no-deps panns-inference
 ```
 
@@ -174,7 +175,7 @@ Several times a second each stream gets a score: crowd noise, loudness above its
 
 ## Logs
 
-In `logs/` (not committed): `events.log` (goals, swaps and why, game states, warnings), `daemon.log` (everything, including the OCR text of each video area), `boxes.log` (sizes and positions of OCR items, for tuning).
+In `logs/` (not committed): `events.log` (goals, swaps and why, game states, warnings), `daemon.log` (everything, including the OCR text of each video area and `speech heard` lines with what the commentators said), `boxes.log` (sizes and positions of OCR items, for tuning).
 
 ## Tests
 
@@ -182,13 +183,13 @@ In `logs/` (not committed): `events.log` (goals, swaps and why, game states, war
 .venv\Scripts\python -m pytest daemon -q
 ```
 
-About 280 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
+About 370 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
 
 ## What is where
 
 | Folder | What it holds |
 |---|---|
-| `daemon/` | The Python daemon: the server, the scorer, the scoreboard reader, game state, settings, and the tests with real scoreboard fixtures. |
+| `daemon/` | The Python daemon: the server, the scorer, the scoreboard reader, the commentary listener, game state, settings, and the tests with real scoreboard fixtures. |
 | `extension/` | The Edge extension (plain JavaScript, no build step). |
 | `launcher/` | The tray launcher, built into `dist\OmniSportsSwitch.exe`. |
 | `scripts/` | Setup, start, stop, build and sample-capture scripts. |

@@ -65,7 +65,7 @@ elseif (Test-Path $venvPython) {
 Step "Python packages"
 if (Test-Path $venvPython) {
     # panns_inference is not imported here: its package tries to download files with wget (not on Windows)
-    & $venvPython -c "import websockets, numpy, mss, PIL, easyocr, torchlibrosa, importlib.metadata as m; m.version('panns-inference')" 2>$null
+    & $venvPython -c "import websockets, numpy, mss, PIL, easyocr, torchlibrosa, faster_whisper, importlib.metadata as m; m.version('panns-inference')" 2>$null
     if ($LASTEXITCODE -eq 0) { Ok "all packages are installed" }
     elseif ($CheckOnly) { Todo "Install the packages from requirements.txt." }
     else {

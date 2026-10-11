@@ -424,3 +424,55 @@ def test_a_replay_banner_over_a_live_scorebug_flags_the_stream_and_a_score_in_it
         server._update_game_states(replay, 120.0 + i * 3)
     assert server.scorer.streams[14].replay is True
     assert (14, 0) not in server.event_at
+
+
+# ---- commentary listener (measuring only) ----------------------------------------------------------------------------
+
+def test_the_speech_cues_are_found_in_english_and_french_transcripts():
+    from daemon.speech import find_speech_cues, to_whisper_rate
+
+    assert find_speech_cues("He is in the red zone, first and goal at the four yard line.") == ["red zone"]
+    assert find_speech_cues("Penalty kick for Roma, the referee points to the spot.") == ["penalty"]
+    assert find_speech_cues("Corner kick for Como, and the flag is up for offside.") == ["flag", "corner", "offside"]
+    assert find_speech_cues("Coup franc aux vingt mètres, quelle occasion, le poteau !") == ["free kick", "post"]
+    assert find_speech_cues("Goaaaal! Touchdown!") == ["touchdown", "goal"]
+    assert find_speech_cues("The weather is nice today.") == []
+    assert len(to_whisper_rate(np.ones(100, dtype=np.float32))) == 50
+
+
+@pytest.mark.asyncio
+async def test_the_commentary_loop_logs_the_words_and_each_cue_once_per_cooldown(caplog):
+    class FakeListener:
+        device = "fake"
+
+        def transcribe(self, samples):
+            return "Penalty for Roma, what a corner", "en"
+
+    config = Config(speech_interval_s=0.01, speech_window_s=1.0, speech_cue_cooldown_s=60.0)
+    server = Server(Scorer(config), speech=FakeListener())
+    server.speech_buffers[5] = np.zeros(SAMPLE_RATE_FOR_TEST, dtype=np.float32)
+    with caplog.at_level(logging.INFO):
+        task = asyncio.create_task(server._speech_loop())
+        await asyncio.sleep(1.2)       # the loop never sleeps less than one second
+        task.cancel()
+    heard = [r.getMessage() for r in caplog.records if "speech heard" in r.getMessage()]
+    cues = [r.getMessage() for r in caplog.records if "speech cue" in r.getMessage()]
+    assert heard and "tab 5 [en]" in heard[0]
+    assert sorted(m.split(" tab ")[0] for m in cues) == ["speech cue corner", "speech cue penalty"]   # each once
+
+
+def test_audio_is_buffered_for_the_listener_only_when_there_is_one():
+    frame = struct.pack("<I", 7) + (np.ones(3200, dtype="<i2") * 1000).tobytes()
+    plain = Server(Scorer())
+    plain.scorer.register(7)
+    plain.handle_audio(frame)
+    assert plain.speech_buffers == {}
+    class Quiet:
+        device = "fake"
+    listening = Server(Scorer(Config(speech_window_s=0.05)), speech=Quiet())
+    listening.scorer.register(7)
+    listening.handle_audio(frame)
+    assert len(listening.speech_buffers[7]) == int(0.05 * 32000)      # only the last window is kept
+
+
+SAMPLE_RATE_FOR_TEST = 32000

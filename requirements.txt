@@ -9,5 +9,11 @@ easyocr==1.7.2
 torchlibrosa
 matplotlib
 panns-inference  # install with --no-deps; the daemon only imports its model definition
+# The commentary listener (measuring only; the daemon runs without it): local speech recognition on the GPU. Its CUDA libraries
+# come as pip packages. Neither depends on torch, so they cannot replace the GPU build. The model (about 460 MB) downloads into
+# models/whisper the first time the daemon starts.
+faster-whisper==1.2.1
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.27.0.42
 pytest==9.1.1
 pytest-asyncio==1.4.0

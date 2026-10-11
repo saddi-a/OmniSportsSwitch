@@ -74,6 +74,9 @@ class Config:
     audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...
     audio_ad_window: float = 5.0  # ...among the last this many (one reading is never enough: arena music, jingles)
     classifier_target_rms: float = 0.0  # >0: each stream's sound is scaled so its normal loudness equals this before the sound classifier hears it (0 = off)
+    speech_interval_s: float = 6.0       # the commentary listener (measuring only) transcribes each stream this often; 0 = off (needs a restart to load)
+    speech_window_s: float = 8.0         # ...the last this many seconds of its sound
+    speech_cue_cooldown_s: float = 20.0  # the same cue on the same stream is logged at most this often
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
 
 
