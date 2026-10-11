@@ -23,6 +23,8 @@ CLOCK_RE = re.compile(r"^\d{1,3}\s?[:.,]\s?\d{2}$")
 LOGO_RE = re.compile(r"^[A-Za-z]{0,2}\d\s?\+\s?\d$")  # channel logos such as "L1+3"
 TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, at least two ("PSG", "OHIO STATE")
 ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "1st" as OCR mangles them (Ath, Ist, Znd, Isr, Jrd)
+TEAM_PAIR_ITEM_RE = re.compile(r"^([^\W\d_]{2,4})\s+(\d{1,2})\s?[-–]\s?(\d{1,2})(?:\s+[^\W\d_]{2,4})?$")   # a code and the score in one item ("FRA 0-0", "FRA 0-0 BEL")
+CLOCK_AND_TEAM_RE = re.compile(r"^(\d{1,3}\s?[:.,]\s?\d{2})\s+\W?([A-Za-z]{2,4})\W?$")   # "24.47 RMA": the clock and a team code in one item
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
@@ -35,6 +37,7 @@ NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", 
               "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
+RECORD_ROW = 0.8   # a "4-0" pair counts as a score only when its team names are on its own row (records sit below the names)
 SCORE_VS_LABEL = 2.0   # score digits are at least this much taller than the team names beside them
 CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
 CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
@@ -101,6 +104,12 @@ def find_score(texts: list[str], clocks: list[str], anchored_only: bool = False)
     if len(named) >= 2 and named[0][0] != named[1][0]:
         return named[0][1], named[1][1]
 
+    # 2c. one item with a team code and a small pair ("FRA 0-0")
+    for item in items:
+        m = TEAM_PAIR_ITEM_RE.match(item)
+        if m and m.group(1).isupper() and m.group(1).casefold() not in NOT_A_TEAM and max(int(m.group(2)), int(m.group(3))) <= MAX_PAIR_VALUE:
+            return int(m.group(2)), int(m.group(3))
+
     if anchored_only:
         return None
 
@@ -137,6 +146,11 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     items = [dict(it, text=m.group(1)) if (m := DIGIT_WITH_MARKS_RE.match(it["text"].strip())) else it for it in items]
     split = []
     for n, it in enumerate(items):
+        c = CLOCK_AND_TEAM_RE.match(it["text"].strip())
+        if c:   # "24.47 RMA": keep the team code as an item of its own, at its own place in the box
+            width = (it["x1"] - it["x0"]) / len(it["text"].strip())
+            split.append(dict(it, text=c.group(2), x0=it["x0"] + width * (it["text"].strip().index(c.group(2)) - 0.5), x1=it["x1"]))
+            continue
         m = MERGED_PAIR_RE.match(it["text"].strip())
         if m:   # two scores merged by OCR: cut the box at the space into two numbers, remembered as halves of the same item
             a, b = m.group(1), m.group(2)
@@ -183,8 +197,8 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
         if SCORE_PAIR_RE.match(text) and max(a, b) > MAX_PAIR_VALUE:
             continue
         h = height(it)
-        left = any(t["x1"] <= it["x0"] + h and abs(cy(t) - cy(it)) <= 2.2 * h for t in teams)
-        right = any(t["x0"] >= it["x1"] - h and abs(cy(t) - cy(it)) <= 2.2 * h for t in teams)
+        left = any(t["x1"] <= it["x0"] + h and abs(cy(t) - cy(it)) <= RECORD_ROW * h for t in teams)   # the names' own row: a record
+        right = any(t["x0"] >= it["x1"] - h and abs(cy(t) - cy(it)) <= RECORD_ROW * h for t in teams)   # ("4-0") sits below them
         if left and right:
             key = (h, 2)
             if best_key is None or key > best_key:
@@ -221,6 +235,20 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             between = sum(1 for it in live if not NUMBER_RE.match(it["text"].strip()) and left["x1"] <= it["x0"] and it["x1"] <= right["x0"]
                           and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
             pairs.append((min(ha, hb), between, near, left, right))
+    # two numbers stacked in a column, each right beside its own team (ATM 2 / RMA 1)
+    for i, a in enumerate(numbers):
+        for b in numbers[i + 1:]:
+            top, bottom = (a, b) if cy(a) <= cy(b) else (b, a)
+            ha, hb = height(top), height(bottom)
+            if ha < 12 or hb < 12 or not 0.7 <= ha / hb <= 1.43:
+                continue
+            h = max(ha, hb)
+            if abs(top["x0"] - bottom["x0"]) > 0.6 * h or abs(top["x1"] - bottom["x1"]) > 0.6 * h or not 0.8 * h <= cy(bottom) - cy(top) <= 3.0 * h:
+                continue
+            if all(any(t["x1"] <= n["x0"] + 0.5 * h and n["x0"] - t["x1"] <= 4 * h and abs(cy(t) - cy(n)) <= 0.7 * h for t in teams) for n in (top, bottom)):
+                key = (min(ha, hb), 2)
+                if best_key is None or key > best_key:
+                    best, best_key = (int(top["text"]), int(bottom["text"])), key
     if pairs:
         # The scores are the biggest pair. Among pairs about as big as the biggest, the one with the centre panel
         # (down and distance, clock) between its numbers wins: a team logo read as a digit ("0" for an O) forms a pair
@@ -240,9 +268,8 @@ def _vote(values) -> int | None:
 
 def _no_scoreboard(texts: list[str], clocks: list[str]) -> bool:
     """True when the clocks are the only scoreboard-like thing on screen (see `GameTracker`: an ad countdown)."""
-    from daemon.game_state import DOWN_RE, QUARTER_RE, SCOREBOARD_ITEM_RE
-    others = [t.strip() for t in texts if t.strip() and t.strip() not in clocks]
-    return bool(texts) and not any(SCOREBOARD_ITEM_RE.fullmatch(t) or DOWN_RE.fullmatch(t) or QUARTER_RE.fullmatch(t) for t in others)
+    from daemon.game_state import has_scoreboard_text
+    return bool(texts) and not has_scoreboard_text(texts, clocks)
 
 
 class ScoreWatcher:
