@@ -187,3 +187,26 @@ When you answer, I will turn Stage 0 into a concrete task list for the main sess
 4. **The goal is accuracy**, not hardware. Hardware measurements stay informative only.
 5. **No budget**: free sources only (ESPN). No paid provider.
 6. **Rewind/pause:** strict clock rule plus dropping events already behind the stream clock.
+
+## 10. Scope answers (user, 2026-10-11)
+
+| Idea | Answer |
+|---|---|
+| Stakes from standings | Later (after Stage 0) |
+| Pre-kickoff arrangement | No |
+| API score and time left for leverage when OCR cannot read them | **Yes** (looked up at the stream clock) |
+| Multiview tile focus from the feed | **Yes, in scope** (needs per-tile mapping, so it comes after Stage 1) |
+| Early half-time / full-time handover | No |
+| Disallowed goals and penalty shootouts | Check in Stage 0 only: record and look, no behaviour |
+
+## 11. Stage 0 task list (measure only; nothing here changes scoring or swaps)
+
+Owner: the main session for `server.py` and the restart; the API session can write the pure modules and tests on `external-api`.
+
+1. `daemon/feed.py` (pure): parse an ESPN scoreboard and NFL/college `summary` response into `GameSnapshot` / `GameEvent` (section 5). Fixtures: trimmed recorded responses, no full payloads committed (public repo).
+2. `[feed]` in `settings.toml` + `Config` + `settings.py LAYOUT`: `mode = "local"|"record"` (record is Stage 0 only), `poll_s` (5, minimum 5), `leagues` (default `ita.1`, `eng.1`, `esp.1`, `fra.1`, `uefa.champions`, plus `fifa.world` / national-team slugs to be verified, `nfl`, `college-football`, `nba`), `lead_s` (10, unused until Stage 2), `stream_delay_s` (unused). The test that keeps toml equal to defaults must pass.
+3. `Server._feed_loop`: standard-library HTTP in a thread, one request per league per `poll_s`, only for leagues that currently have a live or soon-starting game (the scoreboard lists the day's games, so one cheap daily check first); backoff on errors; writes `logs/feed/<date>.jsonl` (snapshots and events with local timestamps) and one line per new event in `events.log` (`feed event ...`). Mode `local`: nothing imported, nothing started.
+4. `scripts/feed_compare.py` (offline): compare `logs/feed` with `events.log` / `daemon.log` OCR clocks and score changes; print per event: feed first-seen time, stream clock then, implied lag; the median and spread per league and stream.
+5. Record while checking, for the open items: the NFL `situation` field (down, distance, red zone) on a live game; whether VAR, substitutions, disallowed goals and shootout events appear in soccer; which league slugs work for La Liga, Premier League, Ligue 1 and national teams; whether `Cache-Control: max-age=5` really means the data changes no faster.
+6. Tests: parsing against fixtures, a fake local server for polling/backoff/429/timeouts, `mode = "local"` starts nothing.
+7. After 2-3 game days: report the lag numbers and a recommendation for `lead_s`, then start Stage 1 (mapping) with the user.
