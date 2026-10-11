@@ -28,6 +28,14 @@ def test_names_cover_abbreviation_full_name_prefix_and_alias():
     assert {"ROMA", "AS ROMA", "ROME"} <= set(team_names(roma))
 
 
+def test_scorebug_codes_that_differ_from_the_feeds_abbreviation():
+    """Seen live 2026-10-11: ESPN says MNC for Manchester City, the Canal+ scorebug says MCI."""
+    liv = feed.Team("364", "LIV", "Liverpool")
+    mnc = feed.Team("382", "MNC", "Manchester City")
+    snap = dataclasses.replace(games()[0], home=liv, away=mnc)
+    assert shows_game(["LIV", "0", "MCI", "CANAL+"], snap)
+
+
 def test_both_teams_needed_and_whole_words_only():
     snap = games()[0]
     assert shows_game(["COMO 0", "ROMA 0"], snap)
