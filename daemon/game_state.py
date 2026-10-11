@@ -123,6 +123,8 @@ def has_scoreboard_text(texts: list[str], clocks: list[str]) -> bool:
         return True
     return len({t for t in others if TEAM_CODE_RE.fullmatch(t)}) >= 2 or any(CLOCK_WITH_CODE_RE.fullmatch(t) for t in others)
 
+CODES_MEMORY_S = 10.0   # team codes read this recently count as a scorebug still on screen
+
 
 class GameTracker:
     """Follows one video area (a whole stream, or one multiview tile) over time."""
@@ -135,6 +137,7 @@ class GameTracker:
         self._clock: str | None = None
         self._clock_changed_at: float | None = None
         self._last_clock_seen: float | None = None
+        self._codes_seen = float("-inf")   # when two team codes were last read together (a scorebug)
         self._first_seen: float | None = None
         self._over_seen = float("-inf")
         self._break_seen = float("-inf")
@@ -249,6 +252,8 @@ class GameTracker:
         others = [t.strip() for t in texts if t.strip() and t.strip() not in clocks]
         board_cue = (any(DOWN_RE.fullmatch(t) or QUARTER_RE.fullmatch(t) or CLOCK_WITH_CODE_RE.fullmatch(t) for t in others)
                      or len({t for t in others if TEAM_CODE_RE.fullmatch(t)}) >= 2)
+        if len({t for t in others if TEAM_CODE_RE.fullmatch(t)}) >= 2:
+            self._codes_seen = now   # a scorebug with its team codes is on screen, whether or not its clock was read
         stats_only = not board_cue and any(STAT_GRAPHIC_RE.search(t) for t in texts)
         clocks = [c for c in clocks if not stats_only and not self._impossible_clock(c)]
         if clocks and not on_ad:  # the countdown shown during an ad is not the game clock
@@ -279,6 +284,8 @@ class GameTracker:
             self.state = "live"   # down and distance on the scorebug: the game is being played, whatever the clock OCR says
         elif self._last_clock_seen is not None and now - self._last_clock_seen <= self.profile.no_clock_s:
             pass  # clock briefly unreadable (overlay, OCR miss): keep the previous state
+        elif self._last_clock_seen is not None and now - self._codes_seen <= CODES_MEMORY_S and now - self._last_clock_seen <= 2 * self.profile.no_clock_s:
+            pass  # the scorebug is still there (its team codes were read) but its clock font is not: wait twice as long before a break
         else:
             since = self._last_clock_seen if self._last_clock_seen is not None else self._first_seen
             self.state = "break" if now - since > self.profile.no_clock_s else "live"
