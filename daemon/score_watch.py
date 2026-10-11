@@ -15,6 +15,8 @@ down-and-distance. So:
 import re
 from collections import Counter, deque
 
+from daemon.scoring import Config
+
 SCORE_PAIR_RE = re.compile(r"^(\d{1,3})\s?[-–:]\s?(\d{1,3})$")  # "2-0"
 NUMBER_RE = re.compile(r"^\d{1,3}$")
 CLOCK_RE = re.compile(r"^\d{1,3}\s?[:.,]\s?\d{2}$")
@@ -41,6 +43,7 @@ NEEDED = 3           # votes a value needs to count
 PEAK_MEMORY_S = 120  # a score only goes up: a lower reading is a misread (a logo read as 0), unless it lasts this long
 PEAK_HOLD_S = 25     # a score above the ceiling becomes the new ceiling only after it has held this long
 FIRED_MEMORY_S = 60   # the same score is not announced twice inside this time (a misread flicker around a goal)
+TOUCHDOWN_POINTS = 4   # a gain of at least this many points is a touchdown (6, 7 or 8 with the kick): a full event
 READING_S = 3        # assumed time between readings when the caller gives no clock
 
 
@@ -245,7 +248,10 @@ def _no_scoreboard(texts: list[str], clocks: list[str]) -> bool:
 class ScoreWatcher:
     """Follows one video area. `update` returns True on the reading where a score change becomes stable."""
 
-    def __init__(self):
+    def __init__(self, config: Config | None = None):
+        self.config = config or Config()   # event sizes (field goal, extra point window); shared, so popup edits apply at once
+        self.strength = 1.0   # size of the event `update` last reported: 1.0 = goal / touchdown, less = field goal or safety
+        self._scored_at = [float("-inf"), float("-inf")]   # when each side last scored a touchdown (American football)
         self._history: deque[tuple[int, int]] = deque(maxlen=HISTORY)
         self._stable: tuple[int, int] | None = None
         self._peak: tuple[int, int] | None = None      # highest value seen per side
@@ -264,6 +270,22 @@ class ScoreWatcher:
     def _reset(self) -> None:
         self._history.clear()
         self._stable = self._peak = self._below_since = self._above_since = self._fired = None
+
+    def _event_size(self, current: tuple[int, int], previous: tuple[int, int], t: float, sport: str | None) -> float:
+        """How big a score change is, 0..1. Only American football has point tiers: a touchdown (4+ points) is a full event,
+        a field goal / safety (2 or 3) and a lone extra point (1) are `field_goal_strength`, and an extra point or two-point
+        conversion within `extra_point_s` of that side's touchdown is no new event (0)."""
+        gains = [min(n - p, n - o) if n > o else 0 for o, n, p in zip(self._peak, current, previous)]
+        if (sport or "").strip().lower() != "american football":
+            return 1.0
+        side = max(range(2), key=lambda i: gains[i])
+        gain = gains[side]
+        if gain >= TOUCHDOWN_POINTS:
+            self._scored_at[side] = t
+            return 1.0
+        if gain <= 2 and t - self._scored_at[side] <= self.config.extra_point_s:
+            return 0.0
+        return self.config.field_goal_strength
 
     def _clock_jumped(self, clocks: list[str], now: float) -> bool:
         seconds = [s for s in map(clock_seconds, clocks) if s is not None]
@@ -288,7 +310,7 @@ class ScoreWatcher:
         return False
 
     def update(self, texts: list[str], clocks: list[str], now: float | None = None, items: list[dict] | None = None,
-               replay: bool = False) -> bool:
+               replay: bool = False, sport: str | None = None) -> bool:
         # A countdown with no scoreboard beside it is the player's ad countdown: it is not a game clock and must not look like a
         # clock jump (that threw the score away at every commercial break, so a touchdown before the break was never seen).
         if replay:
@@ -326,11 +348,15 @@ class ScoreWatcher:
         # high reading (a graphic, a record) cannot hide the real goal that follows it.
         self._below_since = None
         fired = False
+        previous = self._stable
         if self._above_since is None or current != self._stable:
             self._above_since = t
             fired = any(1 <= n - o <= MAX_RISE for o, n in zip(self._peak, current))
             if fired and self._fired is not None and self._fired[0] == current and t - self._fired[1] < FIRED_MEMORY_S:
                 fired = False
+            if fired:
+                self.strength = self._event_size(current, previous, t, sport)
+                fired = self.strength > 0.0
             if fired:
                 self._fired = (current, t)
         self._stable = current

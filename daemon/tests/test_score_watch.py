@@ -1,4 +1,5 @@
 from daemon.score_watch import STAT_GRAPHIC_RE, ScoreWatcher, find_score
+from daemon.scoring import Config
 
 
 def feed(w, readings):
@@ -469,6 +470,90 @@ def test_a_merged_item_as_small_as_the_names_is_not_a_score():
 
 def test_two_numbers_in_one_item_without_team_names_are_not_a_score():
     assert _geo(boxes([("28 9", 76, 770, 720), ("3,46", 36, 757, 809)])) is None
+
+
+# ---- event size by points (American football): touchdown full, field goal / safety smaller, extra point nothing ----
+
+def show(w, score, start, readings=4, sport="american football", step=3.0):
+    """Feed `readings` identical scoreboards from `start`; returns [(time, strength)] of the events that fired."""
+    fired = []
+    for i in range(readings):
+        t = start + i * step
+        if w.update(["INDIANA", str(score[0]), str(score[1]), "NEBRASKA"], [], t, sport=sport):
+            fired.append((t, w.strength))
+    return fired
+
+
+def settled(score=(10, 7), sport="american football"):
+    w = ScoreWatcher()
+    show(w, score, 0, readings=5, sport=sport)
+    return w
+
+
+def test_a_touchdown_is_a_full_event():
+    w = settled()
+    events = show(w, (16, 7), 20)
+    assert len(events) == 1 and events[0][1] == 1.0
+
+
+def test_a_field_goal_is_about_sixty_percent():
+    w = settled()
+    events = show(w, (13, 7), 20)
+    assert len(events) == 1 and events[0][1] == Config().field_goal_strength == 0.6
+
+
+def test_a_safety_is_the_same_size_as_a_field_goal():
+    w = settled()
+    events = show(w, (12, 7), 20)
+    assert len(events) == 1 and events[0][1] == Config().field_goal_strength
+
+
+def test_an_extra_point_right_after_a_touchdown_is_not_a_new_event():
+    w = settled()
+    assert len(show(w, (16, 7), 20)) == 1
+    assert show(w, (17, 7), 32) == []
+
+
+def test_a_two_point_conversion_right_after_a_touchdown_is_not_a_new_event():
+    w = settled()
+    assert len(show(w, (16, 7), 20)) == 1
+    assert show(w, (18, 7), 32) == []
+
+
+def test_the_extra_point_of_the_other_team_still_counts_small():
+    w = settled()
+    assert len(show(w, (16, 7), 20)) == 1
+    other = show(w, (16, 10), 32)    # the other side kicks a field goal: its own score, not a conversion
+    assert len(other) == 1 and other[0][1] == Config().field_goal_strength
+
+
+def test_an_extra_point_long_after_the_touchdown_is_a_small_event():
+    w = settled()
+    assert len(show(w, (16, 7), 20)) == 1
+    late = show(w, (17, 7), 100)   # the touchdown was a minute and a half ago: this is not its conversion
+    assert len(late) == 1 and late[0][1] == Config().field_goal_strength
+
+
+def test_a_touchdown_read_with_its_extra_point_at_once_is_one_full_event():
+    w = settled()
+    events = show(w, (17, 7), 20)
+    assert len(events) == 1 and events[0][1] == 1.0
+
+
+def test_the_extra_point_window_is_a_setting():
+    w = ScoreWatcher(Config(extra_point_s=5.0))
+    show(w, (10, 7), 0, readings=5)
+    assert len(show(w, (16, 7), 20)) == 1
+    assert len(show(w, (17, 7), 32)) == 1   # more than 5 s later: no longer a conversion
+
+
+def test_other_sports_and_unknown_sports_keep_full_events():
+    for sport in ("football", "basketball", None):
+        w = settled(score=(1, 0), sport=sport)
+        events = show(w, (1, 3), 20, sport=sport)   # +3 means a field goal only in American football
+        assert len(events) == 1 and events[0][1] == 1.0, sport
+        late = show(w, (2, 3), 40, sport=sport)
+        assert len(late) == 1 and late[0][1] == 1.0, sport
 
 
 # ---- replays: the graphics of a replay are not new score changes -------------------------------------------------
