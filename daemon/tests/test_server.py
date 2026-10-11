@@ -434,7 +434,7 @@ def test_the_speech_cues_are_found_in_english_and_french_transcripts():
     assert find_speech_cues("He is in the red zone, first and goal at the four yard line.") == ["red zone"]
     assert find_speech_cues("Penalty kick for Roma, the referee points to the spot.") == ["penalty"]
     assert find_speech_cues("Corner kick for Como, and the flag is up for offside.") == ["flag", "corner", "offside"]
-    assert find_speech_cues("Coup franc aux vingt mètres, quelle occasion, le poteau !") == ["free kick", "post"]
+    assert find_speech_cues("Coup franc aux vingt mètres, quelle occasion, le poteau !") == ["free kick", "post", "chance"]
     assert find_speech_cues("Goaaaal! Touchdown!") == ["touchdown", "goal"]
     assert find_speech_cues("The weather is nice today.") == []
     assert len(to_whisper_rate(np.ones(100, dtype=np.float32))) == 50
@@ -483,3 +483,20 @@ def test_a_french_post_is_found_with_any_article():
 
     assert find_speech_cues("le ballon a rebondi sur son poteau") == ["post"]
     assert find_speech_cues("il touche la transversale") == ["post"]
+
+
+def test_a_near_chance_is_a_spoken_cue():
+    from daemon.speech import find_speech_cues
+
+    assert find_speech_cues("Juste à côté de la base du poteau droit.") == ["post", "chance"]
+    assert find_speech_cues("quelle occasion, quelle action !") == ["chance"]
+    assert find_speech_cues("What a save! So close.") == ["chance"]
+    assert find_speech_cues("The pass goes to the left wing.") == []
+
+
+def test_goal_words_include_opening_the_scoring_and_equalising():
+    from daemon.speech import find_speech_cues
+
+    assert find_speech_cues("Roma ouvre le score !") == ["goal"]
+    assert find_speech_cues("Como égalise juste avant la pause") == ["goal"]
+    assert find_speech_cues("Les poteaux ont sauvé le gardien") == ["post"]

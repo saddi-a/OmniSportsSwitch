@@ -33,8 +33,10 @@ CUES = {
     "offside": [r"off ?side", r"hors[- ]jeu"],
     "var": [r"\bvar\b", r"video assistant"],
     "card": [r"red card", r"carton rouge", r"yellow card", r"carton jaune", r"sent off", r"expuls"],
-    "goal": [r"\bgo+a{2,}l+\b", r"\bgo{2,}a+l+\b", r"\bgoal ?!", r"\bbut ?!", r"\bbu{2,}t\b"],   # plain "goal" is too common (first and goal)
-    "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b", r"\bpoteau\b", r"\bla barre\b", r"\btransversale\b"],
+    "goal": [r"\bgo+a{2,}l+\b", r"\bgo{2,}a+l+\b", r"\bgoal ?!", r"\bbut ?!", r"\bbu{2,}t\b", r"ouvre le score", r"égalise", r"opens the scoring", r"equali[sz]es?"],   # plain "goal" is too common (first and goal)
+    "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b", r"\bpoteaux?\b", r"\bla barre\b", r"\btransversale\b"],
+    "chance": [r"what a (big )?chance", r"big chance", r"so close", r"just wide", r"just over", r"just past", r"(great|what a|brilliant) save",
+               r"quelle occasion", r"(belle|grosse) occasion", r"juste à côté", r"juste au-dessus", r"(quel|bel) arrêt", r"(belle|superbe) parade"],
     "free throw": [r"free throws?", r"lancers? francs?"],
     "timeout": [r"time ?out", r"temps mort"],
 }
