@@ -29,13 +29,13 @@ CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[}{)(]\s?(\d{1,3})$")  
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
-STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b|\btop ?\d\b|statistics?|statistiques?|ballons", re.I)   # overlays full of numbers
+STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b|\btop ?\d\b|statistics?|statistiques?|ballons|\btirs?\b|\bshots?\b", re.I)   # overlays full of numbers
 RANKED_TEAM_RE = re.compile(r"^\d{1,2}\s+[^\W\d_]{3,}(?:[ .'\-][^\W\d_]+)*$")   # "2 Georgia", "6 ALABAMA": a ranking and a name
 DIGIT_WITH_MARKS_RE = re.compile(r"^(\d{1,3})\s?[:=;|!]+$")   # the score digit read together with the dashes drawn beside it ("0 =")
 MERGED_PAIR_RE = re.compile(r"^(\d{1,3})\s+(\d{1,3})$")   # two scores read as ONE item ("28 9", "10 24")
 MERGED_VS_LABEL = 1.5   # such a pair must be at least this much taller than the team names (measured 1.8-2.25 on real boards)
 NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", "period", "round", "set", "game", "shots",
-              "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
+              "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min", "periode", "période", "tirs", "tir"}
 CARD_QUARTER_RE = re.compile(r"^[A-Za-z0-9]{1,3}\s?QTR$", re.I)   # '3RD QTR' (and its OCR mangles) on a full-screen score card
 CARD_WEEK_RE = re.compile(r"^WEEK\s?\d{1,2}$", re.I)
 CARD_CLOCK_RE = re.compile(r"^\d{1,2}\s?[:.,;]\s?\d{2}$")
@@ -72,7 +72,7 @@ def find_score(texts: list[str], clocks: list[str], anchored_only: bool = False)
     """The (left, right) score found in the OCR text items, or None. `anchored_only` keeps just the readings tied to team
     names: the loose ones (any small "a-b", two numbers side by side) pick up team records ("4-0", read as "40")."""
     items = _items(texts, clocks)
-    is_team = [bool(TEAM_RE.match(t)) and not ORDINAL_RE.match(t) for t in items]
+    is_team = [bool(TEAM_RE.match(t)) and not ORDINAL_RE.match(t) and t.casefold() not in NOT_A_TEAM for t in items]
 
     # 1. "TEAM a-b TEAM" (any size for "a/b": merged scores such as "10/20" are only trusted between team names,
     #    because the same text shows passing stats elsewhere)
@@ -163,17 +163,26 @@ def find_score_card(items: list[dict], clocks: list[str], last: tuple[int, int] 
 
 
 def _numbers_read_as_a_score(score: tuple[int, int], items: list[dict]) -> bool:
-    """False when the text-only reader's two numbers are separate items that cannot be the two scores of a scoreboard: not on one row
-    and not two neighbours of one column (a third number between them: a column of stats beside player names). Numbers that are
-    not items of their own ("FRA 0-0", "NAVY 58") are not checked."""
+    """False when the text-only reader's two numbers are separate items that cannot be the two scores of a scoreboard: each must be
+    beside a team name on its own row, and the two on one row or two neighbours of one column (no third number between them: a column
+    of stats beside player names, a table of shots per period). Numbers that are not items of their own ("FRA 0-0", "NAVY 58") are not
+    checked."""
     numbers = [it for it in items if NUMBER_RE.match(it["text"].strip())]
     first = [it for it in numbers if int(it["text"]) == score[0]]
     second = [it for it in numbers if int(it["text"]) == score[1]]
     if not first or not second:
         return True
+    teams = [it for it in items if TEAM_RE.match(it["text"].strip()) and len(it["text"].strip()) >= 2 and not ORDINAL_RE.match(it["text"].strip())
+             and it["text"].strip().casefold() not in NOT_A_TEAM and not STAT_GRAPHIC_RE.search(it["text"])]
+
+    def beside_a_team(n) -> bool:
+        h = n["y1"] - n["y0"]
+        return any(abs((t["y0"] + t["y1"]) / 2 - (n["y0"] + n["y1"]) / 2) <= max(h, t["y1"] - t["y0"])
+                   and (n["x0"] - t["x1"] if t["x1"] <= n["x0"] else t["x0"] - n["x1"]) <= 6 * h for t in teams)
+
     for a in first:
         for b in second:
-            if a is b:
+            if a is b or not (beside_a_team(a) and beside_a_team(b)):
                 continue
             h = max(a["y1"] - a["y0"], b["y1"] - b["y0"])
             ya, yb = (a["y0"] + a["y1"]) / 2, (b["y0"] + b["y1"]) / 2

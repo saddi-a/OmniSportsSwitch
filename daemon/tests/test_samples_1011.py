@@ -212,3 +212,44 @@ def test_the_column_of_stats_is_rejected_by_its_geometry_alone():
     w, fired = watch([SCOREBUG] * 5)
     w, fired = watch([items] * 8, w)
     assert fired == [] and w._stable == (0, 0)
+
+
+# ---- Liverpool-Man City 18:41:23-34 (boxes.log): a per-period shots table with sponsor rows was read as a score ----------------------------------
+# Scorebug: LIV 0 ... MCI (the second digit is lost). Table: '5' and '3' on one row (shots in the 1st period), 'Periode', 'TIRS IRE',
+# sponsor 'PayPal' items. The text reader took MCI 5 'Periode' 3 for TEAM n TEAM n = (5, 3), and fired at 0-0: a wrong swap.
+SHOTS_A = boxes([("LIV", 39, 93, 60), ("MCI", 40, 329, 59), ("[CANAL+", 32, 1478, 52), ("5", 44, 1357, 275), ("Periode", 24, 1426, 294),
+                 ("3", 42, 1537, 275), ("4", 36, 1362, 372), ("Periode", 24, 1424, 390), ("Premier League", 31, 1453, 837), ("2020/27", 24, 1526, 862)])
+SHOTS_B = boxes([("LIV", 38, 95, 61), ("0", 50, 193, 51), ("MCI", 38, 329, 61), ("CANAL+", 32, 1480, 52), ("52.52", 30, 212, 98),
+                 ("PayPa", 26, 196, 262), ("PayPal", 26, 364, 260), ("JayPal", 24, 532, 258), ("Pa Pal", 24, 986, 248), ("PoyPal", 26, 1134, 244),
+                 ("5", 44, 1357, 275), ("PeriODE", 26, 1426, 294), ("TiRS IRE", 24, 1430, 274), ("3", 42, 1537, 275), ("4", 34, 1364, 372),
+                 ("Periode", 26, 1424, 390), ("Premier Lcague", 31, 1454, 837), ("2026/27", 24, 1526, 862)])
+SHOTS_C = boxes([("LIV", 39, 95, 60), ("0", 50, 193, 51), ("MCI", 38, 331, 61), ("CANAL+", 32, 1479, 52), ("5", 42, 1360, 276),
+                 ("Periode", 24, 1426, 294), ("TiRS IRE", 24, 1430, 274), ("3", 38, 1538, 276), ("TIRS 2NDE", 24, 1418, 370),
+                 ("Periode", 24, 1424, 390), ("Premier Lcague", 31, 1454, 837), ("2026/27", 24, 1526, 862)])
+
+
+def test_a_shots_per_period_table_is_not_a_score():
+    w, fired = watch([SCOREBUG] * 5)
+    w, fired = watch([SHOTS_A, SHOTS_B, SHOTS_C] * 4, w, sport="football")
+    assert fired == []
+    for items in (SHOTS_A, SHOTS_B, SHOTS_C):
+        texts = [i["text"] for i in items]
+        assert find_score(texts, [], anchored_only=True) in (None, (5, 3), (0, 5))   # the text reader alone is fooled...
+        assert ScoreWatcher().update(texts, [], 0.0, items) is False               # ...the watcher with boxes is not
+        assert w._stable == (0, 0)
+
+
+def test_the_text_reader_needs_each_number_beside_a_team_on_its_row():
+    from daemon.score_watch import _numbers_read_as_a_score
+    assert _numbers_read_as_a_score((5, 3), SHOTS_A) is False        # 5 and 3 share a row but no team name is there
+    assert _numbers_read_as_a_score((0, 5), SHOTS_B) is False        # one digit beside LIV, the other one far away
+    board = boxes([("LIV", 50, 132, 84), ("2", 68, 267, 71), ("0", 58, 368, 74), ("MCI", 50, 454, 84)])
+    assert _numbers_read_as_a_score((2, 0), board) is True
+    stacked = boxes([("ATM", 24, 122, 40), ("2", 30, 190, 38), ("RMA", 24, 122, 78), ("1", 30, 190, 76)])
+    assert _numbers_read_as_a_score((2, 1), stacked) is True
+
+
+def test_shot_and_period_words_are_not_team_names():
+    from daemon.score_watch import STAT_GRAPHIC_RE
+    for text in ("TIRS 2NDE", "TiRS IRE", "Shots on target", "TIRS CADRES"):
+        assert STAT_GRAPHIC_RE.search(text), text
