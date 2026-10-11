@@ -25,7 +25,7 @@ TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, a
 ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "1st" as OCR mangles them (Ath, Ist, Znd, Isr, Jrd)
 TEAM_PAIR_ITEM_RE = re.compile(r"^([^\W\d_]{2,4})\s+(\d{1,2})\s?[-–]\s?(\d{1,2})(?:\s+[^\W\d_]{2,4})?$")   # a code and the score in one item ("FRA 0-0", "FRA 0-0 BEL")
 CLOCK_AND_TEAM_RE = re.compile(r"^(\d{1,3}\s?[:.,]\s?\d{2})\s+\W?([A-Za-z]{2,4})\W?$")   # "24.47 RMA": the clock and a team code in one item
-CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
+CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[}{)(]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
@@ -36,6 +36,10 @@ MERGED_PAIR_RE = re.compile(r"^(\d{1,3})\s+(\d{1,3})$")   # two scores read as O
 MERGED_VS_LABEL = 1.5   # such a pair must be at least this much taller than the team names (measured 1.8-2.25 on real boards)
 NOT_A_TEAM = {"timeouts", "timeout", "fouls", "foul", "down", "quarter", "qtr", "period", "round", "set", "game", "shots",
               "corners", "yards", "yds", "pts", "points", "bonus", "rec", "rushing", "passing", "ot", "half", "minutes", "min"}
+CARD_QUARTER_RE = re.compile(r"^[A-Za-z0-9]{1,3}\s?QTR$", re.I)   # '3RD QTR' (and its OCR mangles) on a full-screen score card
+CARD_WEEK_RE = re.compile(r"^WEEK\s?\d{1,2}$", re.I)
+CARD_CLOCK_RE = re.compile(r"^\d{1,2}\s?[:.,;]\s?\d{2}$")
+CARD_VS_LABEL = 2.0   # the two scores of a card are at least this much taller than its quarter text
 MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock than a score
 MAX_RISE = 10
 RECORD_ROW = 0.8   # a "4-0" pair counts as a score only when its team names are on its own row (records sit below the names)
@@ -129,6 +133,32 @@ def find_score(texts: list[str], clocks: list[str], anchored_only: bool = False)
                 continue
             if all(not NUMBER_RE.match(x) for x in items[i + 1 : j]):
                 return int(item), int(items[j])
+    return None
+
+
+def find_score_card(items: list[dict], clocks: list[str], last: tuple[int, int] | None) -> tuple[int, int] | None:
+    """The full-screen score card an American football broadcast shows after a score: no team names are read, only 'WEEK 5', ONE
+    item holding both scores ('14 10') much taller than the labels, and the quarter ('3RD QTR'), maybe with a clock. It counts only
+    when a scorebug score was voted before (`last`, the order of the numbers is the scorebug's) and the card is consistent with it:
+    neither number lower than before, none more than MAX_RISE above. A stats table, a results ticker (no quarter text) or a record
+    ('2-2' has a dash) are not cards."""
+    if last is None:
+        return None
+    texts = [it["text"].strip() for it in items]
+    quarter = [it for it in items if CARD_QUARTER_RE.match(it["text"].strip())]
+    if not quarter or not (any(CARD_WEEK_RE.match(t) for t in texts) or clocks or any(CARD_CLOCK_RE.match(t) for t in texts)):
+        return None
+    pairs = [it for it in items if MERGED_PAIR_RE.match(it["text"].strip())]
+    if len(pairs) != 1:
+        return None
+    pair = pairs[0]
+    label = max(it["y1"] - it["y0"] for it in quarter)
+    if pair["y1"] - pair["y0"] < CARD_VS_LABEL * label:
+        return None
+    m = MERGED_PAIR_RE.match(pair["text"].strip())
+    score = (int(m.group(1)), int(m.group(2)))
+    if all(0 <= n - o <= MAX_RISE for o, n in zip(last, score)):
+        return score
     return None
 
 
@@ -363,6 +393,8 @@ class ScoreWatcher:
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
         score = (find_score_geo(items, clocks) if items else None) or find_score(texts, clocks, anchored_only=bool(items))
+        if score is None and items:
+            score = find_score_card(items, clocks, self._stable)
         if score is None:
             return False
         self._readings += 1

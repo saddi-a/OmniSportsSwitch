@@ -1,6 +1,6 @@
 """Scoreboards from the screenshots of 2026-10-11 (texts and boxes as the reader returned them; no pictures)."""
 from daemon.game_state import GameTracker
-from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
+from daemon.score_watch import ScoreWatcher, find_score, find_score_card, find_score_geo
 from daemon.screen_ocr import find_clocks
 
 
@@ -108,3 +108,70 @@ EAGLES_FG = boxes([("DIRECT", 24, 80, 46), ("Hony", 30, 810, 628), ("2-2", 24, 4
 
 def test_team_code_separator_read_as_slash_or_bracket():
     assert find_score_geo(EAGLES_FG, ["7:05"]) == (14, 10)
+
+
+# ---- the full-screen score card shown after a score (Eagles-Jaguars, boxes.log 17:50:39 and 18:00:03) ------------------------------
+# No team names are read on it: 'WEEK 5', one item '14 10' (2.5x the height of the labels) and '3RD QTR'. A clock may be beside it.
+CARD = boxes([("bein spoRTs", 36, 121, 93), ("WEEK 5", 36, 465, 997), ("14 10", 90, 405, 1065), ("3RD QTR", 36, 403, 1189)])
+CARD_CLOCK = boxes([("DIRECI", 28, 114, 66), ("25", 187, 1088, 763), ("WEEK 5", 36, 465, 997), ("14 10", 90, 403, 1065),
+                    ("3RD QTR", 36, 403, 1189), ("9,39", 36, 577, 1187)])
+
+
+def watch(readings, w=None, sport="american football"):
+    w = w or ScoreWatcher()
+    fired = []
+    for n, items in enumerate(readings):
+        texts = [it["text"] for it in items]
+        if w.update(texts, find_clocks(texts), float(n * 3), items, sport=sport):
+            fired.append(n)
+    return w, fired
+
+
+def test_the_score_card_is_read_as_a_score_consistent_with_the_last_scorebug():
+    w, fired = watch([EAGLES] * 5)
+    assert w._stable == (14, 7) and fired == []
+    w, fired = watch([CARD, CARD_CLOCK, CARD, CARD_CLOCK, CARD], w)
+    assert w._stable == (14, 10) and len(fired) == 1       # the field goal, found while the scorebug was hidden
+    assert w.strength == 0.6                                # +3 = field goal size
+
+
+def test_a_score_card_with_no_known_score_before_it_is_not_read():
+    w, fired = watch([CARD] * 6)
+    assert w._stable is None and fired == []
+
+
+def test_a_card_that_goes_backwards_is_not_a_score():
+    w, fired = watch([EAGLES] * 5)
+    reversed_card = boxes([("WEEK 5", 36, 465, 997), ("7 14", 90, 405, 1065), ("3RD QTR", 36, 403, 1189)])
+    w, fired = watch([reversed_card] * 6, w)
+    assert w._stable == (14, 7) and fired == []
+
+
+def test_a_card_too_far_from_the_last_score_is_not_read():
+    w, fired = watch([EAGLES] * 5)
+    far = boxes([("WEEK 5", 36, 465, 997), ("45 10", 90, 405, 1065), ("3RD QTR", 36, 403, 1189)])
+    w, fired = watch([far] * 6, w)
+    assert w._stable == (14, 7) and fired == []
+
+
+def test_a_stats_table_a_results_ticker_and_a_record_are_not_score_cards():
+    w, fired = watch([EAGLES] * 5)
+    stats = boxes([("PASSING YARDS", 36, 465, 997), ("232 129", 90, 405, 1065), ("3RD QTR", 36, 403, 1189), ("WEEK 5", 36, 465, 900)])
+    ticker = boxes([("SCORES", 36, 100, 1000), ("24 17", 90, 405, 1065), ("FINAL", 36, 403, 1189)])
+    record = boxes([("PHILADELPHIA", 36, 100, 1000), ("2-2", 90, 405, 1065), ("3RD QTR", 36, 403, 1189), ("WEEK 5", 36, 465, 997)])
+    no_quarter = boxes([("WEEK 5", 36, 465, 997), ("24 17", 90, 405, 1065), ("3:48", 36, 403, 1189)])
+    for other in (stats, ticker, record, no_quarter):
+        assert find_score_card(other, [], (14, 7)) is None
+        w, fired = watch([other] * 6, w)
+        assert fired == []
+
+
+def test_a_normal_scorebug_is_still_read_first():
+    w, fired = watch([EAGLES] * 5)
+    assert w._stable == (14, 7)
+
+
+
+def test_team_code_separator_read_as_a_brace():
+    items = [dict(i, text=i["text"].replace("JAX]", "JAX}")) for i in EAGLES_FG]   # 'JAX} 10' at 18:00:00
+    assert find_score_geo(items, ["7:05"]) == (14, 10)
