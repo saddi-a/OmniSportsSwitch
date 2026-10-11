@@ -79,8 +79,8 @@ class Config:
     classifier_target_rms: float = 0.0  # >0: each stream's sound is scaled so its normal loudness equals this before the sound classifier hears it (0 = off)
     speech_interval_s: float = 6.0       # the commentary listener (measuring only) transcribes each stream this often; 0 = off (needs a restart to load)
     speech_window_s: float = 8.0         # ...the last this many seconds of its sound
-    semantic_min_sim: float = 0.75       # semantic reading (measuring only): a piece of commentary this similar to the high / mid reference phrases counts...
-    semantic_mid_sim: float = 0.80       # ...mid level: stricter, no true mid example seen yet
+    semantic_min_sim: float = 0.85       # semantic reading (measuring only): a piece of commentary this similar to the high / mid reference phrases counts...
+    semantic_mid_sim: float = 0.99       # ...mid level: effectively off (0 of 5 mid alarms were true in Como-Roma)
     semantic_margin: float = 0.10        # ...and must beat its similarity to ordinary match talk by this much
     speech_cue_cooldown_s: float = 20.0  # the same cue on the same stream is logged at most this often
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this

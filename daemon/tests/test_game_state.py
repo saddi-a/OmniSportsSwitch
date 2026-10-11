@@ -779,3 +779,44 @@ def test_the_cue_thresholds_are_settings():
     assert cues_over(g, 0, ["+35 YDS"] + SCORE, "8:41") == []
     g = GameTracker("football", Config(anticipation_cooldown_s=5.0))
     assert len(cues_over(g, 0, ["CORNER"] + SCORE, "30:00", readings=8)) == 3   # cooldown 5 s: at 2, 8 and 14 s
+
+
+# ---- a graphic over the scoreboard (substitution banner) must not turn the running game clock into an "ad countdown" ----
+# Live log, Como-Roma 14:23:35 to 14:23:43 (a false break for 8 s): the team codes and the score were hidden for two readings.
+
+def overlay_run(g, readings):
+    return [g.update(t, list(texts), [clock]) for t, clock, texts in readings]
+
+
+def test_a_running_clock_under_a_substitution_graphic_stays_live():
+    g = GameTracker("football")
+    readings = [(0.0, "89:02", ["89.02", "COM", "0-0", "ROM", "ZN"]),
+                (2.5, "89:05", ["89.05", "COM", "0-0", "ROM", "STORE", "TARS", "POKERSTARS NEWS"]),
+                (5.3, "89:07", ["89.07", "NO MORE SUBS AVAILABLE", "POKERSTARSs", "PCKERSTARS"]),
+                (7.7, "89:10", ["DA", "89.10", "NO MORE SUBS AVAILABLE", "POKERS", "Ars", "POKERS"]),
+                (10.3, "89:12", ["Tars", "89.12", "COM", "0-0", "ROM", "POKERSTARS NEWS"])]
+    assert overlay_run(g, readings) == ["live"] * 5
+    assert g.on_ad is False
+
+
+def test_a_stopped_clock_under_a_graphic_stays_live_in_american_football():
+    g = GameTracker("American football")
+    readings = [(0.0, "8:41", ["8:41", "TEXAS", "7", "14", "OKLAHOMA", "2nd & 4"])] + \
+               [(3.0 * i, "8:41", ["8:41", "PLAYER OF THE GAME"]) for i in range(1, 5)]
+    assert overlay_run(g, readings) == ["live"] * 5
+
+
+def test_an_unrelated_countdown_right_after_the_scoreboard_is_still_an_ad():
+    g = GameTracker("football")
+    g.update(0.0, ["89.02", "COM", "0-0", "ROM"], ["89:02"])
+    states = [g.update(2.5 + 2.5 * i, [c], [c]) for i, c in enumerate(("2:27", "2:25", "2:22"))]
+    assert states[-1] == "break" and g.on_ad
+
+
+def test_a_countdown_that_only_happens_to_match_does_not_hold_for_long():
+    g = GameTracker("American football")
+    g.update(0.0, ["TEXAS", "7", "14", "OKLAHOMA", "2nd & 4", "3:10"], ["3:10"])
+    for i in range(1, 9):                       # the same clock keeps running down for 40 s with no scoreboard: an ad after all
+        c = f"3:{10 - 5 * i:02d}" if 10 - 5 * i >= 0 else f"2:{60 + 10 - 5 * i:02d}"
+        g.update(5.0 * i, [c], [c])
+    assert g.on_ad
