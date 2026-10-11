@@ -1,0 +1,849 @@
+{
+ "header": {
+  "id": "401872980"
+ },
+ "drives": {
+  "previous": [
+   {
+    "id": "4018729801",
+    "plays": [
+     {
+      "id": "40187298040",
+      "text": "C.McLaughlin kicks 62 yards from TB 35 to DAL 3. K.Turpin pushed ob at DAL 30 for 27 yards (C.Rozeboom).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "15:00"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:15:54Z",
+      "type": {
+       "text": "Kickoff"
+      },
+      "statYardage": 27
+     },
+     {
+      "id": "40187298068",
+      "text": "D.Prescott pass incomplete short middle to B.Spann-Ford (C.Rozeboom).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "14:54"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:16:31Z",
+      "type": {
+       "text": "Pass Incompletion"
+      },
+      "statYardage": 0
+     },
+     {
+      "id": "40187298091",
+      "text": "(Shotgun) D.Prescott pass short middle to J.Williams to DAL 38 for 8 yards (J.Trotter).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "14:48"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:17:06Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 8
+     },
+     {
+      "id": "401872980116",
+      "text": "(Shotgun) D.Prescott pass short left to G.Pickens to DAL 46 for 8 yards (J.Parrish).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "14:15"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:17:39Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 8
+     },
+     {
+      "id": "401872980141",
+      "text": "(No Huddle, Shotgun) J.Williams up the middle to 50 for 4 yards (J.Trotter; R.Bain).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "13:53"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:18:03Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 4
+     },
+     {
+      "id": "401872980163",
+      "text": "J.Williams up the middle to TB 29 for 21 yards (T.Smith).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "13:19"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:18:38Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 21
+     },
+     {
+      "id": "401872980185",
+      "text": "D.Prescott pass deep middle to G.Pickens to TB 8 for 21 yards (J.Parrish).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "12:41"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:19:16Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 21
+     },
+     {
+      "id": "401872980210",
+      "text": "J.Williams left tackle to TB 7 for 1 yard (Y.Diaby; E.Simmons).PENALTY on TB-D.Walker, Defensive Offside, 4 yards, enforced at TB 8 - No Play.",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "11:56"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:20:01Z",
+      "type": {
+       "text": "Penalty"
+      },
+      "statYardage": 4
+     },
+     {
+      "id": "401872980243",
+      "text": "(Shotgun) J.Williams up the middle to TB 4 for no gain (D.Walker; A.Robinson).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "11:37"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:20:52Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 0
+     },
+     {
+      "id": "401872980265",
+      "text": "(Shotgun) D.Prescott pass incomplete short middle to J.Ferguson.PENALTY on TB-Z.McCollum, Defensive Pass Interference, 3 yards, enforced at TB 4 - No Play.",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "11:02"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:21:27Z",
+      "type": {
+       "text": "Penalty"
+      },
+      "statYardage": 3
+     },
+     {
+      "id": "401872980299",
+      "text": "D.Prescott pass incomplete short left to G.Pickens (J.Parrish).",
+      "awayScore": 0,
+      "homeScore": 0,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "10:58"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:22:11Z",
+      "type": {
+       "text": "Pass Incompletion"
+      },
+      "statYardage": 0
+     },
+     {
+      "id": "401872980322",
+      "text": "J.Williams up the middle for 1 yard, TOUCHDOWN. B.Aubrey extra point is GOOD, Center-T.Sieg, Holder-B.Anger.",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "10:51"
+      },
+      "scoringPlay": true,
+      "wallclock": "2026-10-09T00:22:49Z",
+      "type": {
+       "text": "Rushing Touchdown"
+      },
+      "statYardage": 1
+     }
+    ]
+   },
+   {
+    "id": "4018729802",
+    "plays": [
+     {
+      "id": "401872980360",
+      "text": "B.Aubrey kicks 55 yards from DAL 35 to TB 10. K.Johnson to TB 27 for 17 yards (J.Thomas; B.Spann-Ford).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "10:51"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:26:36Z",
+      "type": {
+       "text": "Kickoff"
+      },
+      "statYardage": 17
+     },
+     {
+      "id": "401872980390",
+      "text": "J.Daniels pass short left to E.Egbuka pushed ob at TB 30 for 3 yards (R.Steward).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "10:44"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:27:18Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 3
+     },
+     {
+      "id": "401872980420",
+      "text": "C.Godwin right tackle to TB 33 for 3 yards (D.Winters; D.Ezeiruaku).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "10:12"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:27:58Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 3
+     },
+     {
+      "id": "401872980442",
+      "text": "(Shotgun) J.Daniels scrambles right end to TB 38 for 5 yards (D.Winters).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "9:33"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:28:37Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 5
+     },
+     {
+      "id": "401872980474",
+      "text": "J.Daniels pass short middle to C.Otton to TB 48 for 10 yards (D.Winters).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "8:48"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:29:23Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 10
+     },
+     {
+      "id": "401872980499",
+      "text": "B.Irving left tackle to 50 for 2 yards (J.Barham; M.Hooker).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "8:06"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:30:03Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 2
+     },
+     {
+      "id": "401872980521",
+      "text": "(Shotgun) J.Daniels scrambles up the middle to DAL 44 for 6 yards (D.Winters).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "7:22"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:30:49Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 6
+     },
+     {
+      "id": "401872980543",
+      "text": "(Shotgun) J.Daniels pass short right to C.Otton to DAL 40 for 4 yards (R.Steward).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "6:38"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:31:33Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 4
+     },
+     {
+      "id": "401872980568",
+      "text": "B.Irving right guard to DAL 38 for 2 yards (J.Barham; J.Barron).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "5:50"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:32:20Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 2
+     },
+     {
+      "id": "401872980590",
+      "text": "(Shotgun) J.Daniels pass short left to E.Egbuka to DAL 35 for 3 yards (M.Hooker).",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "5:08"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:33:02Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 3
+     },
+     {
+      "id": "401872980615",
+      "text": "(Shotgun) J.Daniels sacked at DAL 47 for -12 yards (S.James).PENALTY on DAL-D.Bland, Defensive Holding, 5 yards, enforced at DAL 35 - No Play.",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "4:27"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:33:43Z",
+      "type": {
+       "text": "Penalty"
+      },
+      "statYardage": 5
+     },
+     {
+      "id": "401872980646",
+      "text": "(Shotgun) J.Daniels scrambles left end pushed ob at DAL 27 for 3 yards (S.Revel).PENALTY on TB-L.Goedeke, Offensive Holding, 10 yards, enforced at DAL 30 - No Play.",
+      "awayScore": 0,
+      "homeScore": 7,
+      "period": {
+       "number": 1
+      },
+      "clock": {
+       "displayValue": "3:52"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T00:34:51Z",
+      "type": {
+       "text": "Penalty"
+      },
+      "statYardage": -10
+     }
+    ]
+   },
+   {
+    "id": "4018729809",
+    "plays": [
+     {
+      "id": "4018729801915",
+      "text": "(Shotgun) D.Prescott pass deep middle to R.Flournoy to TB 39 for 48 yards (A.Anzalone; T.Smith).",
+      "awayScore": 7,
+      "homeScore": 7,
+      "period": {
+       "number": 2
+      },
+      "clock": {
+       "displayValue": "1:52"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:31:12Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 48
+     },
+     {
+      "id": "4018729801940",
+      "text": "(No Huddle, Shotgun) D.Prescott pass short left to G.Pickens to TB 32 for 7 yards (J.Parrish).",
+      "awayScore": 7,
+      "homeScore": 7,
+      "period": {
+       "number": 2
+      },
+      "clock": {
+       "displayValue": "1:23"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:31:41Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 7
+     },
+     {
+      "id": "4018729801965",
+      "text": "(No Huddle, Shotgun) PENALTY on TB-R.Bain, Neutral Zone Infraction, 5 yards, enforced at TB 32 - No Play.",
+      "awayScore": 7,
+      "homeScore": 7,
+      "period": {
+       "number": 2
+      },
+      "clock": {
+       "displayValue": "0:58"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:32:07Z",
+      "type": {
+       "text": "Penalty"
+      },
+      "statYardage": 5
+     },
+     {
+      "id": "4018729801989",
+      "text": "(Shotgun) D.Prescott pass incomplete short right to J.Ferguson.",
+      "awayScore": 7,
+      "homeScore": 7,
+      "period": {
+       "number": 2
+      },
+      "clock": {
+       "displayValue": "0:58"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:32:57Z",
+      "type": {
+       "text": "Pass Incompletion"
+      },
+      "statYardage": 0
+     },
+     {
+      "id": "4018729802012",
+      "text": "(Shotgun) D.Prescott pass short right to C.Lamb to TB 23 for 4 yards (K.Scott) [T.Smith].",
+      "awayScore": 7,
+      "homeScore": 7,
+      "period": {
+       "number": 2
+      },
+      "clock": {
+       "displayValue": "0:54"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:33:39Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 4
+     },
+     {
+      "id": "4018729802037",
+      "text": "(No Huddle, Shotgun) D.Prescott pass incomplete short middle to J.Williams [D.Walker].",
+      "awayScore": 7,
+      "homeScore": 7,
+      "period": {
+       "number": 2
+      },
+      "clock": {
+       "displayValue": "0:30"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:34:03Z",
+      "type": {
+       "text": "Pass Incompletion"
+      },
+      "statYardage": 0
+     },
+     {
+      "id": "4018729802060",
+      "text": "B.Aubrey 41 yard field goal is GOOD, Center-T.Sieg, Holder-B.Anger.",
+      "awayScore": 7,
+      "homeScore": 10,
+      "period": {
+       "number": 2
+      },
+      "clock": {
+       "displayValue": "0:21"
+      },
+      "scoringPlay": true,
+      "wallclock": "2026-10-09T01:34:45Z",
+      "type": {
+       "text": "Field Goal Good"
+      },
+      "statYardage": 41
+     }
+    ]
+   },
+   {
+    "id": "40187298011",
+    "plays": [
+     {
+      "id": "4018729802208",
+      "text": "B.Aubrey kicks 56 yards from DAL 35 to TB 9. K.Johnson to TB 26 for 17 yards (C.Downs).PENALTY on TB-B.Sharp, Offensive Holding, 10 yards, enforced at TB 24.",
+      "awayScore": 7,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "15:00"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:53:55Z",
+      "type": {
+       "text": "Kickoff"
+      },
+      "statYardage": -8
+     },
+     {
+      "id": "4018729802242",
+      "text": "B.Irving left tackle pushed ob at DAL 14 for 72 yards (C.Downs).",
+      "awayScore": 7,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "14:54"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:55:09Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 72
+     },
+     {
+      "id": "4018729802269",
+      "text": "E.Egbuka left end for 14 yards, TOUCHDOWN. C.McLaughlin extra point is GOOD, Center-E.Deckers, Holder-R.Dixon.",
+      "awayScore": 14,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "14:00"
+      },
+      "scoringPlay": true,
+      "wallclock": "2026-10-09T01:56:06Z",
+      "type": {
+       "text": "Rushing Touchdown"
+      },
+      "statYardage": 14
+     },
+     {
+      "id": "4018729802300",
+      "text": "Official Timeout at 14:00.",
+      "awayScore": 14,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "14:00"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T01:57:00Z",
+      "type": {
+       "text": "Official Timeout"
+      },
+      "statYardage": 0
+     }
+    ]
+   },
+   {
+    "id": "40187298013",
+    "plays": [
+     {
+      "id": "4018729802493",
+      "text": "B.Irving left guard to TB 31 for 6 yards (M.Hooker).PENALTY on TB-G.Barton, Offensive Holding, 10 yards, enforced at TB 25 - No Play.",
+      "awayScore": 14,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "10:43"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T02:07:07Z",
+      "type": {
+       "text": "Penalty"
+      },
+      "statYardage": -10
+     },
+     {
+      "id": "4018729802533",
+      "text": "(Shotgun) K.Gainwell left guard to TB 21 for 6 yards (K.Clark; R.Gary).",
+      "awayScore": 14,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "10:17"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T02:07:58Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 6
+     },
+     {
+      "id": "4018729802555",
+      "text": "(Shotgun) J.Daniels pass deep right to T.Johnson pushed ob at DAL 15 for 64 yards (M.Hooker).",
+      "awayScore": 14,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "9:36"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T02:08:39Z",
+      "type": {
+       "text": "Pass Reception"
+      },
+      "statYardage": 64
+     },
+     {
+      "id": "4018729802585",
+      "text": "B.Irving right tackle to DAL 6 for 9 yards (A.Speed; R.Gary).",
+      "awayScore": 14,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "8:56"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T02:09:31Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 9
+     },
+     {
+      "id": "4018729802607",
+      "text": "B.Irving left guard to DAL 1 for 5 yards (D.Ezeiruaku; J.Barham).",
+      "awayScore": 14,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "8:13"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T02:10:14Z",
+      "type": {
+       "text": "Rush"
+      },
+      "statYardage": 5
+     },
+     {
+      "id": "4018729802629",
+      "text": "B.Irving left guard for 1 yard, TOUCHDOWN. C.McLaughlin extra point is GOOD, Center-E.Deckers, Holder-R.Dixon.",
+      "awayScore": 21,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "7:31"
+      },
+      "scoringPlay": true,
+      "wallclock": "2026-10-09T02:10:53Z",
+      "type": {
+       "text": "Rushing Touchdown"
+      },
+      "statYardage": 1
+     },
+     {
+      "id": "4018729802660",
+      "text": "Official Timeout at 07:31.",
+      "awayScore": 21,
+      "homeScore": 10,
+      "period": {
+       "number": 3
+      },
+      "clock": {
+       "displayValue": "7:31"
+      },
+      "scoringPlay": false,
+      "wallclock": "2026-10-09T02:11:47Z",
+      "type": {
+       "text": "Official Timeout"
+      },
+      "statYardage": 0
+     }
+    ]
+   }
+  ]
+ },
+ "scoringPlays": [
+  {
+   "id": "401872980322",
+   "type": {
+    "text": "Rushing Touchdown"
+   },
+   "text": "Javonte Williams 1 Yd Rush (Brandon Aubrey Kick)",
+   "awayScore": 0,
+   "homeScore": 7,
+   "period": {
+    "number": 1
+   },
+   "clock": {
+    "value": 651.0,
+    "displayValue": "10:51"
+   },
+   "team": {
+    "id": "6"
+   }
+  },
+  {
+   "id": "401872980889",
+   "type": {
+    "text": "Passing Touchdown"
+   },
+   "text": "Bucky Irving 5 Yd pass from Jalon Daniels (Chase McLaughlin Kick)",
+   "awayScore": 7,
+   "homeScore": 7,
+   "period": {
+    "number": 2
+   },
+   "clock": {
+    "value": 893.0,
+    "displayValue": "14:53"
+   },
+   "team": {
+    "id": "27"
+   }
+  },
+  {
+   "id": "4018729802060",
+   "type": {
+    "text": "Field Goal Good"
+   },
+   "text": "Brandon Aubrey 41 Yd Field Goal",
+   "awayScore": 7,
+   "homeScore": 10,
+   "period": {
+    "number": 2
+   },
+   "clock": {
+    "value": 21.0,
+    "displayValue": "0:21"
+   },
+   "team": {
+    "id": "6"
+   }
+  }
+ ]
+}

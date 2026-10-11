@@ -154,6 +154,12 @@ LAYOUT = [
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
         ("scoring.ad_penalty", "Ad penalty", "An ad in the picture scores minus this (music-only ads: half of it)."),
     ]),
+    ("Outside game data (measuring only)", [
+        ("scoring.feed_mode", "Game data mode (0 = off, 1 = record)", "0 = local only: nothing is asked from the internet. 1 = record only: ESPN's public scoreboards are read and written to logs/feed, nothing else changes. Needs a daemon restart."),
+        ("scoring.feed_poll_s", "Live league every (s)", "A league with a live game is asked this often (5 s at the least: the feed refreshes its cache every 5 s)."),
+        ("scoring.feed_idle_poll_s", "Quiet league every (s)", "A league with no live game and none starting soon is asked this often."),
+        ("scoring.feed_summary_s", "Football plays every (s, 0 = off)", "American football: the plays of each live game are fetched this often."),
+    ]),
     ("Manual control", [
         ("scoring.manual_hold_s", "Hold time for Make Main (s)", "How long a stream you put on Main with the popup button stays there."),
         ("scoring.hold_over_s", "Game over ends a hold after (s)", "A held stream whose game has looked over for this long loses its hold. The automatic game-over reading is sometimes wrong, so it must last."),

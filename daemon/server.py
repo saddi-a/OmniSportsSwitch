@@ -18,6 +18,7 @@ Daemon -> extension:
   {"type": "swap", "promote": 12, "demote": 7}
 """
 import asyncio
+import datetime
 import json
 import logging
 import struct
@@ -28,6 +29,8 @@ from websockets.asyncio.server import serve
 
 from daemon.arrange import plan_fix, plan_swap
 from daemon.favourites import match_multiplier, match_slots
+from daemon.feed import FeedRecorder, FeedSession
+from daemon.logsetup import LOG_DIR
 from daemon.leverage import tab_leverage
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
@@ -76,6 +79,7 @@ class Server:
         self.speech_buffers: dict[int, np.ndarray] = {}   # tab id -> last speech_window_s seconds of audio
         self.speech_cue_at: dict[tuple[int, str], float] = {}  # (tab, cue) -> when it was last logged
         self.settings = settings  # daemon.settings.Settings; the popup edits it live
+        self.feed: FeedSession | None = None   # outside game data (measuring only); started by run() when feed_mode > 0
         self.ui_clients = set()   # sockets of the popup: they get settings replies, not arrange commands
         self.classifier = classifier
         self.screen_reader = screen_reader
@@ -290,6 +294,24 @@ class Server:
                 crowd = float(max(p[idx[name]] for name in CROWD_CLASSES))
                 shout = float(max(p[idx[name]] for name in SHOUT_CLASSES))
                 self.scorer.set_tags(tab_id, crowd, float(p[idx["Speech"]]), float(p[idx["Music"]]), now, shout=shout)
+
+    async def _feed_loop(self) -> None:
+        """Measuring only: record ESPN's public scoreboards (and football plays) to logs/feed and log what changes."""
+        if self.feed is None:
+            self.feed = FeedSession(self.scorer.config, FeedRecorder(LOG_DIR / "feed"))
+        while True:
+            await asyncio.sleep(1.0)
+            try:
+                notes = await asyncio.to_thread(self.feed.step, time.monotonic(), datetime.datetime.now().astimezone())
+            except Exception as e:   # the feed must never hurt the daemon
+                log.warning("feed step failed: %s: %s", type(e).__name__, e)
+                continue
+            for message in self.feed.messages:
+                log.warning("%s", message)
+            self.feed.messages.clear()
+            for n in notes:
+                log.info("feed %s %s %s [%s] %s", n.kind, n.snap.league, n.snap.label, n.snap.display or n.snap.status,
+                         f"{n.event.kind} {n.event.display} {n.event.team}: {n.event.text}" if n.event else n.text)
 
     async def _speech_loop(self) -> None:
         """Measuring only: write down what the commentators say, and which cues (penalty, corner, red zone...) it holds."""
@@ -589,6 +611,8 @@ class Server:
                 loops.append(self._ocr_loop())
             if self.speech is not None:
                 loops.append(self._speech_loop())
+            if self.scorer.config.feed_mode > 0:   # needs a restart; mode 0 starts nothing
+                loops.append(self._feed_loop())
             await asyncio.gather(*loops)
 
 
