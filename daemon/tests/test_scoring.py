@@ -1,6 +1,6 @@
 import pytest
 
-from daemon.scoring import Config, Scorer
+from daemon.scoring import Config, Scorer, Weights
 
 
 def steady(scorer, tab_id, level, start, seconds, step=0.5):
@@ -997,3 +997,35 @@ def test_replay_does_not_dampen_a_score_event():
     s.set_event(2, t)
     s.set_replay(2, True)
     assert s.components(2, t)["event"] == pytest.approx(1.0)
+
+
+# ---- shouting (Shout / Yell / Screaming classes): a small positive signal, never from music-dominated sound ------
+
+def test_shouting_adds_its_weight_and_defaults_to_off():
+    assert Config().weights.shout == 0.0          # shipped off until it has been seen on live games
+    s = make(weights=Weights(shout=0.3))
+    warm_up(s)
+    t = roar(s, 2, 60, crowd=0.0)
+    quiet = s.components(2, t)["score"]
+    s.set_tags(2, 0.0, 0.1, 0.0, t, shout=0.5)
+    assert s.components(2, t)["score"] == pytest.approx(quiet + 0.3 * 0.5)
+    assert s.components(2, t)["shout"] == 0.5
+
+
+def test_shouting_over_music_is_ignored():
+    s = make(weights=Weights(shout=0.3))
+    warm_up(s)
+    t = roar(s, 2, 60, crowd=0.0, music=0.2)
+    s.set_tags(2, 0.0, 0.1, 0.2, t, shout=0.0)
+    base = s.components(2, t)["score"]
+    s.set_tags(2, 0.0, 0.1, 0.2, t, shout=0.6)
+    assert s.components(2, t)["score"] > base
+    s.set_tags(2, 0.0, 0.1, 0.8, t, shout=0.6)       # an ad: yelling voices over music
+    assert s.components(2, t)["shout"] == 0.0
+
+
+def test_set_tags_without_shout_still_works():
+    s = make(weights=Weights(shout=0.3))
+    warm_up(s)
+    t = roar(s, 2, 60)
+    assert s.components(2, t)["shout"] == 0.0

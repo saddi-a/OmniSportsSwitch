@@ -15,6 +15,7 @@ import math
 from collections import deque
 from dataclasses import dataclass, field
 
+SHOUT_CLASSES = ["Shout", "Yell", "Screaming"]   # AudioSet classes whose strongest probability is the `shout` tag
 MIN_BASELINE = 0.002  # floor so near-silence cannot make the surge explode
 STATUS_MULT = {"live": 1.0, "break": 0.25, "over": 0.0}  # how much a stream counts in each game state
 
@@ -26,6 +27,7 @@ class Weights:
     speech: float = -0.2
     music: float = -0.5
     event: float = 0.8    # a fresh score change (goal, touchdown) read from the picture
+    shout: float = 0.0    # shouting / yelling (not commentary); off until it has been checked on live games
     favourite: float = 0.4  # steady bonus per +1 of a favourite team's multiplier (x2 favourite = +0.4)
 
 
@@ -82,6 +84,7 @@ class _Stream:
     last_sample: float | None = None
     tags: tuple[float, float, float] = (0.0, 0.0, 0.0)  # crowd, speech, music
     tags_at: float = float("-inf")
+    shout: float = 0.0   # 0..1 probability of shouting / yelling / screaming
     event_at: float = float("-inf")  # when a score change was last seen
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
     on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
@@ -148,10 +151,10 @@ class Scorer:
         stream = self.streams.get(tab_id)
         return None if stream is None else stream.baseline
 
-    def set_tags(self, tab_id: int, crowd: float, speech: float, music: float, now: float) -> None:
+    def set_tags(self, tab_id: int, crowd: float, speech: float, music: float, now: float, shout: float = 0.0) -> None:
         stream = self.streams.get(tab_id)
         if stream is not None:
-            stream.tags, stream.tags_at = (crowd, speech, music), now
+            stream.tags, stream.tags_at, stream.shout = (crowd, speech, music), now, shout
             stream.music_hits.append(music >= self.config.idle_music and crowd < 0.1
                                          and music - speech >= self.config.audio_ad_margin)
             del stream.music_hits[: -int(self.config.audio_ad_window)]
@@ -212,12 +215,13 @@ class Scorer:
         surge = min(max(level / max(stream.baseline, MIN_BASELINE) - 1.0, 0.0), cfg.surge_cap)
         fresh = now - stream.tags_at <= cfg.stale_s
         crowd, speech, music = stream.tags if fresh else (0.0, 0.0, 0.0)
+        shout = stream.shout if fresh and music < cfg.idle_music else 0.0   # yelling voices over music are an ad, not excitement
         if stream.replay:   # the cheering on a replay belongs to the play that was already counted
             crowd, surge = crowd * cfg.replay_dampen, surge * cfg.replay_dampen
 
         event = max(0.0, 1.0 - (now - stream.event_at) / cfg.event_s)
         w = cfg.weights
-        excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.event * event)
+        excitement = max(0.0, w.surge * surge + w.crowd * crowd + w.speech * speech + w.music * music + w.shout * shout + w.event * event)
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
         raw += cfg.leverage_weight * stream.leverage                 # a late close game is worth more, a late blowout less
         status = stream.override or stream.auto_state
@@ -228,7 +232,7 @@ class Scorer:
         elif audio_ad:
             score = -cfg.ad_penalty / 2         # music-dominated sound without a crowd: probably an ad too
         return {"score": score, "ad": stream.on_ad or audio_ad, "surge": surge, "crowd": crowd,
-                "speech": speech, "music": music, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
+                "speech": speech, "music": music, "shout": shout, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
 
     def score(self, tab_id: int, now: float) -> float | None:
         c = self.components(tab_id, now)
