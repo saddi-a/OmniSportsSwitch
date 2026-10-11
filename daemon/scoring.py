@@ -92,6 +92,7 @@ class Config:
     scorebug_memory_s: float = 60.0  # ...if it was seen within this long before; a later first sight of the gap is stale and not logged
     replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
+    held_change_s: float = 30.0  # a score change read while the game looked like a break is kept this long and counts if the game is live again (0 = drop it at once)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
     audio_ad_margin: float = 0.15  # ...and music must exceed speech by this much (stadium music under commentary is not an ad)
     audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...

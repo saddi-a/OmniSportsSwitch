@@ -160,6 +160,7 @@ LAYOUT = [
         ("scoring.replay_clock_max_s", "Replay clock step, largest (s)", "The largest step back that counts; more than that is you rewinding the stream."),
         ("scoring.replay_dampen", "Replay dampening", "While a replay is on screen over a live game, crowd noise and loudness count this fraction (0 = ignored, 1 = same as live)."),
         ("scoring.recent_ad_s", "No hopping between ads (s)", "MAIN is not handed to a stream that was showing an ad this recently."),
+        ("scoring.held_change_s", "Keep a score change in a break (s, 0 = drop)", "A score change read while the game looked like a break (a wrong break reading right after a touchdown) is kept this long and counts if the game is live again. Results tickers stay ignored."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
         ("scoring.ad_penalty", "Ad penalty", "An ad in the picture scores minus this (music-only ads: half of it)."),

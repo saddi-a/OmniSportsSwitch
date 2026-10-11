@@ -117,6 +117,7 @@ class Server:
         self.tab_titles: dict[int, str] = {}   # tab id -> page title sent by the extension (league words are weak evidence of the sport)
         self.goal_watch = GoalPhraseWatch()   # a goal phrase heard near a loud surge (measuring only)
         self.fed: dict[tuple[int, int], float] = {}   # (tab, tile) -> when a feed goal was counted there
+        self.held_change: dict[tuple[int, int], tuple[float, float]] = {}   # (tab, tile) -> (strength, when): a score change read while the game looked like a break
         self.unconfirmed: dict[tuple[int, int], tuple[float, float]] = {}   # (tab, tile) -> (full strength, when): OCR score changes the feed has not confirmed
         self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
@@ -590,9 +591,21 @@ class Server:
             if per_tab[tab_id][-1] == "over":   # measuring only: a feed goal the screen never showed, at the end of the game
                 for line in self.feed_gate.game_over(tab_id, index, now):
                     log.info("%s", line)
+            held = self.held_change.get((tab_id, index))
+            if held is not None and now - held[1] > self.scorer.config.held_change_s:
+                del self.held_change[(tab_id, index)]
+                held = None
             if changed and per_tab[tab_id][-1] != "live":
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
+                if self.scorer.config.held_change_s > 0 and per_tab[tab_id][-1] == "break":   # kept (not for "over": a finished game): a wrong break reading right after a touchdown must not lose it
+                    self.held_change[(tab_id, index)] = (watcher.strength, now)
+            elif held is not None and not changed and per_tab[tab_id][-1] == "live":   # the game is live again: the held change counts now
+                del self.held_change[(tab_id, index)]
+                self.event_at[(tab_id, index)] = now - (1.0 - held[0]) * self.scorer.config.event_s
+                self.scorer.set_event(tab_id, now, held[0])
+                log.info("score change tab %s tile %s counted late: it was read %.0f s ago while the game looked like a break", tab_id, index, now - held[1])
             elif changed:
+                self.held_change.pop((tab_id, index), None)
                 change = self.feed_gate.real_change(tab_id, index, now)
                 for line in change.lines:
                     log.info("%s", line)

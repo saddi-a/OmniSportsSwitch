@@ -329,6 +329,31 @@ def test_a_score_change_is_ignored_while_the_game_is_on_a_break():
     assert (13, 0) not in server.event_at
 
 
+def _break_then_live(back_after_s):
+    server = Server(Scorer(Config(warmup_s=0)))
+    server.handle_message({"type": "register", "tab_id": 13})
+    board = lambda a, extra=(): {(13, 0): {"texts": ["HOUSTON", str(a), "K-STATE", "3", *extra], "clocks": []}}
+    for i in range(5):
+        server._update_game_states(board(7), 100.0 + i * 3)
+    for i in range(5):                                                   # the score changes while a wrong break reading is up
+        server._update_game_states(board(10, ["COMMERCIAL BREAK IN PROGRESS"]), 120.0 + i * 3)
+    assert (13, 0) not in server.event_at
+    start = 120.0 + 4 * 3 + back_after_s
+    for i in range(6):                                                   # the game looks live again
+        server._update_game_states(board(10), start + i * 2)
+    return server
+
+
+def test_a_score_change_read_in_a_wrong_break_counts_when_the_game_is_live_again():
+    server = _break_then_live(8.0)
+    assert (13, 0) in server.event_at
+
+
+def test_a_score_change_read_in_a_break_is_dropped_when_the_game_is_live_much_later():
+    server = _break_then_live(60.0)
+    assert (13, 0) not in server.event_at
+
+
 def test_make_main_from_the_popup_arranges_the_windows_and_reports_the_hold():
     server = Server(scorer=Scorer(Config(confirm_s=0.0)))
     sent = []
