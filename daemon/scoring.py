@@ -104,6 +104,7 @@ class Config:
     feed_summary_s: float = 10.0    # American football: the plays of each live game (up to 6) are fetched this often; 0 = off
     feed_unconfirmed_factor: float = 0.5   # BOTH mode: a score change read by OCR on a mapped game that no feed event preceded counts this much until the feed confirms it (1.0 = off)
     feed_confirm_s: float = 30.0    # ...and the feed has this long after the OCR change to confirm it
+    feed_event_weight: float = 0.0  # a feed goal/touchdown on a mapped game counts this much of its strength in the scorer (0 = shadow: only logged)
     feed_lead_s: float = 10.0       # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
 
 
