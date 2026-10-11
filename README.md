@@ -22,6 +22,7 @@ What the daemon looks at:
 - **Game state**: live, break, or over, from the clock, the scoreboard (down and distance, quarter, overtime), captions such as FINAL or HALF TIME, and the picture.
 - **Commercials**: a stream on an ad (a placeholder in the picture, an ad countdown, or music-only sound) gets a negative score and is never promoted. A stream in `Main` that shows an ad is replaced by a live one.
 - **Closeness and time left**: a late, close game is worth more than a blowout.
+- **Replays and event size**: a replay inside a live game does not count its old cheers twice (and its graphics never count as a new score); in American football a touchdown is a full event, a field goal or safety a smaller one, and an extra point right after a touchdown none. Optional, off by default: levelling each stream's sound before the crowd detector hears it, and a small bonus for shouting (both in Settings).
 - **Your preferences**: favourite teams (kept on Main unless something exciting happens elsewhere), per-sport weights, per-tab weights, and windows a team or tab may or may not use.
 
 Other features: freeze Main with a hotkey, **Make Main** to force a stream there for a while, DAZN multiview support (it clicks the right tile), window names remembered across restarts, sport detected from the picture, close and late games valued above blowouts, every setting editable in the popup, permanent logs.
