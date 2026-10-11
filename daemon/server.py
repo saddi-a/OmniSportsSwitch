@@ -41,6 +41,7 @@ from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
+from daemon.cues import SpeechMemory, cue_weight
 from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer
 
@@ -106,6 +107,7 @@ class Server:
         self.event_at: dict[tuple[int, int], float] = {}        # (tab id, video index) -> last score change
         self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
+        self.cue_speech = SpeechMemory(self.scorer.config.cue_speech_window_s)   # review subjects the commentary named lately, per tab
         self.sport_memory = SportMemory(LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
@@ -353,10 +355,18 @@ class Server:
                         self.speech_cue_at[(tab_id, "semantic " + tier)] = now
                         log.info("semantic %s tab %s: high=%.2f mid=%.2f low=%.2f best='%s' piece='%s'", tier, tab_id, match["high"],
                                  match["mid"], match["low"], match["phrase"], match["piece"])
-                for cue in find_speech_cues(text):
+                cues = find_speech_cues(text)
+                self.cue_speech.window_s = cfg.cue_speech_window_s
+                self.cue_speech.record(tab_id, cues, text, self._tab_sport(tab_id), now)
+                for cue in cues:
                     if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= cfg.speech_cue_cooldown_s:
                         self.speech_cue_at[(tab_id, cue)] = now
                         log.info("speech cue %s tab %s: %s", cue, tab_id, text)
+
+    def _tab_sport(self, tab_id: int) -> str | None:
+        """The sport of a tab, lowercase: the popup choice, else the first one detected on any of its tiles."""
+        sport = self.sports.get(tab_id) or next((s for (t, _), s in self.sport_seen.items() if t == tab_id and s), None)
+        return sport.lower() if sport else None
 
     def _ocr_pass(self, jobs: list[tuple[int, int, dict]]) -> dict:
         """Runs in a worker thread: screenshot each video area and read its text."""
@@ -444,9 +454,11 @@ class Server:
             if tracker.clock_replay_note:   # measuring only unless scoring.replay_by_clock_s > 0
                 kind, secs = tracker.clock_replay_note
                 log.info("replay by clock tab %s tile %s: %s", tab_id, index, f"-{secs:.0f} s" if kind == "start" else f"ended after {secs:.0f} s")
-            for cue in tracker.anticipation:   # measuring only while weights.anticipation is 0
-                log.info("anticipation %s tab %s tile %s", cue, tab_id, index)
-                self.scorer.set_anticipation(tab_id, now)
+            for cue in tracker.anticipation:
+                banner = tracker.anticipation_text.get(cue, cue)
+                weight = cue_weight(cue, banner, self.cue_speech.tier(tab_id, now), tracker.sport or None, self.scorer.config.weights)
+                log.info("anticipation %s tab %s tile %s weight %.2f", cue, tab_id, index, weight)
+                self.scorer.set_anticipation(tab_id, now, weight)
             ads.setdefault(tab_id, []).append(tracker.on_ad)
             if tracker.big_play:
                 strength = self.scorer.config.big_play_strength
