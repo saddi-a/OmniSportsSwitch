@@ -29,10 +29,11 @@ from websockets.asyncio.server import serve
 
 from daemon.arrange import plan_fix, plan_swap
 from daemon.favourites import match_multiplier, match_slots
-from daemon.feed import FeedRecorder, FeedSession
+from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
 from daemon.feed_map import FeedMapper
 from daemon.logsetup import LOG_DIR
+from daemon.sport_choice import choose_sport, sport_from_feed
 from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
 from daemon.game_state import GameTracker, combine
@@ -108,6 +109,7 @@ class Server:
         self.sport_detectors: dict[tuple[int, int], SportDetector] = {}  # (tab id, video index) -> sport guess
         self.sport_seen: dict[tuple[int, int], str | None] = {}          # last guess, to log changes only
         self.cue_speech = SpeechMemory(self.scorer.config.cue_speech_window_s)   # review subjects the commentary named lately, per tab
+        self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
@@ -439,11 +441,18 @@ class Server:
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
             det = self.sport_detectors[(tab_id, index)]
             now_wall = time.time()
-            if detected:   # only hard detections are remembered
-                self.sport_memory.remember(tab_id, detected, now_wall)
-            # popup choice > hard cue > league words on screen > remembered sport
-            tracker.set_sport(self.sports.get(tab_id) or detected or det.weak_sport or self.sport_memory.get(tab_id, now_wall))
+            mapping = self.feed_map.mapping(tab_id, index)
+            feed_sport = sport_from_feed(LEAGUES[mapping.league][0]) if mapping and mapping.league in LEAGUES else None
+            # popup choice > hard cue > feed league > tab title (stage C) > league words on screen > remembered sport
+            sport, source = choose_sport(popup=self.sports.get(tab_id), hard=detected, feed=feed_sport, title=None,
+                                         weak=det.weak_sport, memory=self.sport_memory.get(tab_id, now_wall))
+            tracker.set_sport(sport)
+            if source in ("hard", "feed"):   # only reliable sources are remembered
+                self.sport_memory.remember(tab_id, sport, now_wall)
             self.sport_memory.save()
+            if (sport, source) != self.sport_choice_seen.get((tab_id, index)):
+                self.sport_choice_seen[(tab_id, index)] = (sport, source)
+                log.info("sport %s tab %s tile %s via %s", sport or "unknown", tab_id, index, source or "none")
             if detected != self.sport_seen.get((tab_id, index)):
                 log.info("sport detected tab %s tile %s: %s", tab_id, index, detected or "unknown")
                 self.sport_seen[(tab_id, index)] = detected
