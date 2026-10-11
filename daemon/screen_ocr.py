@@ -46,6 +46,47 @@ def grab(rect: dict) -> np.ndarray:
     return np.asarray(shot)[:, :, [2, 1, 0]]  # BGRA -> RGB
 
 
+TEAM_CODE_RE = re.compile(r"[A-Z]{3,4}")   # a three- or four-letter team code such as LIV or MCI
+GAP_MAX = 14      # the strip between two team codes read by the gap pass is at most this many text heights wide...
+GAP_MIN = 1.5     # ...and at least this many (room for a digit)
+GAP_NO_LOGO = 3   # a gap up to this many heights has no room for a logo: two digits are the two scores
+GAP_MIN_CONFIDENCE = 0.25
+GAP_DIGIT_HEIGHT = 1.5   # the digits built from a gap reading are this many name heights tall (real score digits are taller than the names)
+
+
+def find_name_pair(items: list[dict]) -> tuple[dict, dict] | None:
+    """Two team codes on one row with room between them for the two scores ("LIV  0 [logo] 1  MCI")."""
+    names = sorted((it for it in items if (looks_like_team_name(it["text"]) or (TEAM_CODE_RE.fullmatch(it["text"]) and it["text"].casefold() not in NOT_TEAM_WORDS))
+                    and it["conf"] >= 0.5 and 14 <= it["y1"] - it["y0"] <= 90),
+                   key=lambda it: it["x0"])
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            h = max(a["y1"] - a["y0"], b["y1"] - b["y0"])
+            gap = b["x0"] - a["x1"]
+            if GAP_MIN * h <= gap <= GAP_MAX * h and abs((a["y0"] + a["y1"]) - (b["y0"] + b["y1"])) <= h:
+                return a, b
+    return None
+
+
+def gap_score_items(a: dict, b: dict, text: str, conf: float) -> list[dict] | None:
+    """The two score digits, as items, from the digits read in the strip between team codes `a` and `b`.
+    Three digits = left score, a logo read as a digit, right score ("021" = 0 and 1). Two digits are the two scores only when
+    the strip is too narrow for a logo. Anything else is not trusted (None)."""
+    if not text.isdigit() or conf < GAP_MIN_CONFIDENCE:
+        return None
+    h = max(a["y1"] - a["y0"], b["y1"] - b["y0"])
+    if len(text) == 3:
+        left, right = text[0], text[2]
+    elif len(text) == 2 and b["x0"] - a["x1"] <= GAP_NO_LOGO * h:
+        left, right = text[0], text[1]
+    else:
+        return None
+    cy, dh, w = (a["y0"] + a["y1"]) // 2, int(GAP_DIGIT_HEIGHT * h), max(2, int(0.8 * h))
+    y0, y1 = cy - dh // 2, cy + dh // 2
+    return [{"text": left, "conf": conf, "x0": a["x1"] + 2, "x1": a["x1"] + 2 + w, "y0": y0, "y1": y1},
+            {"text": right, "conf": conf, "x0": b["x0"] - 2 - w, "x1": b["x0"] - 2, "y0": y0, "y1": y1}]
+
+
 class ScreenReader:
     def __init__(self, languages=("en", "fr"), gpu: bool = True):
         import easyocr
@@ -87,6 +128,32 @@ class ScreenReader:
         found = [dict(it, x0=x0 + it["x0"] // 2, x1=x0 + it["x1"] // 2, y0=y0 + it["y0"] // 2, y1=y0 + it["y1"] // 2)
                  for it in self.read_items(big)]
         return (x0, y0, x1, y1), found
+
+    def gap_pass(self, image: np.ndarray, items: list[dict]) -> tuple[tuple[int, int, int, int], list[dict]] | None:
+        """A scorebug with the team codes at both ends and the scores between them, where the normal reading misses a digit
+        (a thin white digit on a pale panel, a logo between the scores). Re-reads only the strip between the two codes at twice
+        the size, digits only, and returns the crop and the two score digits made from it (see `gap_score_items`); None when
+        there are no two codes on a row or the strip does not read as scores."""
+        from PIL import Image
+
+        pair = find_name_pair(items)
+        if pair is None:
+            return None
+        a, b = pair
+        h = max(a["y1"] - a["y0"], b["y1"] - b["y0"])
+        height, width = image.shape[:2]
+        x0, x1, y0, y1 = a["x1"], b["x0"], max(0, a["y0"] - h // 3), min(height, a["y1"] + h // 3)
+        crop = image[y0:y1, x0:x1]
+        if crop.size == 0:
+            return None
+        big = np.asarray(Image.fromarray(crop).resize((crop.shape[1] * 2, crop.shape[0] * 2), Image.LANCZOS))
+        read = self.reader.readtext(big, detail=1, paragraph=False, allowlist="0123456789", text_threshold=0.3, low_text=0.2)
+        read = [(t.strip(), float(c)) for _, t, c in read if t.strip()]
+        for text, conf in sorted(read, key=lambda r: -r[1]):
+            found = gap_score_items(a, b, text, conf)
+            if found:
+                return (x0, y0, x1, y1), found
+        return None
 
     def read_digits_beside_names(self, image: np.ndarray, items: list[dict]) -> list[dict]:
         """A fallback for scoreboards whose big score digits the normal reading misses (white italic digits with a
