@@ -56,6 +56,8 @@ class Config:
     lev_basketball_blowout: float = 20.0
     lev_soccer_close: float = 1.0
     lev_soccer_blowout: float = 3.0
+    field_goal_strength: float = 0.6  # American football: a field goal or safety counts this much of a touchdown
+    extra_point_s: float = 30.0  # an extra point / two-point conversion this soon after a touchdown is not a new event
     replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
