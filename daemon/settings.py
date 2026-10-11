@@ -148,6 +148,7 @@ LAYOUT = [
         ("weights.crowd", "Crowd", "Weight of cheering, crowd and applause sound."),
         ("weights.speech", "Commentary", "Weight of speech (negative: talking is not excitement)."),
         ("weights.music", "Music", "Weight of music, ads and jingles (negative)."),
+        ("weights.shout", "Shouting", "Weight of shouting, yelling and screaming sound (0 = off). Ignored when music dominates, so it never helps an ad."),
         ("weights.event", "Score change", "Weight of a fresh goal or touchdown read from the scoreboard."),
         ("weights.favourite", "Favourite bonus", "Bonus per +1 of a favourite team's multiplier (a x2 team gets +0.4)."),
     ]),

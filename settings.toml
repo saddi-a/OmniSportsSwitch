@@ -48,6 +48,7 @@ crowd = 1.0          # cheering / crowd / applause sound
 speech = -0.2        # commentary (negative: talking is not excitement)
 music = -0.5         # music, ads and jingles (negative)
 event = 0.8          # a fresh goal / touchdown read from the scoreboard
+shout = 0.0          # shouting / yelling / screaming (0 = off; try 0.2 after checking it on live games)
 favourite = 0.4      # steady bonus per +1 of a favourite team's multiplier (x2 team = +0.4)
 
 [multiview]
