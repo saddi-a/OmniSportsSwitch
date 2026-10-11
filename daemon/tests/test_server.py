@@ -372,3 +372,24 @@ def test_a_late_close_game_gets_positive_leverage_and_a_late_blowout_negative():
         server._update_game_states(results, now)
     assert server.scorer.streams[13].leverage == pytest.approx(1.0)      # tied, 4th quarter
     assert server.scorer.streams[14].leverage < 0                         # 29 points apart, 4th quarter
+
+
+def test_a_stray_main_tab_leaving_does_not_leave_the_daemon_without_a_main():
+    server = Server(scorer=Scorer())
+    server.handle_message({"type": "register", "tab_id": 1, "role": "MAIN", "is_main": True})
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT"})
+    server.handle_message({"type": "register", "tab_id": 9, "role": "MAIN", "is_main": True})   # a stray window in the MAIN slot
+    server.handle_message({"type": "unregister", "tab_id": 9})
+    assert server.scorer.main == 1
+
+
+def test_the_safety_net_adopts_the_tab_in_the_main_window_when_there_is_no_main():
+    server = Server(scorer=Scorer())
+    server.handle_message({"type": "register", "tab_id": 1, "role": "MAIN"})   # no is_main flag: the scorer has no main
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT"})
+    assert server.scorer.main is None
+    server._ensure_main()
+    assert server.scorer.main == 1
+    server.scorer.main = 2
+    server._ensure_main()
+    assert server.scorer.main == 2    # an existing MAIN is never changed

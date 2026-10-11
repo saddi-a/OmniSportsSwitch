@@ -463,6 +463,16 @@ class Server:
         left = next((t for t, role in self.roles.items() if role == "LEFT" and t != self.scorer.main), None)
         return self.scorer.decide(now, target=left) if left is not None else None
 
+    def _ensure_main(self) -> None:
+        """Safety net: with no MAIN stream the scorer decides nothing at all. If the windows say which tab sits in the
+        MAIN window, adopt it."""
+        if self.scorer.main in self.scorer.streams:
+            return
+        tab = next((t for t, role in self.roles.items() if role == "MAIN" and t in self.scorer.streams), None)
+        if tab is not None:
+            log.warning("no MAIN stream: adopting tab %s, the one in the MAIN window", tab)
+            self.scorer.main = tab
+
     async def _decide_loop(self) -> None:
         last_log = last_fix = 0.0
         while True:
@@ -471,6 +481,7 @@ class Server:
             if now - last_log >= SCORE_LOG_INTERVAL_S:
                 self._log_scores(now)
                 last_log = now
+            self._ensure_main()
             swap = self.scorer.evict_main(now) or self._next_swap(now)
             if not swap and now - last_fix >= FIX_INTERVAL_S and (moves := plan_fix(self.roles, self.limits)):
                 last_fix = now
