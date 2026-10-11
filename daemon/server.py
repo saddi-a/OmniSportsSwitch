@@ -43,7 +43,7 @@ from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
-from daemon.cues import GoalPhraseWatch, SpeechMemory, cue_weight, end_zone_factor
+from daemon.cues import GoalPhraseWatch, SpeechMemory, cue_weight, end_zone_factor, speech_cue_weight
 from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer
 
@@ -408,6 +408,10 @@ class Server:
                     if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= cfg.speech_cue_cooldown_s:
                         self.speech_cue_at[(tab_id, cue)] = now
                         log.info("speech cue %s tab %s: %s", cue, tab_id, text)
+                        weight = speech_cue_weight(cue, self._tab_sport(tab_id), cfg.weights, cfg.speech_cue_factor)
+                        if weight is not None:   # a commentator calling a dangerous moment boosts the stream like the banner would, at a discount
+                            log.info("anticipation %s tab %s (spoken) weight %.2f", cue, tab_id, weight)
+                            self.scorer.set_anticipation(tab_id, now, weight)
 
     def _feed_text(self, tab_id: int) -> str:
         """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says."""

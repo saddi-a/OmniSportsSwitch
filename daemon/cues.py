@@ -30,6 +30,18 @@ _PENALTY_RE = re.compile(r"(?<![a-zà-ÿ])(?:penalty|p[ée]nalty|penalti|p[êe]n
 _RED_CARD_RE = re.compile(r"red card|carton rouge|sent off|sending off|dismissed|expuls|exclu|exclusion|[àa] dix|tarjeta roja|cart[aã]o vermelho", re.IGNORECASE)
 
 
+SPEECH_SCORING = {"free kick": "free_kick", "chance": "chance", "post": "chance", "penalty": "chance", "goal": "chance"}   # spoken cues that feed the score (soccer)
+
+
+def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> float | None:
+    """The weight a SPOKEN cue adds, or None when it does not feed the score: only free kicks, chances, shots on the post, penalties and goal
+    calls, only in soccer (or an unknown sport), at `factor` of the banner weight. Corners, fouls and offsides stay log-only."""
+    kind = SPEECH_SCORING.get(cue)
+    if kind is None or factor <= 0 or (sport or "").strip().lower() not in ("football", ""):
+        return None
+    return (weights.cue_free_kick if kind == "free_kick" else weights.cue_chance) * factor
+
+
 def _is_american_football(sport: str | None) -> bool:
     return (sport or "").strip().lower() == AMERICAN_FOOTBALL
 

@@ -216,3 +216,22 @@ def test_a_free_kick_has_its_own_weight_in_soccer():
     assert cue_weight("free kick", "free kick", None, None, w) == w.cue_free_kick             # sport unknown
     assert cue_weight("free kick", "free kick", None, "american football", w) == w.cue_minor   # not a soccer cue there
     assert cue_weight("corner", "corner", None, "football", w) == w.cue_minor                  # corners stay minor
+
+
+def test_dangerous_spoken_cues_feed_the_score_in_soccer_at_a_discount():
+    from daemon.cues import speech_cue_weight
+    w = Weights()
+    assert speech_cue_weight("free kick", "football", w, 0.7) == pytest.approx(w.cue_free_kick * 0.7)
+    for cue in ("chance", "post", "penalty", "goal"):
+        assert speech_cue_weight(cue, "football", w, 0.7) == pytest.approx(w.cue_chance * 0.7)
+    assert speech_cue_weight("chance", None, w, 0.7) is not None          # sport not known yet: allowed
+
+
+def test_other_spoken_cues_and_other_sports_stay_log_only():
+    from daemon.cues import speech_cue_weight
+    w = Weights()
+    for cue in ("corner", "foul", "offside", "card", "replay", "flag", "touchdown"):
+        assert speech_cue_weight(cue, "football", w, 0.7) is None
+    assert speech_cue_weight("penalty", "american football", w, 0.7) is None   # a flag there
+    assert speech_cue_weight("goal", "basketball", w, 0.7) is None
+    assert speech_cue_weight("free kick", "football", w, 0.0) is None          # the setting turns it off

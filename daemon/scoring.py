@@ -101,6 +101,7 @@ class Config:
     semantic_mid_sim: float = 0.99       # ...mid level: effectively off (0 of 5 mid alarms were true in Como-Roma)
     semantic_margin: float = 0.10        # ...and must beat its similarity to ordinary match talk by this much
     speech_cue_cooldown_s: float = 20.0  # the same cue on the same stream is logged at most this often
+    speech_cue_factor: float = 0.7       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
     feed_mode: float = 0.0          # outside game data (ESPN): 0 = local only (nothing starts), 1 = record only (measuring, changes no score); needs a restart
     feed_poll_s: float = 5.0        # a league with a live game is asked this often (never less than 5 s: the feed's own cache time)

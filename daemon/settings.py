@@ -123,6 +123,7 @@ LAYOUT = [
         ("scoring.semantic_mid_sim", "Semantic match: minimum for mid", "Measuring only: the stricter minimum similarity for the mid level (a notable event rather than a big moment)."),
         ("scoring.semantic_margin", "Semantic match: margin over ordinary talk", "...and it must beat its similarity to ordinary match talk by this much."),
         ("scoring.speech_cue_cooldown_s", "Spoken cue cooldown (s)", "The same spoken cue on the same stream is logged at most this often."),
+        ("scoring.speech_cue_factor", "Spoken cue strength", "Soccer: a commentator calling a free kick, a chance, a shot on the post, a penalty or a goal counts this much of the same cue read from a banner. 0 = off (only logged)."),
         ("scoring.classifier_max_gain", "Levelling limit (x)", "The levelling never raises or lowers the sound by more than this factor."),
         ("scoring.event_s", "Goal boost (s)", "How long a goal or touchdown boosts a stream (it fades)."),
         ("scoring.big_play_strength", "Big play strength", "A big play banner counts this much of a goal (1.0 = the same as a goal)."),
