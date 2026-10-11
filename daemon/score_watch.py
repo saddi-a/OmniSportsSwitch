@@ -25,7 +25,7 @@ TEAM_RE = re.compile(r"^[^\W\d_]{2,}(?:[ .'\-][^\W\d_]+)*$")   # letters only, a
 ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "1st" as OCR mangles them (Ath, Ist, Znd, Isr, Jrd)
 TEAM_PAIR_ITEM_RE = re.compile(r"^([^\W\d_]{2,4})\s+(\d{1,2})\s?[-–]\s?(\d{1,2})(?:\s+[^\W\d_]{2,4})?$")   # a code and the score in one item ("FRA 0-0", "FRA 0-0 BEL")
 CLOCK_AND_TEAM_RE = re.compile(r"^(\d{1,3}\s?[:.,]\s?\d{2})\s+\W?([A-Za-z]{2,4})\W?$")   # "24.47 RMA": the clock and a team code in one item
-CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
+CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item

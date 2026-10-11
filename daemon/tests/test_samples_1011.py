@@ -99,3 +99,12 @@ EAGLES = boxes([("bein spoRts", 36, 121, 93), ("LONDON", 51, 1747, 1136), ("2-2"
 
 def test_team_code_and_score_in_one_item_with_the_other_team_between_the_scores():
     assert find_score_geo(EAGLES, ["9:39"]) == (14, 7)
+
+
+# Eagles-Jaguars 17:54:21 (boxes.log): the separator after the team code is read as "/" and "]"; "25" is the play clock after "7:05".
+EAGLES_FG = boxes([("DIRECT", 24, 80, 46), ("Hony", 30, 810, 628), ("2-2", 24, 436, 844), ("PHI/ 14", 52, 474, 830), ("3-1", 26, 750, 844),
+                   ("JAX] 10", 50, 782, 830), ("3RD", 40, 949, 835), ("7:05", 42, 1029, 833), ("25", 42, 1161, 833), ("LONDON", 42, 1236, 821)])
+
+
+def test_team_code_separator_read_as_slash_or_bracket():
+    assert find_score_geo(EAGLES_FG, ["7:05"]) == (14, 10)
