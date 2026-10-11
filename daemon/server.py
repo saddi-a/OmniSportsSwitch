@@ -34,7 +34,7 @@ from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab
-from daemon.scoring import Scorer
+from daemon.scoring import SHOUT_CLASSES, Scorer
 
 HOST, PORT = "127.0.0.1", 8765
 DECIDE_INTERVAL_S = 0.25
@@ -250,7 +250,7 @@ class Server:
                 log.info("  %s%s: warming up or no audio", tag, tab_id)
                 continue
             text = (f"{tag}{tab_id}: {'AD' if c['ad'] else c['status']} fav={c['fav']:.1f} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
-                    f"speech={c['speech']:.2f} music={c['music']:.2f} lev={c['lev']:.1f}")
+                    f"speech={c['speech']:.2f} music={c['music']:.2f} shout={c['shout']:.2f} lev={c['lev']:.1f}")
             probs = self.tags.get(tab_id)
             if probs is not None:
                 text += " top=" + ",".join(f"{n}:{p:.2f}" for n, p in self.classifier.top(probs, 3))
@@ -272,7 +272,8 @@ class Server:
             for tab_id, p in zip(ready, probs):
                 self.tags[tab_id] = p
                 crowd = float(max(p[idx[name]] for name in CROWD_CLASSES))
-                self.scorer.set_tags(tab_id, crowd, float(p[idx["Speech"]]), float(p[idx["Music"]]), now)
+                shout = float(max(p[idx[name]] for name in SHOUT_CLASSES))
+                self.scorer.set_tags(tab_id, crowd, float(p[idx["Speech"]]), float(p[idx["Music"]]), now, shout=shout)
 
     def _ocr_pass(self, jobs: list[tuple[int, int, dict]]) -> dict:
         """Runs in a worker thread: screenshot each video area and read its text."""
