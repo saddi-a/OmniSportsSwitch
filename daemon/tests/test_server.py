@@ -393,3 +393,34 @@ def test_the_safety_net_adopts_the_tab_in_the_main_window_when_there_is_no_main(
     server.scorer.main = 2
     server._ensure_main()
     assert server.scorer.main == 2    # an existing MAIN is never changed
+
+
+def _football_board(a, b=3):
+    return {(14, 0): {"texts": ["HOUSTON", str(a), "K-STATE", str(b), "1ST & GOAL"], "clocks": ["10:45"]}}
+
+
+def test_a_field_goal_counts_less_than_a_touchdown_in_american_football():
+    config = Config(warmup_s=0)
+    server = Server(Scorer(config))
+    server.handle_message({"type": "register", "tab_id": 14, "sport": "american football"})
+    for i in range(5):
+        server._update_game_states(_football_board(7), 100.0 + i * 3)
+    for i in range(5):
+        server._update_game_states(_football_board(10), 120.0 + i * 3)      # +3: a field goal
+    for t in range(6):
+        server.scorer.add_audio(14, 0.05, 127.0 + t)
+    server.scorer.set_tags(14, 0.0, 0.0, 0.0, 132.0)
+    event = server.scorer.components(14, 132.0)["event"]
+    assert 0.4 < event <= config.field_goal_strength + 0.01      # a touchdown would be about 1.0
+
+
+def test_a_replay_banner_over_a_live_scorebug_flags_the_stream_and_a_score_in_it_is_ignored():
+    server = Server(Scorer(Config(warmup_s=0)))
+    server.handle_message({"type": "register", "tab_id": 14, "sport": "american football"})
+    for i in range(5):
+        server._update_game_states(_football_board(7), 100.0 + i * 3)
+    replay = {(14, 0): {"texts": ["HOUSTON", "14", "K-STATE", "3", "1ST & GOAL", "REPLAY"], "clocks": ["10:45"]}}
+    for i in range(5):
+        server._update_game_states(replay, 120.0 + i * 3)
+    assert server.scorer.streams[14].replay is True
+    assert (14, 0) not in server.event_at
