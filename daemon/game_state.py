@@ -12,6 +12,7 @@ Rules (see PLAN.md):
 import re
 from dataclasses import dataclass
 
+from daemon.score_watch import STAT_GRAPHIC_RE
 from daemon.scoring import Config
 
 # A caption only counts when a whole OCR text item is exactly the keyword. Words inside a sentence do not
@@ -95,6 +96,10 @@ PROFILES = {
     "generic": SportProfile(freeze_s=120, no_clock_s=60),             # any other or unknown sport
 }
 
+# A clock above this many minutes is not the game clock of the sport (a stats table: "80:40"); sports not listed allow 130.
+MAX_CLOCK_MIN = {"american football": 20, "basketball": 20}
+MAX_CLOCK_MIN_DEFAULT = 130
+
 
 def profile_for(sport: str | None) -> SportProfile:
     return PROFILES.get((sport or "").strip().lower(), PROFILES["generic"])
@@ -123,6 +128,7 @@ class GameTracker:
     """Follows one video area (a whole stream, or one multiview tile) over time."""
 
     def __init__(self, sport: str | None = None, config: Config | None = None):
+        self.sport = (sport or "").strip().lower()
         self.profile = profile_for(sport)
         self.config = config or Config()   # shared with the scorer, so popup edits apply at once
         self.state = "live"          # optimistic until proven otherwise
@@ -167,6 +173,7 @@ class GameTracker:
         self._big_play_at = float("-inf")
 
     def set_sport(self, sport: str | None) -> None:
+        self.sport = (sport or "").strip().lower()
         self.profile = profile_for(sport)
 
     def update(self, now: float, texts: list[str], clocks: list[str]) -> str:
@@ -236,6 +243,14 @@ class GameTracker:
                     self.big_play, self._big_play_at = hit, now
                     break
 
+        # A clock read from a stats table or leaders graphic (no scoreboard beside it), or one above what the sport's clock can show,
+        # is not the game clock: it must not restart the no-clock timer, or a break filled with graphics is never noticed.
+        # (has_scoreboard_text is too loose here: a stats table is full of plain numbers.)
+        others = [t.strip() for t in texts if t.strip() and t.strip() not in clocks]
+        board_cue = (any(DOWN_RE.fullmatch(t) or QUARTER_RE.fullmatch(t) or CLOCK_WITH_CODE_RE.fullmatch(t) for t in others)
+                     or len({t for t in others if TEAM_CODE_RE.fullmatch(t)}) >= 2)
+        stats_only = not board_cue and any(STAT_GRAPHIC_RE.search(t) for t in texts)
+        clocks = [c for c in clocks if not stats_only and not self._impossible_clock(c)]
         if clocks and not on_ad:  # the countdown shown during an ad is not the game clock
             shown = re.fullmatch(r"(\d{1,3}):\d{2}", clocks[0].strip())
             if shown:
@@ -270,6 +285,10 @@ class GameTracker:
         self._note_hidden_scorebug(now, on_ad)
         self._note_anticipation(now, texts, on_ad)
         return self.state
+
+    def _impossible_clock(self, clock: str) -> bool:
+        m = re.fullmatch(r"(\d{1,3}):\d{2}", clock.strip())
+        return bool(m) and int(m.group(1)) > MAX_CLOCK_MIN.get(self.sport, MAX_CLOCK_MIN_DEFAULT)
 
     def _continues_game_clock(self, now: float, clocks: list[str]) -> bool:
         """True when a clock seen without any scoreboard text beside it is the game clock going on under a graphic (a substitution

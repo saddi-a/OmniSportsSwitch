@@ -836,3 +836,41 @@ def test_ft_in_a_stats_graphic_beside_a_running_clock_is_not_the_end():
 def test_ft_with_no_clock_still_means_over():
     g = GameTracker("football")
     assert run(g, 0, 6, lambda t: None, texts=["COMO", "0", "0", "ROMA", "FT"]) == "over"
+
+
+BOARD_TEXTS = ["2-2", "PHI", "14", "3-1", "JAX", "7", "3RD"]
+STATS_TEXTS = ["GAME LEADERS", "18/26", "COMP/ATT", "QB", "TREVOR", "LAWRENCE"]
+
+
+def board_clock(t):
+    return f"{int(10 - t // 60)}:{int(60 - t % 60) % 60:02d}"
+
+
+def feed_for(g, start, seconds, texts, clock_fn=lambda t: None, step=3.0):
+    state, t = None, start
+    while t < start + seconds:
+        c = clock_fn(t)
+        state = g.update(t, list(texts), [c] if c else [])
+        t += step
+    return state
+
+
+def test_a_clock_beyond_the_sport_in_a_stats_graphic_does_not_keep_the_game_live():
+    # Eagles-Jaguars 17:51:30: GAME LEADERS showed "80:40" read as a clock; each such reading restarted the 90 s no-clock timer.
+    g = GameTracker("american football")
+    assert feed_for(g, 0, 30, BOARD_TEXTS + ["3RD & 4"], board_clock) == "live"
+    feed_for(g, 30, 30, STATS_TEXTS)
+    feed_for(g, 60, 3, STATS_TEXTS, lambda t: "80:40")
+    assert feed_for(g, 63, 60, STATS_TEXTS) == "break"   # more than 90 s after the last real clock (t=27)
+
+
+def test_a_plausible_clock_in_a_stats_graphic_beside_no_scoreboard_does_not_count_either():
+    g = GameTracker("american football")
+    feed_for(g, 0, 30, BOARD_TEXTS + ["3RD & 4"], board_clock)
+    feed_for(g, 30, 60, STATS_TEXTS, lambda t: "7:11" if t in (60, 63, 66) else None)
+    assert feed_for(g, 90, 36, STATS_TEXTS) == "break"   # last real clock t=27, so 90 s are over at t=117
+
+
+def test_a_real_scoreboard_under_a_stats_overlay_still_counts():
+    g = GameTracker("american football")
+    assert feed_for(g, 0, 200, BOARD_TEXTS + STATS_TEXTS + ["3RD & 4"], board_clock) == "live"
