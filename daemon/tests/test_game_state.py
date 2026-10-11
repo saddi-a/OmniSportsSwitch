@@ -973,3 +973,67 @@ def test_the_fourth_down_is_read_and_the_distance_goes_away_with_the_graphic():
     assert g.down == 4 and g.end_zone_yards == 1
     g.update(10.0, ["PHI", "14", "JAX", "10", "4TH & GOAL"], ["8:10"])
     assert g.end_zone_yards is None
+
+
+# ---- the GOAL banner (soccer): shown in the place of the scorebug's team code and digits ----------------------------------------------------------
+# tab 485660202, Liverpool-Man City: at 18:56:43 ['G', 'AL', 'MCI', ...] replaced 'LIV 0 0' for ONE reading (the goal was at 64:27), at 19:03:40
+# only ['AL', 'MCI', ...] was left. daemon.log lines.
+
+LIV_BUG = ["LIV", "0", "0", "MCI", "CANAL+", "64524", "Premior Loaguo", "2020/27"]
+LIV_BUG_1 = ["CANAL+", "LIV", "0", "1", "MCI", "Premior Lcague", "2026/27"]
+
+
+def goal_banner_after(texts, before=LIV_BUG, sport="football", clock_text="64:27", n_before=3):
+    g = GameTracker(sport)
+    t = 0.0
+    for _ in range(n_before):
+        g.update(t, list(before), []); t += 3.0
+    g.update(t, list(texts), [clock_text] if False else [])
+    return g
+
+
+def test_the_broken_goal_banner_g_al_replacing_the_team_code_is_a_goal_banner():
+    g = goal_banner_after(["G", "AL", "MCI", "CANAL+", "64527"])
+    assert g.goal_banner == "GAL"
+
+
+def test_a_lone_al_left_of_the_remaining_team_code_is_a_goal_banner():
+    g = goal_banner_after(["AL", "MCI", "CANALt", "Premlar Lor"], before=LIV_BUG_1)
+    assert g.goal_banner
+
+
+def test_whole_goal_words_beside_a_scorebug_are_goal_banners():
+    for word in ("GOAL", "GOOAL", "BUT", "GOL", "GOLO", "Goal!", "BUT !"):
+        g = goal_banner_after([word, "LIV", "0", "MCI", "CANAL+"])
+        assert g.goal_banner, word
+
+
+def test_it_is_a_signal_of_one_reading_and_not_repeated_for_30_seconds():
+    g = goal_banner_after(["GOAL", "LIV", "0", "MCI"])
+    assert g.goal_banner
+    g.update(20.0, ["GOAL", "LIV", "0", "MCI"], ["64:40"])
+    assert g.goal_banner == ""                       # the same banner right after: cooldown
+    g.update(25.0, ["LIV", "0", "MCI"], ["64:45"])
+    assert g.goal_banner == ""
+    g.update(80.0, ["GOAL", "LIV", "0", "MCI"], ["65:40"])
+    assert g.goal_banner                              # a new goal later
+
+
+def test_similar_words_and_other_contexts_are_not_goal_banners():
+    for texts in (["GOAL TO GO", "LIV", "0", "MCI"], ["FIELD GOAL", "LIV", "0", "MCI"], ["GOALS", "LIV", "0", "MCI"], ["Goal kick", "LIV", "0", "MCI"],
+                  ["GOAL KICK", "LIV", "0", "MCI"], ["GOALKEEPER", "LIV", "0", "MCI"], ["BUTTON", "LIV", "0", "MCI"], ["GOAL DIFFERENCE", "LIV", "0", "MCI"],
+                  ["AL", "ALI", "NASR"], ["GOAL", "SHOTS", "POSSESSION", "5", "3"],           # a stats table with a Goal column
+                  ["GOAL", "TOP 3", "BARCOLA", "5"], ["BUT", "VOS COURSES", "ACHETEZ"]):    # a stats list, an ad
+        assert goal_banner_after(texts).goal_banner == "", texts
+
+
+def test_no_goal_banner_without_a_scorebug_in_sight():
+    g = GameTracker("football")
+    g.update(0.0, ["GOAL", "WATCH", "MORE"], [])
+    assert g.goal_banner == ""
+
+
+def test_no_goal_banner_in_american_football_basketball_or_unknown_sports():
+    for sport in ("American football", "Basketball", None):
+        assert goal_banner_after(["GOAL", "LIV", "0", "MCI"], sport=sport).goal_banner == "", sport
+

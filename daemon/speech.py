@@ -35,7 +35,11 @@ CUES = {
     "card": [r"red card", r"carton rouge", r"yellow card", r"carton jaune", r"sent off", r"sending off", r"dismissed", r"expuls", r"\bexclu(e|s|es)?\b", r"exclusion", r"\bcarton\b", r"expulsado", r"\bà dix\b", r"infériorité numérique", r"a man down"],
     "replay": [r"revoyons", r"on revoit", r"au ralenti", r"\bralenti\b", r"\breplay\b", r"another look", r"\bcan we see that again\b"],
     "foul": [r"\btacle\b", r"\btackle\b", r"\bfaute\b", r"\bfoul\b"],
-    "goal": [r"\bgo+a{2,}l+\b", r"\bgo{2,}a+l+\b", r"\bgoal ?!", r"\bbut ?!", r"\bbu{2,}t\b", r"ouvre le score", r"égalise", r"opens the scoring", r"equali[sz]es?"],   # plain "goal" is too common (first and goal)
+    "goal": [r"\bgo+a{2,}l+\b", r"\bgo{2,}a+l+\b", r"\bgoal ?!", r"\bbut ?!", r"\bbu{2,}t\b", r"ouvre le score", r"égalise", r"opens the scoring", r"equali[sz]es?",
+             # goal calls heard 2026-10-11 that nothing matched (checked on 1924 lines of speech: no other hit)
+             r"prend les devants", r"ouvre la marque", r"double la mise", r"inscrit son \d+\s?(e|è|ème|eme|er)? but", r"revient au score", r"met le deuxi[eè]me",
+             r"porte le score [àa]", r"what a goal", r"\bhe scores\b", r"\btakes the lead\b(?! pass)", r"\bdoubles (the|their) lead\b", r"\bpull(s|ed)? one back\b",
+             r"\bgo{3,}l\b", r"\bgolazo\b", r"\bgo{2,}l[oa]\b"],   # plain "goal" is too common (first and goal)
     "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b", r"\bpoteaux?\b", r"\bla barre\b", r"\btransversale\b"],
     "chance": [r"what a (big )?chance", r"big chance", r"so close", r"just wide", r"just over", r"just past", r"(great|what a|brilliant) save",
                r"quelle occasion", r"(belle|grosse) occasion", r"juste à côté", r"juste au-dessus", r"(quel|bel) arrêt", r"(belle|superbe) parade"],

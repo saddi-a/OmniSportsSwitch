@@ -126,3 +126,31 @@ def cue_weight(cue: str, banner: str, speech_tier: str | None, sport: str | None
         return weights.cue_minor
     tier = banner_tier(banner, sport) or speech_tier   # the subject written on the banner wins over what was heard
     return {"top": weights.cue_review_top, "high": weights.cue_review_high, "mid": weights.cue_review_mid}.get(tier, weights.cue_review_low)
+
+
+class GoalPhraseWatch:
+    """MEASURING ONLY: a goal phrase in the commentary and a loudness surge on the same tab within `window_s` seconds of each other.
+    `phrase(tab, now)` / `surge(tab, value, now)` return True once when the pair is complete (then not again for `cooldown_s`), so the
+    server can log "goal phrase + surge would fire" and the user can compare it with the real goals before it is used for anything."""
+
+    def __init__(self, surge_min: float = 0.6, window_s: float = 10.0, cooldown_s: float = 30.0):
+        self.surge_min, self.window_s, self.cooldown_s = surge_min, window_s, cooldown_s
+        self._phrase_at: dict[int, float] = {}
+        self._surge_at: dict[int, float] = {}
+        self._fired_at: dict[int, float] = {}
+
+    def phrase(self, tab_id: int, now: float) -> bool:
+        self._phrase_at[tab_id] = now
+        return self._check(tab_id, now, self._surge_at.get(tab_id))
+
+    def surge(self, tab_id: int, value: float, now: float) -> bool:
+        if value < self.surge_min:
+            return False
+        self._surge_at[tab_id] = now
+        return self._check(tab_id, now, self._phrase_at.get(tab_id))
+
+    def _check(self, tab_id: int, now: float, other: float | None) -> bool:
+        if other is None or abs(now - other) > self.window_s or now - self._fired_at.get(tab_id, float("-inf")) < self.cooldown_s:
+            return False
+        self._fired_at[tab_id] = now
+        return True

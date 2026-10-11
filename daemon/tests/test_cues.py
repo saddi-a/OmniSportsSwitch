@@ -170,3 +170,39 @@ def test_the_strongest_end_zone_cue_alone_stays_under_the_minimum_score():
     s.set_anticipation(2, t, zone_weight("goal to go", 1.0, s.config.weights))
     c = s.components(2, t)
     assert c["cue"] > 0 and c["score"] < s.config.min_score
+
+
+# ---- goal phrase + surge: MEASURING ONLY (it only says "would fire"; nothing reads it but a log line) -----------------------------------------------
+
+from daemon.cues import GoalPhraseWatch      # noqa: E402
+
+
+def test_a_goal_phrase_and_a_surge_within_the_window_would_fire_once():
+    w = GoalPhraseWatch(surge_min=0.6, window_s=10.0, cooldown_s=30.0)
+    w.surge(7, 0.90, 100.0)                    # the real goal: surge 0.90 at 18:56:36, the call "prend les devants" at 18:56:43
+    assert w.phrase(7, 107.0) is True
+    assert w.phrase(7, 108.0) is False         # the same goal again (the commentator repeats it): cooldown
+
+
+def test_the_surge_may_come_after_the_phrase():
+    w = GoalPhraseWatch(surge_min=0.6, window_s=10.0)
+    assert w.phrase(7, 100.0) is False
+    assert w.surge(7, 0.7, 104.0) is True
+
+
+def test_a_weak_old_or_foreign_surge_does_not_count():
+    w = GoalPhraseWatch(surge_min=0.6, window_s=10.0)
+    w.surge(7, 0.5, 100.0)
+    assert w.phrase(7, 101.0) is False         # too weak
+    w.surge(7, 0.9, 120.0)
+    assert w.phrase(7, 140.0) is False         # 20 s apart
+    w.surge(8, 0.9, 200.0)
+    assert w.phrase(7, 201.0) is False         # another tab
+
+
+def test_a_new_goal_after_the_cooldown_fires_again():
+    w = GoalPhraseWatch(surge_min=0.6, window_s=10.0, cooldown_s=30.0)
+    w.surge(7, 0.9, 100.0)
+    assert w.phrase(7, 101.0) is True
+    w.surge(7, 0.9, 200.0)
+    assert w.phrase(7, 201.0) is True
