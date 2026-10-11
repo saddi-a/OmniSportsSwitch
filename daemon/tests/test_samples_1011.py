@@ -175,3 +175,40 @@ def test_a_normal_scorebug_is_still_read_first():
 def test_team_code_separator_read_as_a_brace():
     items = [dict(i, text=i["text"].replace("JAX]", "JAX}")) for i in EAGLES_FG]   # 'JAX} 10' at 18:00:00
     assert find_score_geo(items, ["7:05"]) == (14, 10)
+
+
+# ---- Liverpool-Man City 18:16:20 (boxes.log): a "TOP 3" player list was read as a score ----------------------------------------------------------
+# The scorebug digits are not read in this frame ('0' '0' missing); the list has names (Adverse, BARCOLA, Cherki) with small numbers
+# in a column. The text-only reader took BARCOLA 5 ... Cherki 2 for "TEAM n TEAM n" and fired (5, 2) at 0-0: false.
+TOP3 = boxes([("LIV", 52, 132, 84), ("MCI", 50, 454, 84), ("CANALT", 44, 2041, 69), ("44833", 42, 291, 133), ("TOP 3", 30, 2000, 234),
+              ("Adverse", 30, 1984, 290), ("BARCOLA", 30, 1894, 360), ("5", 26, 2179, 361), ("3", 28, 2179, 403), ("Cherki", 30, 1898, 448),
+              ("2", 26, 2179, 449), ("Premio Lcague", 44, 2006, 1154)])
+SCOREBUG = boxes([("LIV", 50, 132, 84), ("0", 68, 267, 71), ("0", 58, 368, 74), ("MCI", 50, 454, 84), ("CANAL+", 44, 2041, 71), ("44505", 42, 291, 133)])
+
+
+def test_a_top_3_player_list_is_not_a_score():
+    w, fired = watch([SCOREBUG] * 5)
+    assert w._stable == (0, 0)
+    w, fired = watch([TOP3] * 8, w)
+    assert fired == [] and w._stable == (0, 0)
+
+
+def test_the_stat_list_words_of_that_graphic_are_stat_graphics():
+    from daemon.score_watch import STAT_GRAPHIC_RE
+    for text in ("TOP 3", "ToP 3", "Match Statistics", "BALLONS SURFACE", "Statistiques du match"):
+        assert STAT_GRAPHIC_RE.search(text), text
+
+
+def test_numbers_in_a_column_with_a_third_number_between_are_not_a_stacked_score():
+    items = boxes([("ATM", 24, 122, 40), ("OTHER", 26, 60, 400), ("1", 30, 600, 78), ("2", 30, 600, 40), ("3", 30, 600, 60)])
+    texts = [i["text"] for i in items]
+    assert find_score_geo(items, []) is None
+    w = ScoreWatcher()
+    assert w.update(texts, [], 0.0, items) is False
+
+
+def test_the_column_of_stats_is_rejected_by_its_geometry_alone():
+    items = [i for i in TOP3 if i["text"] != "TOP 3"]       # even with no stat word on screen
+    w, fired = watch([SCOREBUG] * 5)
+    w, fired = watch([items] * 8, w)
+    assert fired == [] and w._stable == (0, 0)
