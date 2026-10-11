@@ -22,10 +22,11 @@ OVERTIME_MEMORY_S = 30.0
 # American football down and distance on the scorebug ("3rd & 4", "Ath & 2", "Ist & GOAL" as OCR mangles them). Seen on the
 # scorebug it proves a game is being played even when the clock cannot be read (the colon is often lost: "14848"). Stat
 # labels ("3rd DOWNS", "3rd DOWN CONVERSIONS") have no "&" and do not match.
-DOWN_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*&\s*(\d{1,2}|goal|inches)", re.IGNORECASE)
+DOWN_RE = re.compile(r"[0-9A-Za-z]{1,2}(st|nd|rd|th|sr|r0)\s*(&\s*(\d{1,2}|goal|inches)|down)", re.IGNORECASE)   # also "2nd Down"
 # The quarter on its own ("4th", read "Ath"; "1st", read "Ist") sits on the same scorebug: also proof that it is on screen.
 QUARTER_RE = re.compile(r"(1st|ist|isr|lst|2nd|znd|3rd|3r0|jrd|4th|ath|q[1-4])", re.IGNORECASE)
 DOWN_MEMORY_S = 20.0
+IN_PLAY_MEMORY_S = 15.0   # a "Final" caption is ignored this long after the scorebug of a game in play was seen
 PERIOD_OF = {"1st": 1, "ist": 1, "isr": 1, "lst": 1, "2nd": 2, "znd": 2, "3rd": 3, "3r0": 3, "jrd": 3, "4th": 4, "ath": 4, "q1": 1, "q2": 2, "q3": 3, "q4": 4}
 PERIOD_VOTES, PERIOD_NEEDED = 5, 3   # the period is the value most of the last readings agree on
 BREAK_RE = re.compile(r"(HALF[\s-]?TIME|HT|MI[\s-]?TEMPS|MITEMPS|INTERVALLE)", re.IGNORECASE)
@@ -77,6 +78,7 @@ class GameTracker:
         self._break_seen = float("-inf")
         self._overtime_seen = float("-inf")
         self._down_seen = float("-inf")
+        self._in_play_seen = float("-inf")
         self._period_votes: list[int] = []
         self.clock_minute: int | None = None   # minutes on the last readable game clock (soccer: 67 for 67:23)
         self.period: int | None = None   # quarter 1..4, 5 = overtime; None until read on several readings
@@ -96,7 +98,13 @@ class GameTracker:
             self._first_seen = now
 
         items = [re.sub(r"[^\w\s-]", "", t).strip() for t in texts]
-        self._over_hits = self._over_hits + 1 if any(OVER_RE.fullmatch(t) for t in items) else 0
+        if any(DOWN_RE.fullmatch(t.strip()) or QUARTER_RE.fullmatch(t.strip()) for t in texts):
+            self._in_play_seen = now   # down and distance or the quarter on the scorebug: this game is being played
+        # "Final" next to a live scorebug is a results ticker about other games, not the end of this one.
+        ticker = now - self._in_play_seen <= IN_PLAY_MEMORY_S
+        self._over_hits = self._over_hits + 1 if any(OVER_RE.fullmatch(t) for t in items) and not ticker else 0
+        if ticker:
+            self._over_seen = float("-inf")
         self._break_hits = self._break_hits + 1 if any(BREAK_RE.fullmatch(t) for t in items) else 0
         if any(OVERTIME_RE.fullmatch(t) for t in items):
             self._overtime_seen = now

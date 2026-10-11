@@ -316,7 +316,7 @@ def test_a_break_caption_still_beats_down_and_distance():
     assert state == "break"
     over = None
     for i in range(6):
-        over = g.update(100 + i * 3.0, ["FINAL", "3rd & 4"], [])
+        over = g.update(100 + i * 3.0, ["FINAL", "ILLINOIS"], [])
     assert over == "over"
 
 
@@ -361,3 +361,59 @@ def test_the_clock_minute_is_available_for_soccer():
     assert g.clock_minute == 67
     g.update(3.0, ["PSG", "1", "LYON", "1"], ["bad"])
     assert g.clock_minute == 67
+
+
+# ---- a results ticker with "Final" over a live game (live log 02:10: USC at Penn State, clock 0:13 running) ---------
+
+TICKER = ["Texas", "24", "Final", "25", "Oklahoma 27", "26", "10", "19 USC", "5-1", "7", "PENN STATE", "3-2", "23", "IST", "2nd & 5"]
+
+
+def test_final_on_a_ticker_does_not_end_a_game_with_a_live_scorebug():
+    g = GameTracker("american football")
+    state = None
+    for i in range(10):
+        state = g.update(i * 3.0, list(TICKER), [f"0:{40 - i * 3:02d}"])
+    assert state == "live"
+
+
+def test_final_without_a_down_and_distance_still_means_over():
+    g = GameTracker("american football")
+    for i in range(6):
+        g.update(i * 3.0, ["FINAL", "ILLINOIS"], ["0:00"])
+    assert g.state == "over"
+    g2 = GameTracker("american football")
+    for i in range(6):
+        g2.update(i * 3.0, ["FINAL", "ILLINOIS"], [])
+    assert g2.state == "over"
+
+
+def test_halftime_with_a_running_countdown_is_still_a_break():
+    g = GameTracker("american football")
+    for i in range(10):
+        g.update(i * 3.0, ["HALFTIME", "OHIO STATE"], [f"10:{59 - i * 3:02d}"])
+    assert g.state == "break"
+
+
+def test_the_ticker_final_stays_ignored_in_readings_where_the_down_text_is_missing():
+    # live log 02:05:31-02:05:47: the down and distance flickers out for a few readings while "Final" shows
+    g = GameTracker("american football")
+    g.update(0.0, ["19 USC", "PENN STATE", "Ath & 13"], ["13:06"])
+    for i in range(1, 5):
+        g.update(i * 3.0, ["25", "Final", "19 USC", "PENN STATE"], [])
+    assert g.state != "over"
+
+
+def test_down_word_forms_count_as_a_game_in_play():
+    for text in ("2nd Down", "Znd Down", "3rd DOWN", "Ath DOWN"):
+        g = GameTracker("american football")
+        for i in range(8):
+            g.update(i * 3.0, ["Final", "19 USC", text], [])
+        assert g.state == "live", text
+
+
+def test_a_real_final_still_ends_the_game_once_the_scorebug_has_gone():
+    g = GameTracker("american football")
+    g.update(0.0, ["19 USC", "PENN STATE", "2nd & 5"], ["0:10"])
+    for i in range(1, 12):
+        g.update(i * 3.0, ["FINAL", "USC", "PENN STATE"], [])
+    assert g.state == "over"
