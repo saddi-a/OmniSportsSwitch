@@ -146,6 +146,12 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
         reach = 4 * line_h
         return sum(1 for t in teams if abs(cy(t) - line_cy) <= 2.2 * line_h and t["x1"] >= x0 - reach and t["x0"] <= x1 + reach)
 
+    def inline(left, right, line_h) -> bool:
+        reach = 3.0 * line_h
+        before = any(t["x1"] <= left["x0"] + 0.5 * line_h and left["x0"] - t["x1"] <= reach and abs(cy(t) - cy(left)) <= 0.6 * line_h for t in teams)
+        after = any(t["x0"] >= right["x1"] - 0.5 * line_h and t["x0"] - right["x1"] <= reach and abs(cy(t) - cy(right)) <= 0.6 * line_h for t in teams)
+        return before and after
+
     best, best_key = None, None
 
     # one item holding both scores ("2-0", "10/20") with a team name on each side of it
@@ -191,7 +197,10 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             labels = [height(t) for t in teams if abs(cy(t) - cy(a)) <= 2.2 * max(ha, hb) and t["x1"] >= left["x0"] - 4 * max(ha, hb)
                       and t["x0"] <= right["x1"] + 4 * max(ha, hb)]
             if labels and min(ha, hb) < SCORE_VS_LABEL * max(labels):
-                continue   # as small as the team labels: a record ("4-0" read as 40), a down and distance, a quarter
+                # As small as the team labels: usually a record ("4-0" read as 40), a down and distance, a quarter. Except a
+                # compact scorebug (USC 7 ... 7 PENN STATE) whose digits sit on the names' own row, right beside each name.
+                if not inline(left, right, line_h):
+                    continue
             between = sum(1 for it in live if not NUMBER_RE.match(it["text"].strip()) and left["x1"] <= it["x0"] and it["x1"] <= right["x0"]
                           and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
             pairs.append((min(ha, hb), between, near, left, right))
@@ -210,6 +219,13 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
 def _vote(values) -> int | None:
     value, count = Counter(values).most_common(1)[0]
     return value if count >= NEEDED else None
+
+
+def _no_scoreboard(texts: list[str], clocks: list[str]) -> bool:
+    """True when the clocks are the only scoreboard-like thing on screen (see `GameTracker`: an ad countdown)."""
+    from daemon.game_state import DOWN_RE, QUARTER_RE, SCOREBOARD_ITEM_RE
+    others = [t.strip() for t in texts if t.strip() and t.strip() not in clocks]
+    return bool(texts) and not any(SCOREBOARD_ITEM_RE.fullmatch(t) or DOWN_RE.fullmatch(t) or QUARTER_RE.fullmatch(t) for t in others)
 
 
 class ScoreWatcher:
@@ -258,7 +274,10 @@ class ScoreWatcher:
         return False
 
     def update(self, texts: list[str], clocks: list[str], now: float | None = None, items: list[dict] | None = None) -> bool:
-        if now is not None and self._clock_jumped(clocks, now):
+        # A countdown with no scoreboard beside it is the player's ad countdown: it is not a game clock and must not look like a
+        # clock jump (that threw the score away at every commercial break, so a touchdown before the break was never seen).
+        game_clocks = [] if clocks and _no_scoreboard(texts, clocks) else clocks
+        if now is not None and self._clock_jumped(game_clocks, now):
             self._reset()
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline

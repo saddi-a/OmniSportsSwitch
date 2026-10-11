@@ -390,3 +390,53 @@ def test_two_record_tokens_on_one_row_are_records_not_a_score():
     assert _geo(records) is None
     one_score = boxes([("NAP", 30, 100, 800), ("1-0", 32, 200, 800), ("FRO", 30, 300, 800)])
     assert _geo(one_score) == (1, 0)                              # a single token between the names is still a score
+
+
+# ---- USC at Penn State (live log 02:10): small digits right beside the team names on one row ----------------------
+
+USC_PENN_STATE = boxes([("25", 28, 1056, 64), ("2spittsburgh", 20, 1117, 69), ("Final", 20, 1255, 59), ("19 USC", 24, 426, 706),
+                        ("5-1", 20, 477, 727), ("7", 42, 601, 703), ("0:19", 24, 676, 720), ("7", 38, 788, 706),
+                        ("PENN STATE", 26, 862, 704), ("3-2", 20, 865, 727), ("29", 20, 673, 743), ("Znd & 5", 24, 458, 762)])
+
+
+def test_small_digits_right_beside_the_team_names_are_the_score():
+    assert _geo(USC_PENN_STATE) == (7, 7)          # digits only 1.6x the name height: the 2.0 rule alone rejected them (66% of frames unread)
+
+
+def test_the_inline_exception_does_not_let_records_below_the_names_through():
+    assert _geo(GEORGIA_RECORDS) is None           # records sit on a row below the names, far from them
+    texas_records = boxes([("TEXAS", 30, 700, 1112), ("40", 30, 878, 1162), ("17", 26, 1027, 1165), ("Ath", 32, 1194, 1194), ("22", 30, 1612, 1162),
+                           ("OKLAHOMA", 36, 1618, 1112)])
+    assert _geo(texas_records) is None
+
+
+# ---- an ad countdown must not make the watcher forget the score (live log: USC 7-7 became None at every ad break) ----
+
+def test_an_ad_break_with_a_countdown_clock_keeps_the_baseline_and_a_goal_after_it_is_seen():
+    w = ScoreWatcher()
+    t = 0.0
+    for i in range(6):                                           # the game: clock 13:06 and falling, score 7-7
+        w.update(["19 USC", "7", "PENN STATE", "7", f"13:{50 - i * 3:02d}"], [f"13:{50 - i * 3:02d}"], t)
+        t += 3
+    assert w.score == (7, 7)
+    for clock in ("2:30", "2:27", "2:24", "2:21", "2:18", "2:15", "2:12"):    # the commercial: the countdown is the only text
+        w.update([clock], [clock], t)
+        t += 3
+    assert w.score == (7, 7)                                     # was None: the countdown looked like a clock jump
+    fired = []
+    for i in range(6):                                           # back to the game, now 14-7: a touchdown during the break
+        fired.append(w.update(["19 USC", "14", "PENN STATE", "7", f"13:{40 - i * 3:02d}"], [f"13:{40 - i * 3:02d}"], t))
+        t += 3
+    assert any(fired)
+
+
+def test_a_real_clock_jump_with_scores_still_resets_the_baseline():
+    w = ScoreWatcher()
+    t = 0.0
+    for i in range(6):
+        w.update(["HOUSTON", "28", "K-STATE", "9", f"3:{50 - i * 3:02d}"], [f"3:{50 - i * 3:02d}"], t)
+        t += 3
+    for i in range(6):                                           # another game moves into the slot
+        w.update(["OHIO STATE", "45", "MARYLAND", "16", f"12:{50 - i * 3:02d}"], [f"12:{50 - i * 3:02d}"], t)
+        t += 3
+    assert w.score in (None, (45, 16))
