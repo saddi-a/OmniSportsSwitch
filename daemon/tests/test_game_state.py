@@ -1,4 +1,5 @@
 from daemon.game_state import GameTracker, combine
+from daemon.scoring import Config
 
 
 def run(tracker, start, seconds, clock_fn, texts=(), step=3.0):
@@ -602,3 +603,70 @@ def test_a_replay_banner_inside_an_ad_placeholder_is_ignored():
     g = GameTracker("football")
     feed(g, 0, ["COMMERCIAL BREAK IN PROGRESS", "REPLAY"], "0:30")
     assert g.replay is False
+
+
+# ---- scorebug hidden (DAZN hides it during replays): only reported, for measuring; it changes nothing ------------------
+
+BUG = ["DA", "COM", "0-0", "ROM", "ZN"]
+
+
+def notes(g, start, seconds, texts, clock_fn=None, step=2.0):
+    """Feed readings; returns [(time, note)] of the readings that carried a scorebug note."""
+    out, t = [], start
+    while t < start + seconds:
+        clock = clock_fn(t) if clock_fn else None
+        g.update(t, list(texts), [clock] if clock else [])
+        if g.scorebug_note:
+            out.append((t, g.scorebug_note))
+        t += step
+    return out
+
+
+def test_a_hidden_scorebug_is_reported_once_and_again_when_it_returns():
+    g = GameTracker("football")
+    assert notes(g, 0, 30, BUG, lambda t: ticking(t + 600)) == []
+    hidden = notes(g, 30, 20, ["DA", "ZN"])
+    assert [n[0] for _, n in hidden] == ["hidden"] and 6 <= hidden[0][1][1] < 9    # once, as soon as 6 s have passed
+    back = notes(g, 50, 6, BUG, lambda t: ticking(t + 600))
+    assert [n[0] for _, n in back] == ["back"] and 18 <= back[0][1][1] <= 24      # the length of the gap
+
+
+def test_a_short_gap_is_not_reported():
+    g = GameTracker("football")
+    notes(g, 0, 30, BUG, lambda t: ticking(t + 600))
+    assert notes(g, 30, 4, ["DA", "ZN"]) == []
+    assert notes(g, 34, 6, BUG, lambda t: ticking(t + 600)) == []
+
+
+def test_no_report_before_a_scorebug_was_ever_seen():
+    g = GameTracker("football")
+    assert notes(g, 0, 40, ["DA", "ZN"]) == []
+
+
+def test_a_gap_with_an_ad_placeholder_is_not_reported():
+    g = GameTracker("football")
+    notes(g, 0, 30, BUG, lambda t: ticking(t + 600))
+    assert notes(g, 30, 20, ["COMMERCIAL BREAK IN PROGRESS"]) == []
+    assert notes(g, 50, 6, BUG, lambda t: ticking(t + 600)) == []
+
+
+def test_a_report_in_progress_is_cancelled_by_a_break_caption():
+    g = GameTracker("football")
+    notes(g, 0, 30, BUG, lambda t: ticking(t + 600))
+    got = notes(g, 30, 8, ["DA", "ZN"])
+    assert [n[0] for _, n in got] == ["hidden"]
+    got = notes(g, 38, 12, ["HALFTIME"])
+    assert [n[0] for _, n in got] == ["cancelled"]
+    assert notes(g, 50, 6, BUG, lambda t: ticking(t + 600)) == []   # no "back" for a cancelled gap
+
+
+def test_a_stale_gap_after_a_long_pause_is_not_reported():
+    g = GameTracker("football")
+    notes(g, 0, 20, BUG, lambda t: ticking(t + 600))
+    assert notes(g, 300, 10, ["DA", "ZN"]) == []   # the first reading is 5 minutes after the last scorebug
+
+
+def test_the_thresholds_are_settings():
+    g = GameTracker("football", Config(scorebug_hidden_s=2.0))
+    notes(g, 0, 20, BUG, lambda t: ticking(t + 600))
+    assert [n[0] for _, n in notes(g, 20, 6, ["DA", "ZN"])] == ["hidden"]

@@ -132,6 +132,8 @@ LAYOUT = [
         ("scoring.lev_soccer_blowout", "Soccer: blowout (goals)", "This many goals apart or more counts as a blowout."),
         ("scoring.field_goal_strength", "Field goal strength", "American football: a field goal or safety counts this much of a touchdown (1.0 = the same)."),
         ("scoring.extra_point_s", "Extra point window (s)", "American football: an extra point or two-point conversion this soon after a touchdown is not a new event."),
+        ("scoring.scorebug_hidden_s", "Scorebug hidden (s)", "Only logged, changes nothing: a scorebug missing this long is written to the events log as hidden (DAZN hides it during replays)."),
+        ("scoring.scorebug_memory_s", "Scorebug seen within (s)", "Only logged: the scorebug must have been seen this recently before the gap for it to be logged."),
         ("scoring.replay_dampen", "Replay dampening", "While a replay is on screen over a live game, crowd noise and loudness count this fraction (0 = ignored, 1 = same as live)."),
         ("scoring.recent_ad_s", "No hopping between ads (s)", "MAIN is not handed to a stream that was showing an ad this recently."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
