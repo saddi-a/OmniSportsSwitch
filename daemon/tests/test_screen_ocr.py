@@ -54,3 +54,9 @@ def test_team_names_for_the_digit_fallback_include_ranked_names_but_not_plain_wo
         assert looks_like_team_name(name), name
     for text in ("Search", "Home", "3rd & 4", "12", "2nd", "1st & 10", "4-0", "Ath"):
         assert not looks_like_team_name(text), text
+
+
+def test_banner_words_are_not_team_names():
+    for text in ("RULING ON FIELD", "Targeting", "REPLAY REVIEW", "INSTANT REPLAY", "COMMERCIAL BREAK", "FINAL"):
+        assert not looks_like_team_name(text), text
+    assert looks_like_team_name("OHIO STATE") and looks_like_team_name("2 Georgia") and looks_like_team_name("K-STATE")

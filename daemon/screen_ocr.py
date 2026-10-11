@@ -17,11 +17,20 @@ RANKED_NAME_RE = re.compile(r"\d{1,2}\s+[A-Za-z][A-Za-z .'&-]{2,}")   # a rankin
 
 
 def looks_like_team_name(text: str) -> bool:
-    return bool(TEAM_NAME_RE.fullmatch(text) or RANKED_NAME_RE.fullmatch(text))
+    if not (TEAM_NAME_RE.fullmatch(text) or RANKED_NAME_RE.fullmatch(text)):
+        return False
+    return not any(word in NOT_TEAM_WORDS for word in re.findall(r"[a-z]+", text.casefold()))
 
 
 DIGIT_MIN_CONFIDENCE = 0.7   # a number read beside a team name must be this sure
 DIGIT_SEARCH = 2.4           # how far (in text heights) to look beside a name
+DIGIT_MIN_RATIO = 1.5        # score digits are at least this much taller than the team name beside them
+# Words of banners and graphics that are written in capitals like a team name but are not one (a replay-review banner
+# "RULING ON FIELD / Targeting" once produced a false pair of digits beside it).
+NOT_TEAM_WORDS = {"ruling", "field", "review", "reviewed", "reviewing", "targeting", "replay", "instant", "challenge",
+                  "official", "officials", "upheld", "overturned", "confirmed", "stands", "penalty", "flag", "timeout",
+                  "timeouts", "presented", "sponsored", "brought", "breaking", "update", "final", "live", "halftime",
+                  "quarter", "down", "distance", "possession", "turnover", "turnovers", "commercial", "break"}
 
 
 def grab(rect: dict) -> np.ndarray:
@@ -79,7 +88,7 @@ class ScreenReader:
         boxes = sorted(horizontal[0], key=lambda b: b[0]) if horizontal and horizontal[0] else []
         for bx0, bx1, by0, by1 in boxes:
             bx0, bx1, by0, by1 = int(bx0) + x0, int(bx1) + x0, int(by0) + y0, int(by1) + y0
-            if not 0.6 * text_height <= by1 - by0 <= 3.0 * text_height or bx0 - x > 1.2 * text_height:
+            if not DIGIT_MIN_RATIO * text_height <= by1 - by0 <= 4.0 * text_height or bx0 - x > 1.2 * text_height:
                 continue   # not number-sized, or not right beside the name
             result = self.reader.recognize(image, horizontal_list=[[bx0, bx1, by0, by1]], free_list=[],
                                            allowlist="0123456789", detail=1)
