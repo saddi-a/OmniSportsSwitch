@@ -345,13 +345,15 @@ class Server:
             rule = match_slots(r["texts"], self.favourites)
             if rule:
                 self.rule_seen[(tab_id, index)] = (rule, now)
-            changed = self.watchers.setdefault((tab_id, index), ScoreWatcher()).update(r["texts"], r["clocks"], now, r.get("items"),
-                                                                                 replay=tracker.replay)
+            watcher = self.watchers.setdefault((tab_id, index), ScoreWatcher(self.scorer.config))
+            changed = watcher.update(r["texts"], r["clocks"], now, r.get("items"), replay=tracker.replay,
+                                     sport=self.sports.get(tab_id) or self.sport_seen.get((tab_id, index)))
             if changed and per_tab[tab_id][-1] != "live":
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
             elif changed:
-                self.event_at[(tab_id, index)] = now
-                self.scorer.set_event(tab_id, now)
+                strength = watcher.strength
+                self.event_at[(tab_id, index)] = now - (1.0 - strength) * self.scorer.config.event_s
+                self.scorer.set_event(tab_id, now, strength)
                 log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
         for tab_id, states in per_tab.items():
             self._update_favourite(tab_id, now)
