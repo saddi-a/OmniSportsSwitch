@@ -4,7 +4,7 @@ An automated "live broadcast director" for people who watch several sports strea
 
 You open your streams in separate Edge windows (one per screen slot). OmniSportsSwitch listens to every stream, reads the scoreboards on screen, and automatically moves the most exciting game into the big centre window (Main). Everything runs locally on your PC: no accounts, no cloud, no API keys.
 
-> Status: personal project, working and under live testing (about 680 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
+> Status: personal project, working and under live testing (about 800 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
 
 ## How it works
 
@@ -177,6 +177,10 @@ If a shortcut does nothing, check `edge://extensions/shortcuts`.
 
 Several times a second each stream gets a score: crowd noise, loudness above its own normal, a fresh score change, a favourite team's bonus, closeness and time left, minus commentary and music. A stream on an ad scores below zero. A challenger takes Main when it beats the stream there by 40% (and by a minimum gap), has a score high enough that loudness alone cannot do it, has qualified for two seconds, has been watched for 20 seconds, and the last swap is at least 20 seconds old. When Main shows an ad, a break or a finished game, any live stream without an ad takes over (not one that was on an ad in the last 30 seconds, unless Main's ad is certain, for example the player's ad placeholder; this stops Main hopping between streams that are all on commercials). Only Main is audible. The numbers that decide swaps are settings in the popup, with an explanation; a few constants of the scoreboard reader (for example how much taller than the team names a score digit must be) are in the code.
 
+### Football: the build-up tracker
+
+In football (soccer) the daemon also tries to move a stream to Main *before* a goal, during the build-up, not after the scoreboard confirms it. It remembers the signs of the last minute for each football stream and adds them up: a chance or shot phrase from the commentators ("tente sa chance", "dans la surface"), a penalty given, a corner, a spoken free kick, a rise in the crowd noise, a sudden jump in loudness. When the sum is high enough and clearly above the score of the stream in Main, that stream takes Main. Commentary that only talks about something that already happened ("pas de faute", "un penalty obtenu") is ignored. After a goal in Main the daemon keeps you there while the replays run. Other sports use the normal rule above. You can switch the tracker off in the popup ("Build-up tracker moves Main"). It is new, so expect to tune it: the log lines `swap: ... | build-up` show each move.
+
 ## Logs
 
 In `logs/` (not committed): `events.log` (goals, swaps and why, game states, warnings), `daemon.log` (everything, including the OCR text of each video area and `speech heard` lines with what the commentators said), `boxes.log` (sizes and positions of OCR items, for tuning).
@@ -187,7 +191,7 @@ In `logs/` (not committed): `events.log` (goals, swaps and why, game states, war
 .venv\Scripts\python -m pytest daemon -q
 ```
 
-About 680 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
+About 800 tests, a few seconds. One is an expected failure on purpose (a scoreboard layout the reader still gets wrong). One test needs the OCR models and the GPU and skips itself without them.
 
 ## What is where
 
@@ -196,7 +200,7 @@ About 680 tests, a few seconds. One is an expected failure on purpose (a scorebo
 | `daemon/` | The Python daemon: the server, the scorer, the scoreboard reader, the commentary listener and its semantic reading, game state, settings, and the tests with real scoreboard fixtures. |
 | `extension/` | The Edge extension (plain JavaScript, no build step). |
 | `launcher/` | The tray launcher, built into `dist\OmniSportsSwitch.exe`. |
-| `scripts/` | Setup, start, stop, build and sample-capture scripts. |
+| `scripts/` | Setup, start, stop, build and sample-capture scripts, and `backtest.py` (reads the logs and measures, per sport, how far ahead of each goal a stream was moved to Main). |
 | `settings.toml` | The default value of every setting (your changes in the popup are kept separately, in `settings.local.json`). |
 | `PLAN.md`, `CLAUDE.md` | The design and hand-over notes, and guidance for AI coding assistants. |
 

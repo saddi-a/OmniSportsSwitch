@@ -1144,3 +1144,133 @@ def test_a_tab_that_starts_playing_after_silence_is_not_a_surge():
     assert s.components(4, now) is None        # still warming up: its warm-up started with the sound
     now = steady(s, 4, 0.05, now, 25)
     assert s.components(4, now)["surge"] < 0.01
+
+
+# --- Scorer.take_main: the build-up tracker's swap (football), same guards as a normal swap ---
+
+def test_take_main_success_sets_main_and_last_swap():
+    s = make()
+    swap = s.take_main(2, 100.0, "build-up: level 0.46 vs main 0.25")
+    assert (swap.promote, swap.demote, swap.reason) == (2, 1, "build-up: level 0.46 vs main 0.25")
+    assert s.main == 2 and s._last_swap == 100.0
+
+
+def test_take_main_dwell_blocks_a_second_swap_and_flapping():
+    s = make(min_dwell_s=20.0)
+    assert s.take_main(2, 100.0, "x") is not None
+    assert s.take_main(1, 110.0, "x") is None and s.main == 2     # the old MAIN cannot take it straight back
+    assert s.take_main(1, 120.5, "x") is not None
+
+
+def test_take_main_refused_when_frozen_or_unknown_or_already_main():
+    s = make()
+    s.frozen = True
+    assert s.take_main(2, 100.0, "x") is None and s.main == 1
+    s.frozen = False
+    assert s.take_main(1, 100.0, "x") is None
+    assert s.take_main(99, 100.0, "x") is None
+    assert s.main == 1
+
+
+def test_take_main_refused_for_can_main_false_ad_and_break_or_over():
+    s = make()
+    s.set_can_main(2, False)
+    assert s.take_main(2, 100.0, "x") is None
+    s.set_can_main(2, True)
+    s.set_on_ad(2, True)
+    assert s.take_main(2, 100.0, "x") is None
+    s.set_on_ad(2, False)
+    for state in ("break", "over"):
+        s.set_auto_state(2, state)
+        assert s.take_main(2, 100.0, "x") is None
+    s.set_auto_state(2, "live")
+    s.set_status(2, "break")
+    assert s.take_main(2, 100.0, "x") is None
+    assert s.main == 1 and s._last_swap == float("-inf")
+
+
+def test_take_main_respects_a_manual_hold_on_main():
+    s = make()
+    s.force_main(1, 100.0)
+    assert s.hold_left(110.0) > 0
+    assert s.take_main(2, 110.0, "x") is None and s.main == 1
+    assert s.take_main_block(2, 110.0) == "manual hold"
+    s.hold_until = 105.0   # hold timed out
+    assert s.take_main(2, 130.0, "x") is not None
+
+
+# --- post-goal replay hold: the tracker does not leave a MAIN that just scored while the replays run ---
+
+def test_goal_hold_blocks_the_tracker_for_the_fixed_minimum_then_allows():
+    s = make(goal_hold_s=40.0)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    assert s.take_main_block(2, 120.0) == "goal on MAIN 20 s ago"
+    assert s.take_main_block(2, 139.0) == "goal on MAIN 39 s ago"
+    assert s.take_main_block(2, 140.5) is None
+
+
+def test_goal_hold_banner_counts_with_its_real_time_and_plain_events_do_not():
+    s = make()
+    s.set_event(1, 100.0, 0.4, goal=True)              # a goal banner: fades early in the score but the hold starts now
+    assert s.take_main_block(2, 130.0) is not None
+    s2 = make()
+    s2.set_event(1, 100.0, 1.0)                        # a big play, not a goal
+    assert s2.take_main_block(2, 110.0) is None
+
+
+def test_goal_hold_ignores_a_goal_on_the_challenger_and_a_main_without_a_goal():
+    s = make()
+    s.set_event(2, 100.0, 1.0, goal=True)
+    assert s.take_main_block(2, 110.0) is None
+    assert make().take_main_block(2, 110.0) is None
+
+
+def test_goal_hold_is_broken_by_a_challenger_at_goal_hold_break():
+    s = make(goal_hold_break=0.8)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.components = lambda tab, now: {"score": 0.79}
+    assert s.take_main_block(2, 110.0) is not None
+    s.components = lambda tab, now: {"score": 0.8}
+    assert s.take_main_block(2, 110.0) is None
+
+
+def test_goal_hold_is_extended_by_replay_signs_and_capped():
+    s = make(goal_hold_s=40.0, goal_hold_extend_s=10.0, goal_hold_max_s=75.0)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.note_replay(1, 135.0)                            # replay sign near the end: hold until 145
+    assert s.goal_hold_left(1, 141.0) == pytest.approx(4.0)
+    assert "replay still showing" in s.take_main_block(2, 141.0)
+    assert s.take_main_block(2, 145.5) is None         # no further sign: over
+    s.set_event(1, 200.0, 1.0, goal=True)
+    for t in range(205, 300, 5):                       # a sign every 5 s for a long time
+        s.note_replay(1, float(t)) if s.goal_hold_left(1, float(t)) > 0 else None
+    assert s.goal_hold_left(1, 274.9) > 0 and s.goal_hold_left(1, 275.1) == 0   # capped at 75 s after the goal
+
+
+@pytest.mark.parametrize("how", ["note", "set_replay"])
+def test_each_replay_signal_extends_the_hold(how):
+    s = make()
+    s.set_event(1, 100.0, 1.0, goal=True)
+    if how == "note":
+        s.note_replay(1, 130.0)
+    else:
+        s.set_replay(1, True, 130.0)
+    assert s.goal_hold_left(1, 130.0) == pytest.approx(10.0)    # the sign at 130 s keeps the hold to 140 s, as the minimum does
+    s.note_replay(1, 139.0) if how == "note" else s.set_replay(1, True, 139.0)
+    assert s.goal_hold_left(1, 139.0) == pytest.approx(10.0)    # a later sign moves the end to 149 s
+
+
+def test_a_replay_sign_outside_the_hold_is_ignored():
+    s = make()
+    s.note_replay(1, 50.0)                             # no goal yet
+    s.set_event(1, 100.0, 1.0, goal=True)
+    assert s.goal_hold_left(1, 141.0) == 0.0
+
+
+def test_goal_hold_changes_report_start_and_over_once():
+    s = make(goal_hold_s=40.0)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    assert s.goal_hold_changes(102.0) == [(1, "start", pytest.approx(38.0))]
+    assert s.goal_hold_changes(110.0) == []
+    assert s.goal_hold_changes(141.0) == [(1, "over", pytest.approx(41.0))]
+    assert s.goal_hold_changes(150.0) == []

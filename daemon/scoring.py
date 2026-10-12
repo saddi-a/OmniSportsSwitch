@@ -104,7 +104,7 @@ class Config:
     semantic_mid_sim: float = 0.99       # ...mid level: effectively off (0 of 5 mid alarms were true in Como-Roma)
     semantic_margin: float = 0.10        # ...and must beat its similarity to ordinary match talk by this much
     speech_cue_cooldown_s: float = 20.0  # the same cue on the same stream is logged at most this often
-    speech_cue_factor: float = 0.7       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
+    speech_cue_factor: float = 1.0       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
     feed_mode: float = 0.0          # outside game data (ESPN): 0 = local only (nothing starts), 1 = record only (measuring, changes no score); needs a restart
     feed_poll_s: float = 5.0        # a league with a live game is asked this often (never less than 5 s: the feed's own cache time)
@@ -114,6 +114,20 @@ class Config:
     feed_confirm_s: float = 30.0    # ...and the feed has this long after the OCR change to confirm it
     feed_event_weight: float = 0.0  # a feed goal/touchdown on a mapped game counts this much of its strength in the scorer (0 = shadow: only logged)
     feed_lead_s: float = 10.0       # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
+    buildup_mode: float = 1.0       # build-up tracker (measuring only, changes no score): 0 = off, 1 = log "buildup would take MAIN" lines
+    buildup_live: float = 1.0       # football only: 1 = a stream that reaches the build-up level really takes MAIN (Scorer.take_main), 0 = log only
+    buildup_window_s: float = 60.0  # the cues of a stream are added up for this long (each fading to 0), not only the strongest one
+    buildup_min: float = 0.32       # a stream not in MAIN "would take" it when its build-up level (faded cue sum + surge/crowd) reaches this...
+    buildup_cooldown_s: float = 30.0   # ...and is min_gap above MAIN's score; one line per stream this often
+    buildup_surge_min: float = 0.6  # soccer, measuring only: a loudness surge this high notes a small pseudo-cue in the build-up (never a score)...
+    buildup_surge_note: float = 0.10   # ...of this value, at most once per buildup_cooldown_s per stream
+    buildup_gap: float = 0.10       # the tracker's own 'above MAIN' gap (min_gap, 0.15, stays for the normal rule)
+    buildup_crowd_min: float = 0.25 # football: a stream whose crowd probability stays this high on 2 consecutive score readings (2 s apart)...
+    goal_hold_s: float = 40.0       # build-up tracker: MAIN keeps its place this long after a goal on it (score change or goal banner; 0 = off)...
+    goal_hold_extend_s: float = 10.0   # ...and longer while a replay sign (replay over the scorebug, hidden scorebug, replay by clock, spoken replay) is seen: until its time + this...
+    goal_hold_max_s: float = 75.0   # ...but never longer than this after the goal
+    goal_hold_break: float = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
+    buildup_crowd_note: float = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
 
 
 @dataclass
@@ -134,8 +148,12 @@ class _Stream:
     tags_at: float = float("-inf")
     anticipation_at: float = float("-inf")   # when a cue (banner before a likely score) was last seen
     anticipation_value: float = 0.0   # its weight (before leverage and the master scale)
+    anticipation_strong: bool = False   # a football cue worth a review of a possible goal or more: it counts in full without other signs
     shout: float = 0.0   # 0..1 probability of shouting / yelling / screaming
     event_at: float = float("-inf")  # when a score change was last seen
+    goal_at: float = float("-inf")   # real time of the last goal (score change or goal banner) on this stream
+    replay_seen_at: float = float("-inf")   # last replay sign seen while the post-goal hold ran
+    goal_hold_on: bool = False       # the post-goal replay hold has started and not yet been reported over
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
     on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
     audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
@@ -228,7 +246,7 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
 
-    def set_anticipation(self, tab_id: int, now: float, value: float | None = None) -> None:
+    def set_anticipation(self, tab_id: int, now: float, value: float | None = None, strong: bool = False) -> None:
         """A cue before a likely score; `value` is its weight (`daemon.cues.cue_weight`), `None` = a minor cue. A weaker cue does not
         replace a stronger one that is still fading."""
         stream = self.streams.get(tab_id)
@@ -237,11 +255,44 @@ class Scorer:
         value = self.config.weights.cue_minor if value is None else value
         fading = stream.anticipation_value * max(0.0, 1.0 - (now - stream.anticipation_at) / self.config.anticipation_s)
         if value >= fading:
-            stream.anticipation_at, stream.anticipation_value = now, value
+            stream.anticipation_at, stream.anticipation_value, stream.anticipation_strong = now, value, strong
 
-    def set_replay(self, tab_id: int, replay: bool) -> None:
+    def set_replay(self, tab_id: int, replay: bool, now: float | None = None) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].replay = replay
+            if replay and now is not None:
+                self.note_replay(tab_id, now)
+
+    def note_replay(self, tab_id: int, now: float) -> None:
+        """A sign that the stream shows replays (replay over the scorebug, hidden scorebug, replay by clock, spoken replay). It extends
+        the post-goal hold if one is running (see `goal_hold_left`); outside a hold it is ignored."""
+        if self.goal_hold_left(tab_id, now) > 0:
+            self.streams[tab_id].replay_seen_at = now
+
+    def goal_hold_left(self, tab_id: int, now: float) -> float:
+        """Seconds the post-goal replay hold of this stream still runs (0 = none). It starts at the goal (`set_event(goal=True)`), lasts
+        `goal_hold_s` at the least, and each replay sign seen during it moves the end to (its time + `goal_hold_extend_s`), never later than
+        `goal_hold_max_s` after the goal."""
+        stream, cfg = self.streams.get(tab_id), self.config
+        if stream is None or cfg.goal_hold_s <= 0 or stream.goal_at == float("-inf"):
+            return 0.0
+        end = stream.goal_at + cfg.goal_hold_s
+        if stream.replay_seen_at >= stream.goal_at:
+            end = max(end, min(stream.replay_seen_at + cfg.goal_hold_extend_s, stream.goal_at + max(cfg.goal_hold_max_s, cfg.goal_hold_s)))
+        return max(0.0, end - now)
+
+    def goal_hold_changes(self, now: float) -> list[tuple[int, str, float]]:
+        """(tab, "start", seconds the hold runs) / (tab, "over", seconds since the goal) for holds that started or ended since the last call."""
+        out = []
+        for tab_id, stream in self.streams.items():
+            left = self.goal_hold_left(tab_id, now)
+            if left > 0 and not stream.goal_hold_on:
+                stream.goal_hold_on = True
+                out.append((tab_id, "start", left))
+            elif left <= 0 and stream.goal_hold_on:
+                stream.goal_hold_on = False
+                out.append((tab_id, "over", now - stream.goal_at))
+        return out
 
     def set_on_ad(self, tab_id: int, on_ad: bool, now: float | None = None) -> None:
         if tab_id in self.streams:
@@ -249,12 +300,14 @@ class Scorer:
             if on_ad and now is not None:
                 self.streams[tab_id].ad_at = now
 
-    def set_event(self, tab_id: int, now: float, strength: float = 1.0) -> None:
+    def set_event(self, tab_id: int, now: float, strength: float = 1.0, goal: bool = False) -> None:
         """A goal (strength 1.0) or a weaker event such as a big play. The event fades linearly, so a weaker one is
         a goal that already started to fade; the later start wins when events overlap."""
         if tab_id in self.streams:
             candidate = now - (1.0 - min(max(strength, 0.0), 1.0)) * self.config.event_s
             self.streams[tab_id].event_at = max(self.streams[tab_id].event_at, candidate)
+            if goal:   # a score change or a goal banner: starts the post-goal replay hold (real time, whatever the strength)
+                self.streams[tab_id].goal_at = max(self.streams[tab_id].goal_at, now)
 
     def set_status(self, tab_id: int, override: str | None) -> None:
         if tab_id in self.streams:
@@ -290,11 +343,12 @@ class Scorer:
         w = cfg.weights
         support = w.surge * surge + w.crowd * crowd + w.shout * shout + w.event * event
         cue_part = w.anticipation * stream.anticipation_value * cue * min(max(1.0 + cfg.cue_leverage_gain * stream.leverage, 0.5), 1.5)
-        if support < cfg.cue_support:
+        if support < cfg.cue_support and not stream.anticipation_strong:
             # a cue alone must not take MAIN, even with the leverage bonus beside it: it only strengthens other signs of excitement
             room = cfg.min_score - 0.01 - max(0.0, cfg.leverage_weight * stream.leverage)
             cue_part = min(cue_part, cfg.cue_alone_cap, max(room, 0.0))
-        excitement = max(0.0, support + w.speech * speech + w.music * music + cue_part)
+        talk = 0.0 if stream.anticipation_strong and cue_part > 0 else w.speech * speech   # a strong cue is what the commentators are talking about
+        excitement = max(0.0, support + talk + w.music * music + cue_part)
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
         raw += cfg.leverage_weight * stream.leverage                 # a late close game is worth more, a late blowout less
         status = stream.override or stream.auto_state
@@ -384,6 +438,47 @@ class Scorer:
         swap = Swap(promote=best_id, demote=replaced, reason=reason)
         if target is None:
             self._set_main(best_id)
+        self._last_swap = now
+        return swap
+
+    def take_main_block(self, tab_id: int, now: float) -> str | None:
+        """Why `tab_id` may not take MAIN by the build-up tracker right now (the guards of a normal swap), or None if it may."""
+        cfg = self.config
+        stream = self.streams.get(tab_id)
+        if stream is None or self.main not in self.streams:
+            return "unknown stream"
+        if tab_id == self.main:
+            return "already MAIN"
+        if self.frozen:
+            return "MAIN is frozen"
+        if now - self._last_swap < cfg.min_dwell_s:
+            return "dwell"
+        if not stream.can_main:
+            return "slot rules"
+        if stream.on_ad:
+            return "on an ad"
+        if (stream.override or stream.auto_state) != "live":
+            return "not live"
+        if self.hold_left(now) > 0:
+            c = self.components(tab_id, now)
+            if (c["score"] if c else 0.0) < cfg.hold_break_score:
+                return "manual hold"
+        if self.goal_hold_left(self.main, now) > 0:   # MAIN just had a goal: its replays still run; stay unless a big moment is elsewhere
+            c = self.components(tab_id, now)
+            if (c["score"] if c else 0.0) < cfg.goal_hold_break:
+                ago = now - self.streams[self.main].goal_at
+                return f"goal on MAIN {ago:.0f} s ago" + (", replay still showing" if ago >= cfg.goal_hold_s else "")
+        return None
+
+    def take_main(self, tab_id: int, now: float, reason: str) -> Swap | None:
+        """The build-up tracker asks for MAIN (football only, the server checks the sport). Same guards as a normal swap (see
+        `take_main_block`: frozen, manual hold unless hold_break_score, min_dwell_s, can_main, ad, break/over, already MAIN);
+        returns the swap to carry out or None."""
+        if self.take_main_block(tab_id, now) is not None:
+            return None
+        swap = Swap(promote=tab_id, demote=self.main, reason=reason)
+        self._candidate = None
+        self._set_main(tab_id)
         self._last_swap = now
         return swap
 

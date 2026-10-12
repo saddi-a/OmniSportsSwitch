@@ -30,7 +30,8 @@ _PENALTY_RE = re.compile(r"(?<![a-zà-ÿ])(?:penalty|p[ée]nalty|penalti|p[êe]n
 _RED_CARD_RE = re.compile(r"red card|carton rouge|sent off|sending off|dismissed|expuls|exclu|exclusion|[àa] dix|tarjeta roja|cart[aã]o vermelho", re.IGNORECASE)
 
 
-SPEECH_SCORING = {"free kick": "free_kick", "chance": "chance", "post": "chance", "penalty": "chance", "goal": "chance"}   # spoken cues that feed the score (soccer)
+SPEECH_SCORING = {"free kick": "free_kick", "chance": "chance", "post": "chance", "penalty": "chance", "goal": "chance",
+                  "penalty awarded": "penalty_awarded"}   # spoken cues that feed the score (soccer)
 
 
 def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> float | None:
@@ -39,7 +40,24 @@ def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> fl
     kind = SPEECH_SCORING.get(cue)
     if kind is None or factor <= 0 or (sport or "").strip().lower() not in ("football", ""):
         return None
+    if kind == "penalty_awarded":   # a penalty given is the strongest build-up sign in football: as much as a review of a possible goal
+        return weights.cue_review_top * factor
     return (weights.cue_free_kick if kind == "free_kick" else weights.cue_chance) * factor
+
+
+def tracker_note_weight(cue: str, sport: str | None, weights, factor: float) -> float | None:
+    """What a SPOKEN cue adds to the build-up tracker ONLY (never to the score, never set_anticipation), or None. Today: a `corner`
+    in a stream whose sport is exactly "football" (not unknown, not American football) at `weights.cue_minor` x `factor`.
+    A corner alone never reaches the tracker's level; it only adds to a sequence (corner, chance, surge)."""
+    if cue != "corner" or factor <= 0 or (sport or "").strip().lower() != "football":
+        return None
+    return weights.cue_minor * factor
+
+
+def is_strong_cue(weight: float, sport: str | None, weights) -> bool:
+    """A football cue worth at least a review of a possible goal (a penalty given, VAR checking a goal or penalty): it does not need another
+    sign of excitement beside it to count in full, because a goal usually follows it. Other sports keep the rule that a lone cue is capped."""
+    return weight >= weights.cue_review_top - 1e-9 and (sport or "").strip().lower() in ("football", "")
 
 
 def _is_american_football(sport: str | None) -> bool:
@@ -131,6 +149,8 @@ def zone_weight(cue: str, factor: float | None, weights) -> float:
 def cue_weight(cue: str, banner: str, speech_tier: str | None, sport: str | None, weights, zone: float | None = None) -> float:
     """The weight of one cue (before leverage and the master scale). `banner` is the text on screen, `speech_tier` what `SpeechMemory.tier` says."""
     group = group_of(cue, sport)
+    if cue in PENALTY_KICK_CUES and not _is_american_football(sport) and (sport or "").strip().lower() != "basketball":
+        return weights.cue_review_top   # a penalty kick in football: the next thing that happens is very likely a goal
     if cue in FREE_KICK_CUES and not _is_american_football(sport) and (sport or "").strip().lower() != "basketball":
         return weights.cue_free_kick
     if cue in ZONE_CUES and _is_american_football(sport):

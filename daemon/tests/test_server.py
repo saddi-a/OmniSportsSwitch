@@ -457,7 +457,7 @@ def test_the_speech_cues_are_found_in_english_and_french_transcripts():
     from daemon.speech import find_speech_cues, to_whisper_rate
 
     assert find_speech_cues("He is in the red zone, first and goal at the four yard line.") == ["red zone"]
-    assert find_speech_cues("Penalty kick for Roma, the referee points to the spot.") == ["penalty"]
+    assert find_speech_cues("Penalty kick for Roma, the referee points to the spot.") == ["penalty", "penalty awarded"]
     assert find_speech_cues("Corner kick for Como, and the flag is up for offside.") == ["flag", "corner", "offside"]
     assert find_speech_cues("Coup franc aux vingt mètres, quelle occasion, le poteau !") == ["free kick", "post", "chance"]
     assert find_speech_cues("Goaaaal! Touchdown!") == ["touchdown", "goal"]
@@ -631,3 +631,148 @@ def test_a_new_score_read_while_a_replay_banner_shows_counts_at_once():
     for i in range(5):
         server._update_game_states(replay, 140.0 + i * 3)   # the replay goes on showing the same score
     assert server.event_at[(14, 0)] == stamped              # no second event
+
+
+def test_a_penalty_given_is_a_cue_but_a_mention_of_an_old_one_is_not():
+    from daemon.speech import find_speech_cues
+
+    for heard in ("Et c'est un pénalty sifflé par John Brou", "Il siffle un penalty, il n'hésite pas", "C'est penalty, sans aucun doute",
+                  "The referee awarded a penalty", "The penalty is given"):
+        assert "penalty awarded" in find_speech_cues(heard), heard
+    for heard in ("Sur le penalty justement frappé par Béraldo", "ce qui amène ce penalty dans cette bonne entame", "de ne pas conseiller un pénalty en annulant une occasion",
+                  "Last 2 penalties Rudoni"):
+        assert "penalty awarded" not in find_speech_cues(heard), heard
+
+
+def test_a_shot_and_a_save_are_a_chance_cue():
+    from daemon.speech import find_speech_cues
+
+    for heard in ("Sidi Chérif prépare sa frappe, c'est capté en deux temps par le gardien", "Beau travail, le gardien repousse", "Shot saved by the keeper",
+                  "Un tir cadré mais le gardien détourne"):
+        assert "chance" in find_speech_cues(heard), heard
+
+
+def test_french_touche_is_not_a_touchdown_but_a_called_one_is():
+    from daemon.speech import find_speech_cues
+
+    for heard in ("on a touché, on n'a pas assez", "qui avait même touché le ballon", "Le drapeau ne s'est pas levé, il n'avait pas touché le moindre ballon"):
+        assert "touchdown" not in find_speech_cues(heard), heard
+    for heard in ("Touchdown Seattle !", "touché !"):
+        assert "touchdown" in find_speech_cues(heard), heard
+
+
+def _buildup_server(sport, level=0.46, tabs=(1, 2)):
+    """Server with MAIN = tab 1 and a stream 2 whose build-up cues add up to `level`, both warmed up on quiet audio."""
+    server = Server()
+    for t in tabs:
+        server.handle_message({"type": "register", "tab_id": t, "is_main": t == 1})
+        for i in range(120):
+            server.scorer.add_audio(t, 0.05, i * 0.5)
+    if sport:
+        server.sports[2] = sport
+    server.buildup.note(2, 59.0, level)
+    return server
+
+
+def _check(server, now=60.0):
+    if not hasattr(server, "_c60"):   # audio goes stale in these tests: reuse the first reading
+        server._c60 = server.scorer.components(2, now)
+    c = server._c60
+    return server._check_buildup(2, c, now)
+
+
+def test_buildup_takes_main_once_for_football_and_the_cooldown_stops_a_second_swap(caplog):
+    server = _buildup_server("football")
+    with caplog.at_level(logging.INFO):
+        swap = _check(server)
+    assert swap is not None and (swap.promote, swap.demote) == (2, 1)
+    assert swap.reason.startswith("build-up: level 0.4") and "vs main" in swap.reason
+    assert server.scorer.main == 2
+    assert "moved MAIN" in caplog.text
+    assert _check(server, 61.0) is None   # cooldown (and dwell)
+    # the old MAIN, now a challenger, cannot flap back: its own cues would be blocked by dwell
+    server.buildup.note(1, 62.0, 0.9)
+    assert server.scorer.take_main_block(1, 62.0) == "dwell"
+
+
+@pytest.mark.parametrize("sport", ["American football", "basketball", None])
+def test_buildup_never_moves_main_for_other_or_undetected_sports(sport, caplog):
+    server = _buildup_server(sport)
+    with caplog.at_level(logging.INFO):
+        swap = _check(server)
+    assert swap is None and server.scorer.main == 1
+    if sport is None:   # unknown sport: shadow line only, as before
+        assert "not moved: sport not detected as football" in caplog.text
+    else:
+        assert "buildup would take MAIN" not in caplog.text
+
+
+def test_buildup_live_zero_is_log_only(caplog):
+    server = _buildup_server("football")
+    server.scorer.config.buildup_live = 0.0
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert server.scorer.main == 1 and "log only" in caplog.text
+
+
+def test_buildup_blocked_by_an_ad_says_why(caplog):
+    server = _buildup_server("football")
+    server.scorer.set_on_ad(2, True)
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert server.scorer.main == 1 and "not moved: on an ad" in caplog.text
+
+
+def test_buildup_blocked_does_not_start_the_cooldown_and_the_log_line_is_throttled(caplog):
+    server = _buildup_server("football")
+    server.scorer.set_on_ad(2, True)
+    with caplog.at_level(logging.INFO):
+        assert _check(server, 60.0) is None
+        assert _check(server, 62.0) is None
+        assert _check(server, 64.0) is None
+    assert caplog.text.count("not moved: on an ad") == 1          # throttled to once per 10 s
+    server.scorer.set_on_ad(2, False)
+    server.buildup.note(2, 64.5, 0.46)
+    with caplog.at_level(logging.INFO):
+        swap = _check(server, 65.0)                                # fires at once: the blocked tries did not use the cooldown
+    assert swap is not None and server.scorer.main == 2
+    assert _check(server, 66.0) is None                           # now the cooldown (and the dwell) runs
+    assert "moved MAIN" in caplog.text
+
+
+def test_buildup_blocked_line_comes_again_after_ten_seconds(caplog):
+    server = _buildup_server("football")
+    server.scorer.set_on_ad(2, True)
+    with caplog.at_level(logging.INFO):
+        _check(server, 60.0)
+        server.buildup.note(2, 70.0, 0.46)
+        _check(server, 70.5)
+    assert caplog.text.count("not moved: on an ad") == 2
+
+
+def test_buildup_log_only_starts_the_cooldown(caplog):
+    server = _buildup_server("football")
+    server.scorer.config.buildup_live = 0.0
+    with caplog.at_level(logging.INFO):
+        _check(server, 60.0)
+        _check(server, 62.0)
+    assert caplog.text.count("log only") == 1
+
+
+def test_buildup_crowd_pressure_notes_a_cue_after_two_readings(caplog):
+    server = _buildup_server("football", level=0.0)
+    c = dict(server.scorer.components(2, 60.0), crowd=0.30, surge=0.0)
+    with caplog.at_level(logging.INFO):
+        server._check_buildup(2, c, 60.0)
+        assert server.buildup.cues(2, 60.0) == []
+        server._check_buildup(2, c, 62.0)
+    assert [round(v, 2) for _, v in server.buildup.cues(2, 62.0)] == [round(0.10 * (1 - 2 / 60), 2)]
+
+
+def test_buildup_does_not_leave_a_main_that_just_scored_and_says_so(caplog):
+    server = _buildup_server("football", level=2.0)
+    server.scorer.set_event(1, 50.0, 1.0, goal=True)
+    with caplog.at_level(logging.INFO):
+        assert _check(server, 60.0) is None
+    assert server.scorer.main == 1 and "not moved: goal on MAIN 10 s ago" in caplog.text
+    assert [w for _, w, _ in server.scorer.goal_hold_changes(60.0)] == ["start"]

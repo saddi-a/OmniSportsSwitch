@@ -70,6 +70,21 @@ SCOREBUG_MEMORY_S = 6.0   # a clock / down / quarter on screen proves a live sco
 # (nearly) just that phrase, like the big-play banners; the cue is the phrase. Red card / penalty kick are big plays and not repeated here.
 ANTICIPATION_WORDS = ["red zone", "goal to go", "two minute warning", "two-minute warning", "field goal", "field goal attempt", "penalty", "flag", "flag on the play", "review", "under review", "replay review", "challenge", "big play", "var", "var check", "free kick", "corner", "corner kick", "penalty shootout", "avertissement de deux minutes", "tir de placement", "pénalité", "pénalty", "drapeau", "révision", "contestation", "assistance vidéo", "coup franc", "tir au but", "tirs au but", "penalti", "tiro libre", "saque de esquina", "escanteio", "tiro livre", "pênalti",
                       "free throw", "free throws", "technical foul", "flagrant foul", "flagrant", "buzzer beater", "timeout", "lancer franc", "lancers francs", "faute technique", "faute flagrante", "temps mort", "tiros libres", "falta técnica"]
+# Banner cues that only exist in some sports (same idea as speech.CUE_SPORTS). A cue not listed here is valid everywhere (review, replay,
+# timeout, var, foul...). Applied only when the tracker's sport is known; an unknown sport keeps every cue.
+_AF, _SOC, _BB = "american football", "football", "basketball"
+BANNER_CUE_SPORTS = {
+    **dict.fromkeys(["red zone", "goal to go", "yard line", "4th down", "big gain", "two minute warning", "two-minute warning",
+                     "avertissement de deux minutes", "field goal", "field goal attempt", "tir de placement", "flag", "flag on the play",
+                     "drapeau"], {_AF}),
+    **dict.fromkeys(["free kick", "coup franc", "corner", "corner kick", "saque de esquina", "escanteio", "penalty shootout", "tir au but",
+                     "tirs au but", "added time", "var", "var check"], {_SOC}),
+    **dict.fromkeys(["penalty", "pénalité", "pénalty", "penalti", "pênalti"], {_SOC, _AF}),   # a penalty kick, or a flag in American football
+    **dict.fromkeys(["free throw", "free throws", "technical foul", "flagrant foul", "flagrant", "buzzer beater", "lancer franc", "lancers francs",
+                     "faute technique", "faute flagrante", "tiros libres", "falta técnica"], {_BB}),
+}
+
+
 # A review banner that names its subject: "VAR: POSSIBLE GOAL", "REVIEW: TOUCHDOWN", "PENALTY CHECK" (the subject must be a known one).
 REVIEW_BANNER_RE = re.compile(r"^(var|video review|review|under review|replay review|v[ée]rification vid[ée]o|v[ée]rification|r[ée]vision)\b[\s:\-–—]*(.+)$", re.IGNORECASE)
 REVIEW_BANNER_END_RE = re.compile(r"^(.+?)[\s:\-]+(check|review|v[ée]rification|r[ée]vision)$", re.IGNORECASE)
@@ -415,7 +430,7 @@ class GameTracker:
             if cue:
                 found.append(cue)
                 self._cue_texts.setdefault(cue, t)
-        return list(dict.fromkeys(found))
+        return [c for c in dict.fromkeys(found) if not self.sport or self.sport in BANNER_CUE_SPORTS.get(c, {self.sport})]
 
     def _read_goal_banner(self, now: float, texts: list[str], on_ad: bool) -> None:
         """Soccer: the GOAL banner an operator flashes in the place of the scorebug's team code and digits, for one or two readings, often

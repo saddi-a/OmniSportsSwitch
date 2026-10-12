@@ -78,7 +78,8 @@ def test_the_other_groups_do_not_look_at_the_subject():
     assert cue_weight("red zone", "RED ZONE", "mid", AF, W) == W.cue_chance
     assert cue_weight("flag", "FLAG", "top", AF, W) == W.cue_minor
     assert cue_weight("corner", "CORNER", None, SOCCER, W) == W.cue_minor
-    assert cue_weight("penalty", "PENALTY", None, SOCCER, W) == W.cue_chance
+    assert cue_weight("penalty", "PENALTY", None, SOCCER, W) == W.cue_review_top   # football: a penalty kick is the strongest build-up sign
+    assert cue_weight("penalty", "PENALTY", None, AF, W) == W.cue_minor           # American football: a flag
 
 
 def test_the_tiers_go_down():
@@ -235,3 +236,50 @@ def test_other_spoken_cues_and_other_sports_stay_log_only():
     assert speech_cue_weight("penalty", "american football", w, 0.7) is None   # a flag there
     assert speech_cue_weight("goal", "basketball", w, 0.7) is None
     assert speech_cue_weight("free kick", "football", w, 0.0) is None          # the setting turns it off
+
+
+# ---- football build-up: a penalty given counts in full, and so does a shot and a save ----------------------------------------------------------------
+
+
+def test_a_penalty_given_is_a_strong_spoken_cue_in_football_only():
+    from daemon.cues import is_strong_cue, speech_cue_weight
+
+    assert speech_cue_weight("penalty awarded", "football", W, 1.0) == W.cue_review_top
+    assert speech_cue_weight("penalty awarded", "american football", W, 1.0) is None
+    assert is_strong_cue(W.cue_review_top, "football", W) and is_strong_cue(W.cue_review_top, None, W)
+    assert not is_strong_cue(W.cue_chance, "football", W)
+    assert not is_strong_cue(W.cue_review_top, "american football", W)
+    assert not is_strong_cue(W.cue_review_top, "basketball", W)
+
+
+def test_a_strong_cue_swaps_without_another_sign_but_a_normal_cue_does_not():
+    from daemon.scoring import Scorer
+
+    for strong, expect_swap in ((True, True), (False, False)):
+        s = Scorer()
+        for tab in (1, 2):
+            s.register(tab, is_main=tab == 1)
+        t = 100.0
+        for i in range(150):   # steady commentary, no surge, no crowd: only the cue differs
+            for tab in (1, 2):
+                s.add_audio(tab, 0.1, t + i * 0.2)
+                s.set_tags(tab, 0.02, 0.8, 0.05, t + i * 0.2)
+        now = t + 30.0
+        s.set_anticipation(2, now, W.cue_review_top, strong=strong)
+        assert (s.score(2, now + 0.5) >= s.config.min_score) is expect_swap
+
+
+def test_tracker_note_weight_corner_only_in_football():
+    from daemon.cues import tracker_note_weight
+    w = Weights()
+    assert tracker_note_weight("corner", "football", w, 0.7) == pytest.approx(w.cue_minor * 0.7)
+    for sport in ("american football", "basketball", None, ""):
+        assert tracker_note_weight("corner", sport, w, 0.7) is None
+    assert tracker_note_weight("corner", "football", w, 0) is None
+    for cue in ("foul", "offside", "chance", "free kick", "goal", "penalty"):
+        assert tracker_note_weight(cue, "football", w, 0.7) is None
+
+
+def test_corner_never_feeds_the_score():
+    from daemon.cues import speech_cue_weight
+    assert speech_cue_weight("corner", "football", Weights(), 0.7) is None

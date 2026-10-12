@@ -10,7 +10,7 @@ A local "live broadcast director": an Edge extension plus a Python daemon that w
 - `extension/` Edge Manifest V3 extension, plain JS, no build step (see `extension/CLAUDE.md`).
 - `settings.toml` every threshold/weight/phrase; a test keeps it equal to the built-in defaults.
 - `launcher/` the tray launcher (`launcher.py`, built into `dist/OmniSportsSwitch.exe` by `scripts/build_launcher.ps1`; build tools in `requirements-build.txt`); it starts this project's `.venv` daemon and the test Edge profile.
-- `scripts/` PowerShell `setup.ps1` (one-time install: venv, CUDA PyTorch, packages, models, tests), start/stop scripts (`start_all.ps1 -NoEdge`, `stop_all.ps1 -Edge`), `capture_samples.py` (saves screenshots to untracked `samples/`).
+- `scripts/` (also `backtest.py`, read-only: how far ahead of each goal a stream scored, per sport) PowerShell `setup.ps1` (one-time install: venv, CUDA PyTorch, packages, models, tests), start/stop scripts (`start_all.ps1 -NoEdge`, `stop_all.ps1 -Edge`), `capture_samples.py` (saves screenshots to untracked `samples/`).
 - `tmp/` scratch space, ignored by git (nothing in it is kept). The Phase 0 experiments (`spike/`) were removed; their conclusions are in `PLAN.md` and the code is in the git history before the commit that removed it.
 - `models/`, `logs/`, `samples/`, `dist/`, `build/`, `tmp/`, `.venv/` are not tracked.
 
@@ -18,8 +18,9 @@ A local "live broadcast director": an Edge extension plus a Python daemon that w
 
 - **Ask before architecture or design decisions**: give options with pros and cons and a recommendation. Implementation details are yours; explain them briefly. The user is new to web development, knows Python and C. Keep replies short and plain.
 - **Git**: the GitHub repo `saddi-a/OmniSportsSwitch` was made PUBLIC on 2026-10-11 (so friends can use it); everything pushed is visible to everyone, so never commit logs, samples, screenshots, stream URLs or personal data. Work on `develop` (renamed from `phase-0-1-spike-and-daemon` on 2026-10-11); other sessions work on their own branches from `develop` and the main session merges them. Never commit directly on `main`: it is only fast-forwarded from `develop` (`git push origin develop:main`) when the user asks; the permission system blocked this once and allowed it after the user asked explicitly. Push `develop` freely. Never force-push. Never edit git config; commit with `git -c user.name=saddi-a -c user.email=72130894+saddi-a@users.noreply.github.com`. Cleaning the public history is a pending decision (see `PLAN.md` section 0, "Public repo").
-- **Tests**: `.venv\Scripts\python.exe -m pytest daemon -q` (one expected failure: the UCF layout). Add a test for every behaviour you add. Real scoreboard fixtures are in `daemon/tests/fixtures/`.
+- **Tests**: `.venv\Scripts\python.exe -m pytest daemon -q` (one expected failure: the UCF layout). About 815 tests. After a football change also run `scripts\backtest.py --summary` on the logs. Add a test for every behaviour you add. Real scoreboard fixtures are in `daemon/tests/fixtures/`.
 - **After changes**: daemon or settings changes need a daemon restart (`scripts\stop_all.ps1`, `scripts\start_all.ps1`). Extension changes need the user to press "Reload extension" in the popup and re-track each tab.
+- **The aim is to move MAIN BEFORE the goal** (build-up: big chance, save, VAR, penalty awarded), not to detect the goal afterwards, and **each sport has its own clues**: calibrate and report football, American football and basketball separately (the first calibration, 2026-10-10/11, was American football only). Measure with `scripts\backtest.py` before changing weights; see `PLAN.md` section 0.
 - **Do not trust single readings**: music probability, OCR text and clocks flicker. Use votes, memory and confirmations over several readings.
 - **Never cover a stream** with a window (OCR reads the screen) and keep Edge hardware acceleration off.
 

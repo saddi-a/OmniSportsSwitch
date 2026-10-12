@@ -28,7 +28,7 @@ semantic_min_sim = 0.85       # semantic reading of the commentary (measuring on
 semantic_mid_sim = 0.99       # ...mid level: effectively off (0 of 5 mid alarms were true in Como-Roma)
 semantic_margin = 0.10        # ...and must beat the similarity to ordinary match talk by this much
 speech_cue_cooldown_s = 20.0  # the same spoken cue on the same stream is logged at most this often
-speech_cue_factor = 0.7       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
+speech_cue_factor = 1.0       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
 classifier_max_gain = 8.0     # ...by at most this factor up or down
 feed_mode = 0           # outside game data (ESPN): 0 = local only, nothing starts; 1 = record only (measuring, changes no score); needs a daemon restart
 feed_poll_s = 5.0       # a league with a live game is asked this often (never less than 5 s)
@@ -38,6 +38,20 @@ feed_unconfirmed_factor = 0.5  # BOTH mode: an OCR score change on a mapped game
 feed_confirm_s = 30.0   # ...and the feed has this long after the OCR change to confirm it
 feed_event_weight = 0.0  # a feed goal/touchdown on a mapped game counts this much of its strength (0 = only logged, 1 = full)
 feed_lead_s = 10.0      # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
+buildup_mode = 1.0      # build-up tracker (measuring only, changes no score): 0 = off, 1 = log "buildup would take MAIN" lines
+buildup_live = 1.0      # football only: 1 = a stream that reaches the build-up level really takes MAIN (Scorer.take_main), 0 = log only
+buildup_window_s = 60.0 # the cues of a stream are added up for this long (each fading to 0), not only the strongest one
+buildup_min = 0.32      # a stream not in MAIN "would take" it when its build-up level (faded cue sum + surge/crowd) reaches this...
+buildup_cooldown_s = 30.0  # ...and is min_gap above MAIN's score; one line per stream this often
+buildup_surge_min = 0.6 # soccer, measuring only: a loudness surge this high notes a small pseudo-cue in the build-up (never a score)...
+buildup_surge_note = 0.10  # ...of this value, at most once per buildup_cooldown_s per stream
+buildup_gap = 0.10       # the tracker's own 'above MAIN' gap (min_gap, 0.15, stays for the normal rule)
+buildup_crowd_min = 0.25 # football: a stream whose crowd probability stays this high on 2 consecutive score readings (2 s apart)...
+goal_hold_s = 40.0       # build-up tracker: MAIN keeps its place this long after a goal on it (score change or goal banner; 0 = off)...
+goal_hold_extend_s = 10.0   # ...and longer while a replay sign (replay over the scorebug, hidden scorebug, replay by clock, spoken replay) is seen: until its time + this...
+goal_hold_max_s = 75.0   # ...but never longer than this after the goal
+goal_hold_break = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
+buildup_crowd_note = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event
 anticipation_s = 18.0       # a cue boosts a stream this long (fading)

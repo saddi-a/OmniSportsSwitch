@@ -713,8 +713,16 @@ def test_english_and_french_banners():
                       ("FLAG", "flag"), ("PENALTY", "penalty"), ("VAR CHECK", "var check"), ("VAR", "var"), ("FREE KICK", "free kick"),
                       ("CORNER", "corner"), ("COUP FRANC", "coup franc"), ("TIR AU BUT", "tir au but"), ("PÉNALTY", "pénalty"),
                       ("PENALTY SHOOTOUT", "penalty shootout"), ("RED ZONE", "red zone"), ("CHALLENGE", "challenge")):
-        g = GameTracker("football")
+        g = GameTracker("American football" if cue in ("field goal", "two-minute warning", "flag", "red zone") else "football")
         assert [c for _, c in cues_over(g, 0, [text, "PSG", "0", "LYON"], "30:00")] == [cue], text
+
+
+def test_banner_cues_of_another_sport_are_dropped():
+    for sport, text in (("football", "RED ZONE"), ("football", "FIELD GOAL"), ("football", "FLAG"), ("basketball", "CORNER"), ("basketball", "VAR"),
+                        ("American football", "CORNER"), ("American football", "FREE KICK"), ("football", "FREE THROWS")):
+        assert cues_over(GameTracker(sport), 0, [text, "PSG", "0", "LYON"], "30:00") == [], (sport, text)
+    assert [c for _, c in cues_over(GameTracker(""), 0, ["RED ZONE", "PSG", "0", "LYON"], "30:00")] == ["red zone"]   # unknown sport keeps all
+    assert [c for _, c in cues_over(GameTracker("basketball"), 0, ["UNDER REVIEW", "PSG", "0", "LYON"], "30:00")] == ["under review"]
 
 
 def test_basketball_banners():
