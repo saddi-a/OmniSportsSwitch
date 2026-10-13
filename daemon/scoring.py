@@ -225,7 +225,29 @@ class Swap:
 
 
 @dataclass
-class _Stream:
+class _Tile:
+    """The picture signals of ONE video (a tile of a multiview). A single-video tab keeps them in its `_Stream` itself (which is a
+    `_Tile`); a multiview tab keeps one `_Tile` per video in `_Stream.tiles`, so each tile has its own cue, event, goal hold, hot episode,
+    leverage, replay, ad and game state, read with its own sport's settings."""
+    anticipation_at: float = float("-inf")   # when a cue (banner before a likely score) was last seen
+    anticipation_value: float = 0.0   # its weight (before leverage and the master scale)
+    hot_start: float = float("-inf")   # start of the current hot episode (MAIN's own goal / strong cue), see `hot_left`
+    hot_last: float = float("-inf")    # the latest goal / strong cue of that episode
+    review_at: float = float("-inf")   # when a review-weight cue (>= buildup_review_min) was last seen, whatever replaced the stored cue since
+    anticipation_strong: bool = False   # a football cue worth a review of a possible goal or more: it counts in full without other signs
+    event_at: float = float("-inf")  # when a score change was last seen
+    goal_at: float = float("-inf")   # real time of the last goal (score change or goal banner)
+    replay_seen_at: float = float("-inf")   # last replay sign seen while the post-goal hold ran
+    goal_hold_on: bool = False       # the post-goal replay hold has started and not yet been reported over
+    on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
+    leverage: float = 0.0   # -1 (late blowout) .. +1 (late close game), set from the scoreboard; 0 = unknown
+    replay: bool = False    # the picture shows a replay over a live scorebug
+    auto_state: str = "live"     # status detected from the picture
+
+
+@dataclass
+class _Stream(_Tile):
+    """A tab: its audio and the user's settings, plus (as a `_Tile`) the picture signals of a single-video tab."""
     weight: float = 1.0
     samples: deque = field(default_factory=deque)  # (time, level)
     baseline: float | None = None
@@ -233,27 +255,22 @@ class _Stream:
     last_sample: float | None = None
     tags: tuple[float, float, float] = (0.0, 0.0, 0.0)  # crowd, speech, music
     tags_at: float = float("-inf")
-    anticipation_at: float = float("-inf")   # when a cue (banner before a likely score) was last seen
-    anticipation_value: float = 0.0   # its weight (before leverage and the master scale)
-    hot_start: float = float("-inf")   # start of the current hot episode (MAIN's own goal / strong cue), see `hot_left`
-    hot_last: float = float("-inf")    # the latest goal / strong cue of that episode
-    review_at: float = float("-inf")   # when a review-weight cue (>= buildup_review_min) was last seen, whatever replaced the stored cue since
-    anticipation_strong: bool = False   # a football cue worth a review of a possible goal or more: it counts in full without other signs
     shout: float = 0.0   # 0..1 probability of shouting / yelling / screaming
-    event_at: float = float("-inf")  # when a score change was last seen
-    goal_at: float = float("-inf")   # real time of the last goal (score change or goal banner) on this stream
-    replay_seen_at: float = float("-inf")   # last replay sign seen while the post-goal hold ran
-    goal_hold_on: bool = False       # the post-goal replay hold has started and not yet been reported over
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
-    on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
     audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
-    leverage: float = 0.0   # -1 (late blowout) .. +1 (late close game), set from the scoreboard; 0 = unknown
     ad_at: float = float("-inf")        # when the stream was last seen on an ad (picture or sound)
-    replay: bool = False    # the picture shows a replay over a live scorebug
     music_hits: list = field(default_factory=list)  # recent readings: did each one look like an ad?
     favourite: float = 1.0  # multiplier of a favourite team playing in this stream (1.0 = none)
     override: str | None = None  # status chosen by the user (live/break/over), None = automatic
-    auto_state: str = "live"     # status detected from the picture
+    tiles: dict = field(default_factory=dict)   # video index -> _Tile; empty = a single-video tab (its picture signals are the fields above)
+
+
+def _combine(states) -> str:
+    """State of a whole tab from the states of its videos: live if any is live."""
+    states = list(states)
+    if not states or "live" in states:
+        return "live"
+    return "break" if "break" in states else "over"
 
 
 class Scorer:
@@ -270,10 +287,100 @@ class Scorer:
         self._candidate: tuple[int, int, float] | None = None  # (replaced, challenger, since when it has qualified)
         self._previous_main: int | None = None  # MAIN before a tab registered as MAIN: comes back if that tab leaves
         self.sport_of = None   # callable tab id -> sport name (the server sets it): picks the per-sport overrides of a stream
+        self.tile_sport_of = None   # callable (tab id, video index) -> sport name: the sport of one tile of a multiview tab
+        self.audible_of = None      # callable tab id -> video index that has the sound (None = not known): the audio belongs to that tile
 
     def cfg_for(self, tab_id: int | None):
         """The settings as the sport of this stream sees them (`Config.for_sport`); the shared ones when the sport is not known."""
         return self.config.for_sport(self.sport_of(tab_id) if self.sport_of is not None and tab_id is not None else None)
+
+    def tile_cfg(self, tab_id: int, tile: int | None):
+        """The settings as the sport of one TILE sees them; `tile` None (a single-video tab) = the sport of the tab (`cfg_for`)."""
+        if tile is None or self.tile_sport_of is None:
+            return self.cfg_for(tab_id)
+        return self.config.for_sport(self.tile_sport_of(tab_id, tile))
+
+    def tile_sport(self, tab_id: int, tile: int | None):
+        """The sport name of a tile as the scorer reads it (None = not known)."""
+        if tile is not None and self.tile_sport_of is not None:
+            return self.tile_sport_of(tab_id, tile)
+        return self.sport_of(tab_id) if self.sport_of is not None else None
+
+    # ---- tiles: a multiview tab keeps one picture-signal record per video; a single-video tab uses its stream record ----
+
+    @staticmethod
+    def _recs(stream: _Stream) -> list:
+        """[(video index or None, record)] of a tab: its tiles, or just the stream itself when it has none (a single video)."""
+        return list(stream.tiles.items()) if stream.tiles else [(None, stream)]
+
+    @staticmethod
+    def _sel(stream: _Stream, tile: int | None) -> list:
+        """The records one `tile` argument means: that tile if the tab has it, else all of them (None = the whole tab)."""
+        if stream.tiles and tile in stream.tiles:
+            return [(tile, stream.tiles[tile])]
+        return list(stream.tiles.items()) if stream.tiles else [(None, stream)]
+
+    @staticmethod
+    def _rec_of(stream: _Stream, tile: int | None) -> _Tile:
+        return stream.tiles[tile] if tile is not None and tile in stream.tiles else stream
+
+    def _write_rec(self, stream: _Stream, tile: int | None) -> _Tile:
+        """The record a setter writes to: the tile's (made when new) or, with no tile, the stream's own."""
+        if tile is None:
+            return stream
+        rec = stream.tiles.get(tile)
+        if rec is None:
+            rec = stream.tiles[tile] = _Tile()
+        return rec
+
+    def set_tiles(self, tab_id: int, tiles) -> None:
+        """The videos a multiview tab has now: each has a record (made when new), records of other videos are dropped; no tiles = a
+        single-video tab (its tile records go and the stream's own record counts again)."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return
+        keep = list(tiles)
+        for key in [k for k in stream.tiles if k not in keep]:
+            del stream.tiles[key]
+        for key in keep:
+            self._write_rec(stream, key)
+
+    def swap_tiles(self, tab_id: int, a: int, b: int) -> None:
+        """DAZN's expand moved two streams between slots: their picture records change places."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return
+        moved_a, moved_b = stream.tiles.pop(a, None), stream.tiles.pop(b, None)
+        if moved_b is not None:
+            stream.tiles[a] = moved_b
+        if moved_a is not None:
+            stream.tiles[b] = moved_a
+
+    def tab_on_ad(self, tab_id: int) -> bool:
+        """The whole tab shows an ad: every video of it does."""
+        stream = self.streams.get(tab_id)
+        return stream is not None and all(rec.on_ad for _, rec in self._recs(stream))
+
+    def tab_state(self, tab_id: int) -> str:
+        """The user's choice, else live if any video of the tab is live (break, then over)."""
+        stream = self.streams[tab_id]
+        return stream.override or _combine(rec.auto_state for _, rec in self._recs(stream))
+
+    def replay_of(self, tab_id: int, tile: int | None = None) -> bool:
+        """The picture shows a replay: on this tile (None = the tab's only video, or any tile)."""
+        stream = self.streams.get(tab_id)
+        return stream is not None and any(rec.replay for _, rec in self._sel(stream, tile))
+
+    @staticmethod
+    def _last_goal(stream: _Stream) -> float:
+        return max(rec.goal_at for _, rec in Scorer._recs(stream))
+
+    def _audible_tile(self, tab_id: int, stream: _Stream) -> int | None:
+        """The tile that has the sound, when the tab has tiles and it is known (else None: every tile hears the tab's audio)."""
+        if not stream.tiles or self.audible_of is None:
+            return None
+        index = self.audible_of(tab_id)
+        return index if index in stream.tiles else None
 
     def register(self, tab_id: int, weight: float = 1.0, is_main: bool = False) -> None:
         self.streams.setdefault(tab_id, _Stream()).weight = weight
@@ -333,53 +440,66 @@ class Scorer:
         if tab_id in self.streams:
             self.streams[tab_id].can_main = can_main
 
-    def set_leverage(self, tab_id: int, value: float) -> None:
+    def set_leverage(self, tab_id: int, value: float, tile: int | None = None) -> None:
         if tab_id in self.streams:
-            self.streams[tab_id].leverage = min(max(value, -1.0), 1.0)
+            self._write_rec(self.streams[tab_id], tile).leverage = min(max(value, -1.0), 1.0)
 
     def set_favourite(self, tab_id: int, multiplier: float) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].favourite = max(1.0, multiplier)
 
-    def set_anticipation(self, tab_id: int, now: float, value: float | None = None, strong: bool = False) -> None:
+    def set_anticipation(self, tab_id: int, now: float, value: float | None = None, strong: bool = False, tile: int | None = None) -> None:
         """A cue before a likely score; `value` is its weight (`daemon.cues.cue_weight`), `None` = a minor cue. A weaker cue does not
-        replace a stronger one that is still fading."""
+        replace a stronger one that is still fading. `tile` = the video of a multiview tab it was seen on (read with that tile's sport)."""
         stream = self.streams.get(tab_id)
         if stream is None:
             return
-        cfg = self.cfg_for(tab_id)
+        cfg = self.tile_cfg(tab_id, tile)
+        rec = self._write_rec(stream, tile)
         value = cfg.weights.cue_minor if value is None else value
-        fading = stream.anticipation_value * max(0.0, 1.0 - (now - stream.anticipation_at) / cfg.anticipation_s)
+        fading = rec.anticipation_value * max(0.0, 1.0 - (now - rec.anticipation_at) / cfg.anticipation_s)
         if strong:
-            self._hot_trigger(stream, now, cfg)   # the hot episode is kept apart from the stored cue: a weaker cue replacing it must not end it
+            self._hot_trigger(rec, now, cfg)   # the hot episode is kept apart from the stored cue: a weaker cue replacing it must not end it
         if value >= cfg.buildup_review_min:
-            stream.review_at = now
+            rec.review_at = now
         if value >= fading:
-            stream.anticipation_at, stream.anticipation_value, stream.anticipation_strong = now, value, strong
+            rec.anticipation_at, rec.anticipation_value, rec.anticipation_strong = now, value, strong
 
-    def set_replay(self, tab_id: int, replay: bool, now: float | None = None) -> None:
+    def set_replay(self, tab_id: int, replay: bool, now: float | None = None, tile: int | None = None) -> None:
         if tab_id in self.streams:
-            self.streams[tab_id].replay = replay
+            self._write_rec(self.streams[tab_id], tile).replay = replay
             if replay and now is not None:
-                self.note_replay(tab_id, now)
+                self.note_replay(tab_id, now, tile)
 
-    def note_replay(self, tab_id: int, now: float) -> None:
+    def note_replay(self, tab_id: int, now: float, tile: int | None = None) -> None:
         """A sign that the stream shows replays (replay over the scorebug, hidden scorebug, replay by clock, spoken replay). It extends
-        the post-goal hold if one is running (see `goal_hold_left`); outside a hold it is ignored."""
-        if self.goal_hold_left(tab_id, now) > 0:
-            self.streams[tab_id].replay_seen_at = now
+        the post-goal hold if one is running (see `goal_hold_left`); outside a hold it is ignored. With a `tile` only that tile's hold is
+        extended (a replay on one video says nothing about the goal on another); without one every tile's hold that runs."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return
+        for key, rec in self._sel(stream, tile):
+            if self._goal_hold(rec, self.tile_cfg(tab_id, key), now) > 0:
+                rec.replay_seen_at = now
 
-    def goal_hold_left(self, tab_id: int, now: float) -> float:
+    @staticmethod
+    def _goal_hold(rec: _Tile, cfg, now: float) -> float:
+        if cfg.goal_hold_s <= 0 or rec.goal_at == float("-inf"):
+            return 0.0
+        end = rec.goal_at + cfg.goal_hold_s
+        if rec.replay_seen_at >= rec.goal_at:
+            end = max(end, min(rec.replay_seen_at + cfg.goal_hold_extend_s, rec.goal_at + max(cfg.goal_hold_max_s, cfg.goal_hold_s)))
+        return max(0.0, end - now)
+
+    def goal_hold_left(self, tab_id: int, now: float, tile: int | None = None) -> float:
         """Seconds the post-goal replay hold of this stream still runs (0 = none). It starts at the goal (`set_event(goal=True)`), lasts
         `goal_hold_s` at the least, and each replay sign seen during it moves the end to (its time + `goal_hold_extend_s`), never later than
-        `goal_hold_max_s` after the goal."""
-        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)   # the hold belongs to the stream that scored: its sport
-        if stream is None or cfg.goal_hold_s <= 0 or stream.goal_at == float("-inf"):
+        `goal_hold_max_s` after the goal. Each tile of a multiview has its own hold, read with its own sport; the tab's is the longest
+        (or that of `tile`)."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
             return 0.0
-        end = stream.goal_at + cfg.goal_hold_s
-        if stream.replay_seen_at >= stream.goal_at:
-            end = max(end, min(stream.replay_seen_at + cfg.goal_hold_extend_s, stream.goal_at + max(cfg.goal_hold_max_s, cfg.goal_hold_s)))
-        return max(0.0, end - now)
+        return max((self._goal_hold(rec, self.tile_cfg(tab_id, key), now) for key, rec in self._sel(stream, tile)), default=0.0)
 
     def goal_hold_changes(self, now: float) -> list[tuple[int, str, float]]:
         """(tab, "start", seconds the hold runs) / (tab, "over", seconds since the goal) for holds that started or ended since the last call."""
@@ -391,38 +511,43 @@ class Scorer:
                 out.append((tab_id, "start", left))
             elif left <= 0 and stream.goal_hold_on:
                 stream.goal_hold_on = False
-                out.append((tab_id, "over", now - stream.goal_at))
+                out.append((tab_id, "over", now - self._last_goal(stream)))
         return out
 
-    def set_on_ad(self, tab_id: int, on_ad: bool, now: float | None = None) -> None:
+    def set_on_ad(self, tab_id: int, on_ad: bool, now: float | None = None, tile: int | None = None) -> None:
         if tab_id in self.streams:
-            self.streams[tab_id].on_ad = on_ad
+            rec = self._write_rec(self.streams[tab_id], tile)
+            rec.on_ad = on_ad
             if on_ad:
-                self._hot_end(self.streams[tab_id])
+                self._hot_end(rec)
                 if now is not None:
                     self.streams[tab_id].ad_at = now
 
-    def set_event(self, tab_id: int, now: float, strength: float = 1.0, goal: bool = False) -> None:
+    def set_event(self, tab_id: int, now: float, strength: float = 1.0, goal: bool = False, tile: int | None = None) -> None:
         """A goal (strength 1.0) or a weaker event such as a big play. The event fades linearly, so a weaker one is
-        a goal that already started to fade; the later start wins when events overlap."""
+        a goal that already started to fade; the later start wins when events overlap. `tile` = the video of a multiview tab it was
+        seen on: each tile keeps its own event and goal."""
         if tab_id in self.streams:
+            rec = self._write_rec(self.streams[tab_id], tile)
             candidate = now - (1.0 - min(max(strength, 0.0), 1.0)) * self.config.event_s
-            self.streams[tab_id].event_at = max(self.streams[tab_id].event_at, candidate)
+            rec.event_at = max(rec.event_at, candidate)
             if goal:   # a score change or a goal banner: starts the post-goal replay hold (real time, whatever the strength)
-                self.streams[tab_id].goal_at = max(self.streams[tab_id].goal_at, now)
-                self._hot_trigger(self.streams[tab_id], now, self.cfg_for(tab_id))
+                rec.goal_at = max(rec.goal_at, now)
+                self._hot_trigger(rec, now, self.tile_cfg(tab_id, tile))
 
     def set_status(self, tab_id: int, override: str | None) -> None:
         if tab_id in self.streams:
             self.streams[tab_id].override = override if override in STATUS_MULT else None
             if override is not None and override != "live":
-                self._hot_end(self.streams[tab_id])
+                for _, rec in self._recs(self.streams[tab_id]):
+                    self._hot_end(rec)
 
-    def set_auto_state(self, tab_id: int, state: str) -> None:
+    def set_auto_state(self, tab_id: int, state: str, tile: int | None = None) -> None:
         if tab_id in self.streams and state in STATUS_MULT:
-            self.streams[tab_id].auto_state = state
+            rec = self._write_rec(self.streams[tab_id], tile)
+            rec.auto_state = state
             if state != "live":
-                self._hot_end(self.streams[tab_id])
+                self._hot_end(rec)
 
     def components(self, tab_id: int, now: float, warmup: bool = True) -> dict | None:
         """The signals and final score of a stream, or None if it has no recent audio or is still warming up
@@ -438,39 +563,65 @@ class Scorer:
             return None
 
         level = sum(v for _, v in stream.samples) / len(stream.samples)
-        surge = min(max(level / max(stream.baseline, MIN_BASELINE) - 1.0, 0.0), cfg.surge_cap)
         fresh = now - stream.tags_at <= cfg.stale_s
-        crowd, speech, music = stream.tags if fresh else (0.0, 0.0, 0.0)
-        shout = stream.shout if fresh and music < cfg.idle_music else 0.0   # yelling voices over music are an ad, not excitement
-        if stream.replay:   # the cheering on a replay belongs to the play that was already counted
-            crowd, surge = crowd * cfg.replay_dampen, surge * cfg.replay_dampen
+        # One score per tile, each with its own sport's settings. The audio (surge, crowd, speech, music, shout, the ad-by-music memory)
+        # belongs to the tile that has the sound; the other tiles of a multiview score on their picture alone. The tab scores as its best tile.
+        audible = self._audible_tile(tab_id, stream)
+        calcs = []
+        for key, rec in self._recs(stream):
+            calcs.append((key, self._tile_calc(stream, rec, self.tile_cfg(tab_id, key), key is None or audible is None or key == audible, now, level, fresh)))
+        best_key, best = calcs[0]
+        for key, calc in calcs[1:]:
+            if calc["score"] > best["score"]:
+                best_key, best = key, calc
+        hearing = next((calc for key, calc in calcs if key is None or audible is None or key == audible), best)
+        status = stream.override or _combine(rec.auto_state for _, rec in self._recs(stream))
+        return {"score": best["score"], "ad": all(calc["ad"] for _, calc in calcs), "surge": hearing["surge"], "crowd": hearing["crowd"],
+                "speech": hearing["speech"], "music": hearing["music"], "shout": hearing["shout"], "anticipation": best["cue"], "cue": best["cue_part"],
+                "event": best["event"], "fav": stream.favourite, "lev": best["lev"], "level": level, "status": status,
+                "tile": best_key, "sport": self.tile_sport(tab_id, best_key), "tile_scores": {key: calc["score"] for key, calc in calcs}}
 
-        event = max(0.0, 1.0 - (now - stream.event_at) / cfg.event_s)
-        cue = max(0.0, 1.0 - (now - stream.anticipation_at) / cfg.anticipation_s)
+    def _tile_calc(self, stream: _Stream, rec: _Tile, cfg, hears: bool, now: float, level: float, fresh: bool) -> dict:
+        """The score of one tile (`rec`, read with `cfg` = its sport's settings). `hears`: it has the tab's sound."""
+        surge = crowd = speech = music = shout = 0.0
+        if hears:
+            surge = min(max(level / max(stream.baseline, MIN_BASELINE) - 1.0, 0.0), cfg.surge_cap)
+            crowd, speech, music = stream.tags if fresh else (0.0, 0.0, 0.0)
+            shout = stream.shout if fresh and music < cfg.idle_music else 0.0   # yelling voices over music are an ad, not excitement
+            if rec.replay:   # the cheering on a replay belongs to the play that was already counted
+                crowd, surge = crowd * cfg.replay_dampen, surge * cfg.replay_dampen
+
+        event = max(0.0, 1.0 - (now - rec.event_at) / cfg.event_s)
+        cue = max(0.0, 1.0 - (now - rec.anticipation_at) / cfg.anticipation_s)
         w = cfg.weights
         support = w.surge * surge + w.crowd * crowd + w.shout * shout + w.event * event
-        cue_part = w.anticipation * stream.anticipation_value * cue * min(max(1.0 + cfg.cue_leverage_gain * stream.leverage, 0.5), 1.5)
-        if support < cfg.cue_support and not stream.anticipation_strong:
+        cue_part = w.anticipation * rec.anticipation_value * cue * min(max(1.0 + cfg.cue_leverage_gain * rec.leverage, 0.5), 1.5)
+        if support < cfg.cue_support and not rec.anticipation_strong:
             # a cue alone must not take MAIN, even with the leverage bonus beside it: it only strengthens other signs of excitement
-            room = cfg.min_score - 0.01 - max(0.0, cfg.leverage_weight * stream.leverage)
+            room = cfg.min_score - 0.01 - max(0.0, cfg.leverage_weight * rec.leverage)
             cue_part = min(cue_part, cfg.cue_alone_cap, max(room, 0.0))
-        talk = 0.0 if stream.anticipation_strong and cue_part > 0 else w.speech * speech   # a strong cue is what the commentators are talking about
+        talk = 0.0 if rec.anticipation_strong and cue_part > 0 else w.speech * speech   # a strong cue is what the commentators are talking about
         excitement = max(0.0, support + talk + w.music * music + cue_part)
         raw = excitement + w.favourite * (stream.favourite - 1.0)  # the favourite bonus is not reduced by commentary
-        raw += cfg.leverage_weight * stream.leverage                 # a late close game is worth more, a late blowout less
-        status = stream.override or stream.auto_state
+        raw += cfg.leverage_weight * rec.leverage                   # a late close game is worth more, a late blowout less
+        status = stream.override or rec.auto_state
         score = max(raw, 0.0) * stream.weight * STATUS_MULT[status]
-        audio_ad = now - stream.audio_ad_at <= cfg.audio_ad_memory_s   # remembered: music probability flickers
-        if stream.on_ad:
+        audio_ad = hears and now - stream.audio_ad_at <= cfg.audio_ad_memory_s   # remembered: music probability flickers
+        if rec.on_ad:
             score = -cfg.ad_penalty            # the picture says it is an ad: its audio means nothing
         elif audio_ad:
             score = -cfg.ad_penalty / 2         # music-dominated sound without a crowd: probably an ad too
-        return {"score": score, "ad": stream.on_ad or audio_ad, "surge": surge, "crowd": crowd,
-                "speech": speech, "music": music, "shout": shout, "anticipation": cue, "cue": cue_part, "event": event, "fav": stream.favourite, "lev": stream.leverage, "level": level, "status": status}
+        return {"score": score, "ad": rec.on_ad or audio_ad, "surge": surge, "crowd": crowd, "speech": speech, "music": music, "shout": shout,
+                "cue": cue, "cue_part": cue_part, "event": event, "lev": rec.leverage}
 
     def score(self, tab_id: int, now: float) -> float | None:
         c = self.components(tab_id, now)
         return None if c is None else c["score"]
+
+    def tile_scores(self, tab_id: int, now: float) -> dict | None:
+        """{video index: score} of the tiles of a multiview tab (the tab scores as the best of them), or None while the tab has no score."""
+        c = self.components(tab_id, now)
+        return None if c is None else dict(c["tile_scores"])
 
     def decide(self, now: float, target: int | None = None) -> Swap | None:
         """Pick a stream to take over from the stream being replaced.
@@ -496,7 +647,7 @@ class Scorer:
             # Still warming up (the first seconds after a restart): nothing fair to compare by loudness. But a stream
             # that the picture shows on an ad, a break or over can still hand over to a live stream without an ad.
             stream = self.streams[replaced]
-            if not (stream.on_ad or (stream.override or stream.auto_state) != "live"):
+            if not (self.tab_on_ad(replaced) or self.tab_state(replaced) != "live"):
                 return None
             current_c = self.components(replaced, now, warmup=False)
         current_score = current_c["score"] if current_c else 0.0
@@ -518,8 +669,7 @@ class Scorer:
             return best_id, best_c
 
         best_id, best_c = pick(hold_off=True)
-        replaced_stream = self.streams[replaced]
-        if best_c is None and idle and (replaced_stream.on_ad or current_c["status"] != "live"):
+        if best_c is None and idle and (self.tab_on_ad(replaced) or current_c["status"] != "live"):
             # Everything else had an ad lately, but MAIN shows an ad (or a break / the end) for certain right now: any
             # stream that is playing at this moment is better than staying on it. (A sound-only guess does not count.)
             best_id, best_c = pick(hold_off=False)
@@ -528,7 +678,7 @@ class Scorer:
             self._candidate = None
             return None
         # A challenger is judged by ITS sport's thresholds (the sport that wants MAIN); MAIN's score is compared as it is.
-        cfg = self.cfg_for(best_id)
+        cfg = self.tile_cfg(best_id, best_c.get("tile"))   # ...the sport of its best tile
         if target is None and self.hold_left(now) > 0 and best_c["score"] < cfg.hold_break_score:
             self._candidate = None
             return None   # the user put this stream on MAIN: only something really exciting takes it away
@@ -567,10 +717,13 @@ class Scorer:
         when the stream has a fresh goal of its own (score change or goal banner, event >= `blowout_goal_event`), its leverage is at most
         minus `blowout_goal_lev`, and every OTHER live stream (MAIN included) is quiet: a score below `blowout_goal_quiet` and no cue. Else 0.
         So such a goal can win MAIN only when nothing else is going on."""
-        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)
-        if stream is None or c is None or cfg.blowout_goal_bonus <= 0 or stream.goal_at == float("-inf"):
+        stream = self.streams.get(tab_id)
+        tile = None if c is None else c.get("tile")   # the tile that scores (its goal, its leverage, its sport)
+        cfg = self.tile_cfg(tab_id, tile)
+        rec = None if stream is None else self._rec_of(stream, tile)
+        if stream is None or c is None or cfg.blowout_goal_bonus <= 0 or rec.goal_at == float("-inf"):
             return 0.0
-        if c.get("event", 0.0) < cfg.blowout_goal_event or stream.leverage > -cfg.blowout_goal_lev:
+        if c.get("event", 0.0) < cfg.blowout_goal_event or rec.leverage > -cfg.blowout_goal_lev:
             return 0.0
         for other in self.streams:
             if other == tab_id:
@@ -589,14 +742,17 @@ class Scorer:
         (that is the goal hold) do not."""
         found = set()
         for tab_id, stream in self.streams.items():
-            if tab_id == self.main or not stream.can_main or stream.on_ad or stream.goal_at == float("-inf"):
+            if tab_id == self.main or not stream.can_main:
                 continue
-            cfg = self.cfg_for(tab_id)
-            if cfg.goal_bypass_dwell <= 0 or now - stream.goal_at > cfg.event_s or (stream.override or stream.auto_state) != "live":
-                continue
-            c = self.components(tab_id, now)
-            if c is not None and c["event"] >= cfg.goal_hold_break_event:
-                found.add(tab_id)
+            for key, rec in self._recs(stream):   # a goal of any one tile, read with that tile's sport
+                if rec.on_ad or rec.goal_at == float("-inf"):
+                    continue
+                cfg = self.tile_cfg(tab_id, key)
+                if cfg.goal_bypass_dwell <= 0 or now - rec.goal_at > cfg.event_s or (stream.override or rec.auto_state) != "live":
+                    continue
+                c = self.components(tab_id, now)
+                if c is not None and max(0.0, 1.0 - (now - rec.event_at) / cfg.event_s) >= cfg.goal_hold_break_event:
+                    found.add(tab_id)
         return found
 
     def swap_context(self, now: float) -> dict:
@@ -616,32 +772,49 @@ class Scorer:
 
     def hot_left(self, tab_id: int, now: float) -> float:
         """Seconds MAIN `tab_id` stays 'hot' (see `hot_game_s`): from its own goal (score change / goal banner) or from a STRONG cue on it
-        (a review of a possible goal, a penalty awarded). 0 when it is not, when the setting is off or when the stream shows an ad or a break."""
-        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)
-        if stream is None or cfg.hot_game_s <= 0 or stream.on_ad or (stream.override or stream.auto_state) != "live":
-            return 0.0
-        if stream.hot_last == float("-inf"):
-            return 0.0
-        return max(0.0, min(stream.hot_last + cfg.hot_game_s, stream.hot_start + cfg.hot_game_max_s) - now)
+        (a review of a possible goal, a penalty awarded). 0 when it is not, when the setting is off or when the stream shows an ad or a break.
+        Each tile of a multiview has its own episode (its sport's settings); the tab is as hot as its hottest tile."""
+        return self._hot_rec(tab_id, now)[0]
+
+    def _hot_rec(self, tab_id: int, now: float) -> tuple:
+        """(seconds left, the tile record that is hot) of the hottest tile of a tab; (0.0, None) when none is."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return 0.0, None
+        best, best_rec = 0.0, None
+        for key, rec in self._recs(stream):
+            cfg = self.tile_cfg(tab_id, key)
+            if cfg.hot_game_s <= 0 or rec.on_ad or (stream.override or rec.auto_state) != "live" or rec.hot_last == float("-inf"):
+                continue
+            left = max(0.0, min(rec.hot_last + cfg.hot_game_s, rec.hot_start + cfg.hot_game_max_s) - now)
+            if left > best:
+                best, best_rec = left, rec
+        return best, best_rec
 
     @staticmethod
     def _hot_end(stream) -> None:
         """An ad or a break on the stream ends its hot episode for good (it is not resumed when the break is over)."""
         stream.hot_start = stream.hot_last = float("-inf")
 
-    def _hot_exempt(self, tab_id: int, c: dict | None, now: float) -> bool:
-        """A challenger that still takes a hot MAIN: a fresh goal of its own, or a review-weight cue (VAR check) of the last `buildup_hold_s` s."""
-        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)
+    def _hot_exempt(self, tab_id: int, c: dict | None, now: float, tile: int | None = None) -> bool:
+        """A challenger that still takes a hot MAIN: a fresh goal of its own, or a review-weight cue (VAR check) of the last `buildup_hold_s` s.
+        Judged on the challenger's tile (that of its components `c`, else `tile`; no tile known = any tile of the tab)."""
+        stream = self.streams.get(tab_id)
         if stream is None:
             return False
-        if c is not None and stream.goal_at != float("-inf") and c.get("event", 0.0) >= cfg.goal_hold_break_event:
-            return True
-        return 0 <= now - stream.review_at < cfg.buildup_hold_s
+        for key, rec in self._sel(stream, c.get("tile") if c is not None else tile):
+            cfg = self.tile_cfg(tab_id, key)
+            if c is not None and rec.goal_at != float("-inf") and c.get("event", 0.0) >= cfg.goal_hold_break_event:
+                return True
+            if 0 <= now - rec.review_at < cfg.buildup_hold_s:
+                return True
+        return False
 
-    def take_main_block(self, tab_id: int, now: float, level: float | None = None, cue_age: float | None = None, main_level: float | None = None) -> str | None:
+    def take_main_block(self, tab_id: int, now: float, level: float | None = None, cue_age: float | None = None, main_level: float | None = None,
+                        tile: int | None = None) -> str | None:
         """Why `tab_id` may not take MAIN by the build-up tracker right now (the guards of a normal swap), or None if it may.
-        What the challenger must beat (hold_break_score, goal_hold_break) is the challenger's sport's value."""
-        cfg = self.cfg_for(tab_id)
+        What the challenger must beat (hold_break_score, goal_hold_break) is the challenger's sport's value (that of its `tile`)."""
+        cfg = self.tile_cfg(tab_id, tile)
         stream = self.streams.get(tab_id)
         if stream is None or self.main not in self.streams:
             return "unknown stream"
@@ -653,9 +826,10 @@ class Scorer:
             return "dwell"
         if not stream.can_main:
             return "slot rules"
-        if stream.on_ad:
+        rec = self._rec_of(stream, tile)
+        if rec.on_ad:
             return "on an ad"
-        if (stream.override or stream.auto_state) != "live":
+        if (stream.override or rec.auto_state) != "live":
             return "not live"
         if self.hold_left(now) > 0:
             c = self.components(tab_id, now)
@@ -663,19 +837,21 @@ class Scorer:
                 return "manual hold"
         if cfg.goal_yield_s > 0:
             for other, st in self.streams.items():
-                if other != tab_id and other != self.main and 0 <= now - st.goal_at < cfg.goal_yield_s:
-                    return f"goal on tab {other} {now - st.goal_at:.0f} s ago"
+                last = self._last_goal(st)
+                if other != tab_id and other != self.main and 0 <= now - last < cfg.goal_yield_s:
+                    return f"goal on tab {other} {now - last:.0f} s ago"
         if self.goal_hold_left(self.main, now) > 0:   # MAIN just had a goal: its replays still run; stay unless a big moment is elsewhere
             strong_build_up = (cfg.goal_hold_break_level > 0 and level is not None and level >= cfg.goal_hold_break_level
                                and cue_age is not None and cue_age < cfg.goal_hold_break_cue_s)   # the tracker's level + a fresh spoken cue
             if not strong_build_up and not self.goal_hold_broken(self.components(tab_id, now), cfg):
-                ago = now - self.streams[self.main].goal_at
+                m = self.streams[self.main]
+                ago = now - max((rec.goal_at for key, rec in self._recs(m) if self._goal_hold(rec, self.tile_cfg(self.main, key), now) > 0), default=m.goal_at)
                 return f"goal on MAIN {ago:.0f} s ago" + (", replay still showing" if ago >= cfg.goal_hold_s else "")
-        if level is not None and self.main in self.streams and self.hot_left(self.main, now) > 0 and not self._hot_exempt(tab_id, self.components(tab_id, now), now):
+        if level is not None and self.main in self.streams and self.hot_left(self.main, now) > 0 and not self._hot_exempt(tab_id, self.components(tab_id, now), now, tile):
             main_c = self.components(self.main, now)
             bar = max(main_c["score"] if main_c else 0.0, main_level or 0.0) + cfg.hot_game_margin
             if level < bar:
-                m = self.streams[self.main]
+                m = self._hot_rec(self.main, now)[1]
                 what = "goal" if m.goal_at == m.hot_last else "cue"
                 return f"MAIN is hot ({what} {now - m.hot_last:.0f} s ago): level {level:.2f} < {bar:.2f}"
         return None
@@ -687,11 +863,12 @@ class Scorer:
         score, event = (c["score"], c.get("event", 0.0)) if c else (0.0, 0.0)
         return score >= cfg.goal_hold_break or event >= cfg.goal_hold_break_event
 
-    def take_main(self, tab_id: int, now: float, reason: str, level: float | None = None, cue_age: float | None = None, main_level: float | None = None) -> Swap | None:
+    def take_main(self, tab_id: int, now: float, reason: str, level: float | None = None, cue_age: float | None = None, main_level: float | None = None,
+                  tile: int | None = None) -> Swap | None:
         """The build-up tracker asks for MAIN (football only, the server checks the sport). Same guards as a normal swap (see
         `take_main_block`: frozen, manual hold unless hold_break_score, min_dwell_s, can_main, ad, break/over, already MAIN);
         returns the swap to carry out or None."""
-        if self.take_main_block(tab_id, now, level=level, cue_age=cue_age, main_level=main_level) is not None:   # the same level / cue age as the caller's check
+        if self.take_main_block(tab_id, now, level=level, cue_age=cue_age, main_level=main_level, tile=tile) is not None:   # the same level / cue age as the caller's check
             return None
         swap = Swap(promote=tab_id, demote=self.main, reason=reason)
         self._candidate = None
@@ -733,7 +910,7 @@ class Scorer:
         if stream is None or left <= 0 or self.main != tab:
             self.release_hold()
             return 0.0
-        if (stream.override or stream.auto_state) == "over":
+        if self.tab_state(tab) == "over":
             self._hold_over_since = now if self._hold_over_since is None else self._hold_over_since
             if now - self._hold_over_since >= self.config.hold_over_s:
                 self.release_hold()

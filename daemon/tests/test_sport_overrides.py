@@ -54,7 +54,7 @@ def test_scores_are_identical_with_or_without_a_sport_lookup():
         now = warm_up(s)
         now = roar(s, 2, now)
         s.set_anticipation(2, now, 0.3)
-        scores.append(s.components(2, now))
+        scores.append({k: v for k, v in s.components(2, now).items() if k != 'sport'})   # the sport label itself is the one thing that differs
     assert all(c == scores[0] for c in scores)
 
 
