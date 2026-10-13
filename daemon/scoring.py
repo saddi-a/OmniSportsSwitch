@@ -115,6 +115,9 @@ class Config:
     anticipation_goal_yd: float = 10.0      # a yard line graphic counts as a cue up to this many yards, beside a down text
     replay_by_clock_s: float = 0.0   # a clock that goes back 10-30 s while the scorebug shows is a replay: 0 = only logged, above 0 = also treated as a replay this long
     replay_clock_min_s: float = 10.0   # the smallest step back of the game clock that counts
+    football_clock_back_s: float = 90.0    # football: a game clock this far BELOW the last real one is a replay / highlights (not 45:00 of the 2nd half), not the live clock
+    football_clock_ahead_s: float = 900.0   # ...and one this far ABOVE what the last real one plus the elapsed time allows is another match's scorebug
+    foreign_clock_accept_s: float = 300.0   # ...unless it keeps running like that for this long (you rewound or skipped the stream): then it is believed
     replay_clock_max_s: float = 30.0   # the largest (more is the viewer rewinding)
     scorebug_hidden_s: float = 6.0   # measuring only: a scorebug missing this long (seen a moment before) is logged as hidden
     scorebug_memory_s: float = 60.0  # ...if it was seen within this long before; a later first sight of the gap is stale and not logged

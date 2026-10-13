@@ -82,6 +82,9 @@ anticipation_big_gain_yd = 20.0  # a "+NN YDS" graphic is a cue from this many y
 anticipation_goal_yd = 10.0      # a yard line graphic (beside a down text) is a cue up to this many yards
 replay_by_clock_s = 0.0       # a game clock that goes back 10-30 s with the scorebug visible is a replay: 0 = only logged, above 0 = also treated as a replay for this long (try 20)
 replay_clock_min_s = 10.0     # the smallest step back that counts
+football_clock_back_s = 90.0    # football: a game clock this far BELOW the last real one is a replay / highlights (not 45:00 of the 2nd half), not the live clock
+football_clock_ahead_s = 900.0   # ...and one this far ABOVE what the last real one plus the elapsed time allows is another match's scorebug
+foreign_clock_accept_s = 300.0   # ...unless it keeps running like that for this long (you rewound or skipped the stream): then it is believed
 replay_clock_max_s = 30.0     # the largest step back that counts (more is the viewer rewinding)
 scorebug_hidden_s = 6.0   # measuring only: a scorebug missing this long is logged as 'scorebug hidden' (DAZN hides it in replays)
 scorebug_memory_s = 60.0  # ...if it was seen within this long before the gap
