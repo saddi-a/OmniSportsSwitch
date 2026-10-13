@@ -35,7 +35,7 @@ OVERRIDABLE_SCORING = frozenset({
     "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
     "lev_soccer_close", "lev_soccer_blowout",
     "goal_hold_s", "goal_hold_extend_s", "goal_hold_max_s",                          # the hold of the stream that scored: ITS sport
-    "goal_hold_break", "goal_hold_break_event", "goal_hold_break_level", "goal_hold_break_cue_s", "goal_yield_s", "goal_bypass_dwell",   # ...and what breaks it: the challenger's sport
+    "goal_hold_break", "goal_hold_break_event", "goal_hold_break_level", "goal_hold_break_cue_s", "goal_yield_s", "goal_bypass_dwell", "hot_game_s", "hot_game_margin",   # ...and what breaks it: the challenger's sport
     "buildup_mode", "buildup_live", "buildup_window_s", "buildup_min", "buildup_cooldown_s", "buildup_surge_min",
     "buildup_surge_note", "buildup_gap", "buildup_crowd_min", "buildup_crowd_note",
     "buildup_hold_s", "buildup_hold_cue_min", "buildup_hold_margin",                 # MAIN keeps its seat after its own cue / review
@@ -164,6 +164,8 @@ class Config:
     goal_hold_break_level: float = 0.55   # ...or (build-up tracker) a build-up level this high WITH a spoken cue younger than goal_hold_break_cue_s (0 = off)
     goal_hold_break_cue_s: float = 15.0
     goal_bypass_dwell: float = 1.0   # 1 = a challenger with a fresh goal of its own (event >= goal_hold_break_event) skips min_dwell_s in decide() (confirm_s still applies); 0 = off
+    hot_game_s: float = 90.0   # 'hot game': after MAIN's own goal or a strong cue (review, penalty awarded) on it, MAIN stays hot this long (0 = off; ends if MAIN goes to an ad / break)...
+    hot_game_margin: float = 0.20   # ...and a challenger must beat MAIN's score (build-up path: MAIN's score or build-up level) by this much, unless it has a fresh goal of its own or a review cue
     goal_yield_s: float = 10.0   # build-up tracker: no swap to another stream while a goal (score change / goal banner) was seen on a third stream this recently, so the normal rule can take the goal (0 = off)
     goal_hold_break_event: float = 0.5   # ...or a fresh score change / goal banner of its own this strong (a quiet stream that just scored scores ~0.74, below goal_hold_break)
     buildup_hold_s: float = 25.0    # MAIN keeps its place this long after ITS OWN spoken/banner cue (chance, free kick, post area, penalty...; 0 = off): a challenger needs...
@@ -504,8 +506,11 @@ class Scorer:
             if target is None and self.goal_hold_left(replaced, now) > 0 and not self.goal_hold_broken(best_c, cfg):
                 self._candidate = None
                 return None   # MAIN just scored and its replays still run (the tracker has the same hold, see `take_main_block`)
+            gap = cfg.min_gap
+            if target is None and self.hot_left(replaced, now) > 0 and not self._hot_exempt(best_id, best_c, now):
+                gap = max(gap, cfg.hot_game_margin)   # MAIN is hot (its own goal / a strong cue lately): a bigger lead is needed
             if (best_c["score"] < cfg.min_score
-                    or best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + cfg.min_gap)):
+                    or best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + gap)):
                 self._candidate = None
                 return None
             if self._candidate is None or self._candidate[:2] != (replaced, best_id):
@@ -546,7 +551,25 @@ class Scorer:
         c = self._candidate
         return {"last_swap_age": age, "candidate": None if c is None else [c[0], c[1], round(now - c[2], 1)]}
 
-    def take_main_block(self, tab_id: int, now: float, level: float | None = None, cue_age: float | None = None) -> str | None:
+    def hot_left(self, tab_id: int, now: float) -> float:
+        """Seconds MAIN `tab_id` stays 'hot' (see `hot_game_s`): from its own goal (score change / goal banner) or from a STRONG cue on it
+        (a review of a possible goal, a penalty awarded). 0 when it is not, when the setting is off or when the stream shows an ad or a break."""
+        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)
+        if stream is None or cfg.hot_game_s <= 0 or stream.on_ad or (stream.override or stream.auto_state) != "live":
+            return 0.0
+        start = max(stream.goal_at, stream.anticipation_at if stream.anticipation_strong else float("-inf"))
+        return max(0.0, start + cfg.hot_game_s - now) if start != float("-inf") else 0.0
+
+    def _hot_exempt(self, tab_id: int, c: dict | None, now: float) -> bool:
+        """A challenger that still takes a hot MAIN: a fresh goal of its own, or a review-weight cue (VAR check) of the last `buildup_hold_s` s."""
+        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)
+        if stream is None:
+            return False
+        if c is not None and stream.goal_at != float("-inf") and c.get("event", 0.0) >= cfg.goal_hold_break_event:
+            return True
+        return stream.anticipation_value >= cfg.buildup_review_min and 0 <= now - stream.anticipation_at < cfg.buildup_hold_s
+
+    def take_main_block(self, tab_id: int, now: float, level: float | None = None, cue_age: float | None = None, main_level: float | None = None) -> str | None:
         """Why `tab_id` may not take MAIN by the build-up tracker right now (the guards of a normal swap), or None if it may.
         What the challenger must beat (hold_break_score, goal_hold_break) is the challenger's sport's value."""
         cfg = self.cfg_for(tab_id)
@@ -579,6 +602,14 @@ class Scorer:
             if not strong_build_up and not self.goal_hold_broken(self.components(tab_id, now), cfg):
                 ago = now - self.streams[self.main].goal_at
                 return f"goal on MAIN {ago:.0f} s ago" + (", replay still showing" if ago >= cfg.goal_hold_s else "")
+        if level is not None and self.main in self.streams and self.hot_left(self.main, now) > 0 and not self._hot_exempt(tab_id, self.components(tab_id, now), now):
+            main_c = self.components(self.main, now)
+            bar = max(main_c["score"] if main_c else 0.0, main_level or 0.0) + cfg.hot_game_margin
+            if level < bar:
+                m = self.streams[self.main]
+                start = max(m.goal_at, m.anticipation_at if m.anticipation_strong else float("-inf"))
+                what = "goal" if start == m.goal_at else "cue"
+                return f"MAIN is hot ({what} {now - start:.0f} s ago): level {level:.2f} < {bar:.2f}"
         return None
 
     @staticmethod
@@ -588,11 +619,11 @@ class Scorer:
         score, event = (c["score"], c.get("event", 0.0)) if c else (0.0, 0.0)
         return score >= cfg.goal_hold_break or event >= cfg.goal_hold_break_event
 
-    def take_main(self, tab_id: int, now: float, reason: str, level: float | None = None, cue_age: float | None = None) -> Swap | None:
+    def take_main(self, tab_id: int, now: float, reason: str, level: float | None = None, cue_age: float | None = None, main_level: float | None = None) -> Swap | None:
         """The build-up tracker asks for MAIN (football only, the server checks the sport). Same guards as a normal swap (see
         `take_main_block`: frozen, manual hold unless hold_break_score, min_dwell_s, can_main, ad, break/over, already MAIN);
         returns the swap to carry out or None."""
-        if self.take_main_block(tab_id, now, level=level, cue_age=cue_age) is not None:   # the same level / cue age as the caller's check
+        if self.take_main_block(tab_id, now, level=level, cue_age=cue_age, main_level=main_level) is not None:   # the same level / cue age as the caller's check
             return None
         swap = Swap(promote=tab_id, demote=self.main, reason=reason)
         self._candidate = None
