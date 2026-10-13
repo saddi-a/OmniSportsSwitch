@@ -235,12 +235,20 @@ class GameTracker:
         cfg, kept = self.config, []
         codes = frozenset(t for t in (re.sub(r"[^\w\s-]", "", x).strip() for x in texts) if TEAM_CODE_RE.fullmatch(t) and t not in NOT_TEAM_CODES)
         other_game = len(codes) >= 2 and len(self._game_codes) >= 2 and not (codes & self._game_codes)   # a scorebug of two other teams
-        for c in clocks:
+        for n, c in enumerate(clocks):
             m = re.fullmatch(r"(\d{1,3}):(\d{2})", c.strip())
             if not m:
                 kept.append(c)
                 continue
+            if int(m.group(2)) >= 60:
+                continue   # '89:95' is no clock
             s = int(m.group(1)) * 60 + int(m.group(2))
+            if n > 0:
+                # Only the FIRST clock of a reading is the game clock (the rest are read from boards and graphics: '75:21', '89:53'):
+                # the others are kept or dropped by the same range check but never become the 'last real clock'.
+                if self._real_clock is None or not (s < self._real_clock[0] - cfg.football_clock_back_s or s > self._real_clock[0] + (now - self._real_clock[1]) + cfg.football_clock_ahead_s):
+                    kept.append(c)
+                continue
             if self._real_clock is None:
                 kept.append(c)
                 self._real_clock = (s, now)
