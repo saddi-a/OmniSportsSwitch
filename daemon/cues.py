@@ -191,3 +191,45 @@ class GoalPhraseWatch:
             return False
         self._fired_at[tab_id] = now
         return True
+
+
+class SurgeRiseWatch:
+    """Soccer: the crowd noise of a stream is RISING fast. A goal or a big chance is heard on the sound a few seconds before the commentator
+    says it, so this fires on the sound alone. It is fed one reading per stream per score line (every ~2 s) with the stream's loudness
+    `level` and its `surge` (level over its own long-term baseline, `Scorer.components`), and `reading(...)` returns True when
+    (1) the surge is at least `surge_min` (clearly above the stream's normal), (2) the level is at least `ratio` times the level of the
+    oldest reading in the last `window_s` seconds (that reading is at least half the window old: a rise over several seconds, not a plateau),
+    (3) this held on `votes` consecutive readings (one reading is never trusted), and (4) the stream did not fire within `cooldown_s`.
+    Pure logic, callers pass `now`; the numbers are `Config.surge_rise_*`."""
+
+    def __init__(self):
+        self._history: dict[int, list[tuple[float, float]]] = {}
+        self._run: dict[int, int] = {}
+        self._fired_at: dict[int, float] = {}
+
+    def remove(self, tab_id: int) -> None:
+        self._history.pop(tab_id, None)
+        self._run.pop(tab_id, None)
+        self._fired_at.pop(tab_id, None)
+
+    def reading(self, tab_id: int, now: float, level: float, surge: float, cfg) -> bool:
+        kept = [(t, v) for t, v in self._history.get(tab_id, []) if 0 <= now - t <= cfg.surge_rise_window_s]
+        old = [v for t, v in kept if now - t >= cfg.surge_rise_window_s / 2]
+        self._history[tab_id] = kept + [(now, level)]
+        rising = bool(old) and surge >= cfg.surge_rise_min and level >= cfg.surge_rise_ratio * max(old[0], 1e-6)
+        if not rising:
+            self._run[tab_id] = 0
+            return False
+        run = self._run[tab_id] = self._run.get(tab_id, 0) + 1
+        if run < cfg.surge_rise_votes or now - self._fired_at.get(tab_id, float("-inf")) < cfg.surge_rise_cooldown_s:
+            return False
+        self._fired_at[tab_id] = now
+        return True
+
+
+def surge_rise_weight(sport: str | None, weights) -> float | None:
+    """The weight of the rising-loudness cue (`Weights.cue_surge_rise`, a medium cue), or None when it does not apply: soccer (or an unknown
+    sport, like the spoken cues) only, and 0 = off."""
+    if weights.cue_surge_rise <= 0 or (sport or "").strip().lower() not in ("football", ""):
+        return None
+    return weights.cue_surge_rise
