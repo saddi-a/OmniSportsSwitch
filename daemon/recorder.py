@@ -200,17 +200,26 @@ def _buildup_part(server, tab_id: int, c: dict | None, now: float) -> dict:
     main = server.scorer.main
     main_c = server.scorer.components(main, now) if main is not None and main != tab_id else None
     main_score = main_c["score"] if main_c else 0.0
+    main_level = 0.0   # MAIN's own build-up level: the bar a challenger must beat together with MAIN's score (as Server._check_buildup)
+    if main_c:
+        mw = server.scorer.cfg_for(main).weights
+        main_level = bu.level(main, now, mw.surge * main_c["surge"] + mw.crowd * main_c["crowd"] + mw.shout * main_c["shout"])
     part = {
         "level": _r(level),
         "cues_sum": _r(cues_sum),
         "support": _r(support),
         "cues": [[_r(age, 1), _r(v), kind] for age, v, kind in details],
         "min": cfg.buildup_min, "gap": cfg.buildup_gap, "live": cfg.buildup_live,
-        "main_score": _r(main_score),
-        "qualifies": bool(level >= cfg.buildup_min and level - main_score >= cfg.buildup_gap),
+        "main_score": _r(main_score), "main_level": _r(main_level),
+        "qualifies": bool(level >= cfg.buildup_min and level - max(main_score, main_level) >= cfg.buildup_gap),
     }
     part.update(bu.state(tab_id, now))
-    part["blocked"] = server.scorer.take_main_block(tab_id, now) if tab_id != main else "already MAIN"
+    if tab_id == main:
+        part["blocked"] = "already MAIN"
+    else:
+        part["blocked"] = server.scorer.take_main_block(tab_id, now)
+        if part["blocked"] is None and part["qualifies"] and cfg.buildup_live > 0:   # MAIN keeps its seat after its own cue / review
+            part["blocked"] = bu.main_hold(main, tab_id, now, level, main_level, cfg)
     return part
 
 

@@ -387,14 +387,13 @@ class Server:
         if level is not None:
             cues = ", ".join(f"{v:.2f}@{age:.0f}s" for age, v in self.buildup.cues(tab_id, now))
             outcome, swap, stopped = "log only", None, False
-            held = self.buildup.main_hold(self.scorer.main, tab_id, now, level, main_level, cfg)   # MAIN keeps its seat after its own cue / review
             if cfg.buildup_live > 0:
                 if not moves_main(self._tab_sport(tab_id)):
                     outcome, stopped = "not moved: sport not detected as football", True
-                elif held is not None:
-                    outcome, stopped = f"not moved: {held}", True
                 else:
-                    blocked = self.scorer.take_main_block(tab_id, now)
+                    # the swap guards, then MAIN keeping its seat after its own cue / review (log-only mode applies neither)
+                    blocked = (self.scorer.take_main_block(tab_id, now)
+                               or self.buildup.main_hold(self.scorer.main, tab_id, now, level, main_level, cfg))
                     if blocked is not None:
                         outcome, stopped = f"not moved: {blocked}", True
                     else:

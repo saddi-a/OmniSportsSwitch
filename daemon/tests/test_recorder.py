@@ -12,7 +12,7 @@ ROW_FIELDS = {"v", "t", "mono", "tab", "role", "is_main", "sport", "warm", "stat
               "score", "surge", "crowd", "speech", "music", "shout", "event", "cue_fade", "cue_part", "fav", "lev", "loud", "baseline", "top", "cue",
               "bu", "home", "away", "clock", "period", "replay", "goal_hold", "goal_age", "hold", "game_id", "league", "tiles", "main", "frozen",
               "last_swap_age", "swap_pending"}
-BU_FIELDS = {"level", "cues_sum", "support", "cues", "min", "gap", "live", "main_score", "qualifies", "cooldown_left", "surge_note_left",
+BU_FIELDS = {"level", "cues_sum", "support", "cues", "min", "gap", "live", "main_score", "main_level", "qualifies", "cooldown_left", "surge_note_left",
              "crowd_note_left", "crowd_run", "blocked"}
 
 
@@ -164,3 +164,20 @@ def test_a_write_error_does_not_stop_the_writer(tmp_path):
 
 def test_the_settings_file_default_turns_the_recorder_on():
     assert Config().dataset_mode == 1.0 and Config().log_archive_days == 90.0
+
+
+def test_recorded_qualifies_and_blocked_follow_main_level_bar_and_main_hold(tmp_path):
+    from daemon.recorder import _buildup_part
+    server, recorder = _server(tmp_path, buildup_live=1.0, min_dwell_s=0.0)
+    now = time.monotonic()
+    _register(server, 1, now)
+    _register(server, 2, now)
+    server.buildup.note(1, now - 17, 0.25, "spoken:chance")   # MAIN's own fresh chance cue
+    server.buildup.note(2, now - 1, 0.34, "spoken:chance")
+    part = _buildup_part(server, 2, server.scorer.components(2, now), now)
+    assert part["main_level"] > 0.15 and part["level"] > part["main_level"] + 0.1   # above MAIN's level by the plain gap...
+    assert part["qualifies"] is True
+    assert part["blocked"] is not None and "MAIN's own cue" in part["blocked"]     # ...but not by the hold margin
+    server.scorer.config.buildup_hold_s = 0.0
+    assert _buildup_part(server, 2, server.scorer.components(2, now), now)["blocked"] is None
+    recorder.close()
