@@ -187,3 +187,43 @@ def test_failed_page_keeps_what_was_stored_and_a_rerun_resumes(tmp_path):
 def test_summary_error_is_reported(tmp_path):
     rep = eh.fetch_game(LEAGUE, GAME, tmp_path, fetch=lambda url: (None, None), pacer=eh.Pacer(0, lambda: 0.0, lambda s: None))
     assert rep["action"] == "error" and not eh.game_dir(tmp_path, LEAGUE, GAME).exists()
+
+
+# ---- bulk listing / fetching ------------------------------------------------------------------------------
+def _board(*games):
+    return {"events": [{"id": i, "date": d, "competitions": [{"status": {"type": {"state": st}}}]} for i, d, st in games]}
+
+
+def test_list_finished_keeps_post_games_oldest_first():
+    urls = []
+
+    def fetch(url):
+        urls.append(url)
+        return 200, _board(("3", "2026-10-03T19:00Z", "post"), ("2", "2026-10-02T19:00Z", "post"), ("9", "2026-10-04T19:00Z", "pre"))
+    ids, st = eh.list_finished(LEAGUE, "20261001", "20261010", fetch, eh.Pacer(0, lambda: 0.0, lambda s: None))
+    assert ids == ["2", "3"] and st == 200 and len(urls) == 1 and "dates=2026&" in urls[0]
+
+
+def test_list_finished_applies_the_date_range():
+    board = _board(("1", "2026-09-30T19:00Z", "post"), ("2", "2026-10-02T19:00Z", "post"), ("3", "2026-10-11T19:00Z", "post"))
+    ids, _ = eh.list_finished(LEAGUE, "20261001", "20261010", lambda u: (200, board), eh.Pacer(0, lambda: 0.0, lambda s: None))
+    assert ids == ["2"]
+
+
+def test_list_finished_error_gives_empty():
+    assert eh.list_finished(LEAGUE, "20261001", "20261010", lambda u: (500, None), eh.Pacer(0, lambda: 0.0, lambda s: None)) == ([], 500)
+
+
+def test_fetch_bulk_respects_limit_and_skips_complete(tmp_path):
+    games = [(str(900001 + i), f"2026-10-0{i + 1}T19:00Z", "post") for i in range(4)]
+    net = FakeNet()
+
+    def fetch(url):
+        return (200, _board(*games)) if "scoreboard" in url else net(url)
+    quick = eh.Pacer(0, lambda: 0.0, lambda s: None)
+    r1 = eh.fetch_bulk(LEAGUE, "20261001", "20261010", tmp_path, limit=2, fetch=fetch, pacer=quick)
+    assert r1["listed"] == 4 and [r["game"] for r in r1["reports"]] == ["900001", "900002"]
+    r2 = eh.fetch_bulk(LEAGUE, "20261001", "20261010", tmp_path, limit=2, fetch=fetch, pacer=quick)
+    assert [r["game"] for r in r2["reports"]] == ["900003", "900004"]
+    r3 = eh.fetch_bulk(LEAGUE, "20261001", "20261010", tmp_path, limit=2, fetch=fetch, pacer=quick)
+    assert r3["reports"] == [] and r3["requests"] == 1

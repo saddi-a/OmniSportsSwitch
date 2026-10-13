@@ -207,6 +207,48 @@ def fetch_game(league: str, game_id: str, cache_dir, fetch=default_fetch, pacer:
     return report
 
 
+def scoreboard_year_url(league: str, year: str) -> str:
+    """Scoreboard of a whole calendar year. ESPN answers a `dates=YYYYMMDD-YYYYMMDD` range with HTTP 400 for soccer (measured 2026-10-13), but
+    `dates=YYYY&limit=1000` works and lists every game of the year, so the date range is applied here."""
+    from daemon import feed
+    return f"{feed.scoreboard_url(league)}?dates={year}&limit=1000"
+
+
+def list_finished(league: str, start: str, end: str, fetch=default_fetch, pacer: Pacer | None = None) -> tuple:
+    """(ids of FINISHED games (status state `post`) played from `start` to `end` (YYYYMMDD, UTC date), oldest first; the last HTTP status).
+    One request per calendar year of the range."""
+    pacer = pacer or Pacer()
+    found, status = [], None
+    for year in range(int(start[:4]), int(end[:4]) + 1):
+        pacer.wait()
+        status, data = fetch(scoreboard_year_url(league, str(year)))
+        if status != 200 or not isinstance(data, dict):
+            return [], status
+        for ev in data.get("events") or []:
+            try:
+                st = ev["competitions"][0]["status"]["type"] if "competitions" in ev else ev["status"]["type"]
+                day = str(ev.get("date") or "")[:10].replace("-", "")
+                if st.get("state") == "post" and ev.get("id") is not None and start <= day <= end:
+                    found.append((str(ev.get("date") or ""), str(ev["id"])))
+            except (KeyError, IndexError, TypeError, AttributeError):
+                continue
+    return [i for _, i in sorted(found)], status
+
+
+def fetch_bulk(league: str, start: str, end: str, cache_dir, limit: int = 10, fetch=default_fetch, pacer: Pacer | None = None) -> dict:
+    """Lists the finished games of the range and fetches up to `limit` of them that are not complete in the cache yet (complete ones cost no
+    request and do not count against the limit). Returns {listed, listing_status, reports, requests}."""
+    pacer = pacer or Pacer()
+    ids, status = list_finished(league, start, end, fetch, pacer)
+    out = {"listed": len(ids), "listing_status": status, "reports": [], "requests": 1}
+    todo = [i for i in ids if not is_complete(cache_dir, league, i)][:max(0, limit)]
+    for gid in todo:
+        rep = fetch_game(league, gid, cache_dir, fetch=fetch, pacer=pacer)
+        out["reports"].append(rep)
+        out["requests"] += rep["requests"]
+    return out
+
+
 def load_game(cache_dir, league: str, game_id: str) -> tuple:
     """(summary or None, plays items list) from the cache."""
     d = game_dir(cache_dir, league, game_id)
