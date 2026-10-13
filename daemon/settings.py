@@ -222,6 +222,7 @@ LAYOUT = [
         ("scoring.goal_hold_max_s", "Goal hold: longest (s)", "The hold never lasts longer than this after the goal."),
         ("scoring.goal_hold_break", "Goal hold: score that breaks it", "A challenger scoring at least this (a goal or a very big moment) still takes Main during the hold."),
         ("scoring.goal_hold_break_level", "Goal hold: build-up level that breaks it (0 = off)", "Build-up tracker: a challenger whose build-up level is at least this AND that has a spoken cue (chance, free kick, post area...) younger than the next value takes Main during the post-goal replay hold."),
+        ("scoring.goal_bypass_dwell", "A fresh goal skips the wait after a swap (1 = on)", "1 = a stream that just scored (score change or goal banner of its own, strong enough) can take Main even within `min_dwell_s` of the last swap. The confirmation time still applies."),
         ("scoring.goal_yield_s", "Build-up waits for a goal elsewhere (s, 0 = off)", "The build-up tracker does not move Main to a stream while a goal (score change or goal banner) was seen on a different stream this recently, so the normal rule can take the goal stream."),
         ("scoring.goal_hold_break_cue_s", "Goal hold: how fresh the spoken cue must be (s)", "See the value above."),
         ("scoring.goal_hold_break_event", "Goal hold: own goal that breaks it", "A challenger with a fresh score change or goal banner of its own at least this strong (1 = just now) takes Main during the hold even if its score is below the value above."),

@@ -1411,3 +1411,72 @@ def test_goal_yield_can_be_switched_off_and_ignores_plain_events():
 def test_goal_yield_is_per_sport_overridable():
     from daemon.scoring import OVERRIDABLE_SCORING
     assert "goal_yield_s" in OVERRIDABLE_SCORING
+
+
+# --- take_main passes the build-up level and cue age on to its guard check (live bug 2026-10-13: it dropped them) ---
+
+def test_take_main_honours_the_strong_build_up_break_of_the_goal_hold():
+    s = make(goal_hold_s=40.0, goal_hold_break=0.8)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.components = lambda tab, now: {"score": 0.3}
+    assert s.take_main(2, 110.0, "x") is None                                            # held
+    assert s.take_main(2, 110.0, "x", level=0.56, cue_age=6.0) is not None               # strong build-up + fresh spoken cue
+    assert s.main == 2
+
+
+def test_take_main_with_a_weak_level_stays_held():
+    s = make(goal_hold_s=40.0, goal_hold_break=0.8)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.components = lambda tab, now: {"score": 0.3}
+    assert s.take_main(2, 110.0, "x", level=0.5, cue_age=6.0) is None
+    assert s.take_main(2, 110.0, "x", level=0.7, cue_age=20.0) is None
+    assert s.main == 1
+
+
+# --- a fresh goal on a challenger skips min_dwell_s (not confirm_s) ---
+
+def _after_a_swap_then(event_fn, gap=5.0, **cfg):
+    """Stream 2 takes MAIN at t=100 (user-less: forced decide), then event_fn(scorer, t) runs `gap` s later; returns the swap decide() makes in the next 6 s."""
+    s = make(confirm_s=2.0, min_dwell_s=20.0, **cfg)
+    now = warm_up(s)
+    s._last_swap = now          # a swap just happened
+    t = now + gap
+    for tab in (1, 2, 3):
+        s.add_audio(tab, 0.05, t); s.set_tags(tab, 0.02, 0.8, 0.04, t)
+    event_fn(s, t)
+    swap = None
+    for k in range(13):
+        tt = t + 0.5 * k
+        for tab in (1, 2, 3):
+            s.add_audio(tab, 0.05, tt); s.set_tags(tab, 0.02, 0.8, 0.04, tt)
+        swap = swap or s.decide(tt)
+    return swap, t
+
+
+def test_a_fresh_goal_on_a_challenger_skips_the_dwell_but_keeps_the_confirmation():
+    swap, t = _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.8, goal=True))
+    assert swap is not None and swap.promote == 2
+    s = make(confirm_s=2.0, min_dwell_s=20.0)
+    now = warm_up(s); s._last_swap = now
+    s.set_event(2, now + 5, 0.8, goal=True)
+    for tab in (1, 2, 3):
+        s.add_audio(tab, 0.05, now + 5); s.set_tags(tab, 0.02, 0.8, 0.04, now + 5)
+    assert s.decide(now + 5) is None                  # first qualifying reading: still waits confirm_s (2 s)
+    assert s.decide(now + 5.5) is None
+    for tab in (1, 2, 3):
+        s.add_audio(tab, 0.05, now + 7.5); s.set_tags(tab, 0.02, 0.8, 0.04, now + 7.5)
+    assert s.decide(now + 7.5) is not None
+
+
+def test_dwell_is_kept_for_a_big_play_an_ad_a_goal_on_main_a_weak_event_and_when_switched_off():
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 1.0))[0] is None                       # big play, not a goal
+    assert _after_a_swap_then(lambda s, t: s.set_event(1, t, 1.0, goal=True))[0] is None            # MAIN's own goal
+    assert _after_a_swap_then(lambda s, t: (s.set_event(2, t, 0.8, goal=True), s.set_on_ad(2, True, t)))[0] is None
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.4, goal=True))[0] is None            # event below goal_hold_break_event
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.8, goal=True), goal_bypass_dwell=0.0)[0] is None
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.8, goal=True), gap=21.0)[0] is not None   # no swap lately: normal
+
+
+def test_goal_bypass_dwell_is_overridable():
+    from daemon.scoring import OVERRIDABLE_SCORING
+    assert "goal_bypass_dwell" in OVERRIDABLE_SCORING
