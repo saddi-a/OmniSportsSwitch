@@ -58,7 +58,7 @@ goal_hold_break_level = 0.55   # ...or (build-up tracker) a build-up level this 
 goal_hold_break_cue_s = 15.0
 goal_bypass_dwell = 1.0   # 1 = a challenger with a fresh goal of its own (event >= goal_hold_break_event) skips min_dwell_s in decide() (confirm_s still applies); 0 = off
 hot_game_s = 90.0   # 'hot game': after MAIN's own goal or a strong cue (review, penalty awarded) on it, MAIN stays hot this long (0 = off; ends if MAIN goes to an ad / break)...
-hot_game_margin = 0.20   # ...and a challenger must beat MAIN's score (build-up path: MAIN's score or build-up level) by this much, unless it has a fresh goal of its own or a review cue
+hot_game_margin = 0.25   # ...and a challenger must beat MAIN's score (build-up path: MAIN's score or build-up level) by this much, unless it has a fresh goal of its own or a review cue
 goal_yield_s = 10.0   # build-up tracker: no swap to another stream while a goal (score change / goal banner) was seen on a third stream this recently, so the normal rule can take the goal (0 = off)
 goal_hold_break_event = 0.5   # ...or a fresh score change / goal banner of its own this strong (a quiet stream that just scored scores ~0.74, below goal_hold_break)
 buildup_hold_s = 25.0    # MAIN keeps its place this long after ITS OWN spoken/banner cue (chance, free kick, post area, penalty...; 0 = off): a challenger needs...
