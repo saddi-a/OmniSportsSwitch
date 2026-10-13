@@ -1411,3 +1411,222 @@ def test_goal_yield_can_be_switched_off_and_ignores_plain_events():
 def test_goal_yield_is_per_sport_overridable():
     from daemon.scoring import OVERRIDABLE_SCORING
     assert "goal_yield_s" in OVERRIDABLE_SCORING
+
+
+# --- take_main passes the build-up level and cue age on to its guard check (live bug 2026-10-13: it dropped them) ---
+
+def test_take_main_honours_the_strong_build_up_break_of_the_goal_hold():
+    s = make(goal_hold_s=40.0, goal_hold_break=0.8)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.components = lambda tab, now: {"score": 0.3}
+    assert s.take_main(2, 110.0, "x") is None                                            # held
+    assert s.take_main(2, 110.0, "x", level=0.56, cue_age=6.0) is not None               # strong build-up + fresh spoken cue
+    assert s.main == 2
+
+
+def test_take_main_with_a_weak_level_stays_held():
+    s = make(goal_hold_s=40.0, goal_hold_break=0.8)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.components = lambda tab, now: {"score": 0.3}
+    assert s.take_main(2, 110.0, "x", level=0.5, cue_age=6.0) is None
+    assert s.take_main(2, 110.0, "x", level=0.7, cue_age=20.0) is None
+    assert s.main == 1
+
+
+# --- a fresh goal on a challenger skips min_dwell_s (not confirm_s) ---
+
+def _after_a_swap_then(event_fn, gap=5.0, **cfg):
+    """Stream 2 takes MAIN at t=100 (user-less: forced decide), then event_fn(scorer, t) runs `gap` s later; returns the swap decide() makes in the next 6 s."""
+    s = make(confirm_s=2.0, min_dwell_s=20.0, **cfg)
+    now = warm_up(s)
+    s._last_swap = now          # a swap just happened
+    t = now + gap
+    for tab in (1, 2, 3):
+        s.add_audio(tab, 0.05, t); s.set_tags(tab, 0.02, 0.8, 0.04, t)
+    event_fn(s, t)
+    swap = None
+    for k in range(13):
+        tt = t + 0.5 * k
+        for tab in (1, 2, 3):
+            s.add_audio(tab, 0.05, tt); s.set_tags(tab, 0.02, 0.8, 0.04, tt)
+        swap = swap or s.decide(tt)
+    return swap, t
+
+
+def test_a_fresh_goal_on_a_challenger_skips_the_dwell_but_keeps_the_confirmation():
+    swap, t = _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.8, goal=True))
+    assert swap is not None and swap.promote == 2
+    s = make(confirm_s=2.0, min_dwell_s=20.0)
+    now = warm_up(s); s._last_swap = now
+    s.set_event(2, now + 5, 0.8, goal=True)
+    for tab in (1, 2, 3):
+        s.add_audio(tab, 0.05, now + 5); s.set_tags(tab, 0.02, 0.8, 0.04, now + 5)
+    assert s.decide(now + 5) is None                  # first qualifying reading: still waits confirm_s (2 s)
+    assert s.decide(now + 5.5) is None
+    for tab in (1, 2, 3):
+        s.add_audio(tab, 0.05, now + 7.5); s.set_tags(tab, 0.02, 0.8, 0.04, now + 7.5)
+    assert s.decide(now + 7.5) is not None
+
+
+def test_dwell_is_kept_for_a_big_play_an_ad_a_goal_on_main_a_weak_event_and_when_switched_off():
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 1.0))[0] is None                       # big play, not a goal
+    assert _after_a_swap_then(lambda s, t: s.set_event(1, t, 1.0, goal=True))[0] is None            # MAIN's own goal
+    assert _after_a_swap_then(lambda s, t: (s.set_event(2, t, 0.8, goal=True), s.set_on_ad(2, True, t)))[0] is None
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.4, goal=True))[0] is None            # event below goal_hold_break_event
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.8, goal=True), goal_bypass_dwell=0.0)[0] is None
+    assert _after_a_swap_then(lambda s, t: s.set_event(2, t, 0.8, goal=True), gap=21.0)[0] is not None   # no swap lately: normal
+
+
+def test_goal_bypass_dwell_is_overridable():
+    from daemon.scoring import OVERRIDABLE_SCORING
+    assert "goal_bypass_dwell" in OVERRIDABLE_SCORING
+
+
+# --- 'hot game': after MAIN's own goal or a strong cue on it, a challenger must beat it by hot_game_margin for hot_game_s ---
+
+def _hot(**cfg):
+    s = make(hot_game_s=90.0, hot_game_margin=0.20, goal_hold_s=40.0, **cfg)
+    s.components = lambda tab, now: {"score": 0.17 if tab == 1 else 0.4, "event": 0.0}
+    return s
+
+
+def test_hot_main_needs_a_build_up_margin_after_its_own_goal():
+    s = _hot()
+    s.set_event(1, 100.0, 1.0, goal=True)
+    assert s.hot_left(1, 190.0) == pytest.approx(0.0)
+    # 85 s after the goal (22:12:19): level 0.38 against Main 0.17: needs 0.37+, the replay of the bar is the margin
+    assert s.take_main_block(2, 185.0, level=0.36, cue_age=40.0, main_level=0.17) == "MAIN is hot (goal 85 s ago): level 0.36 < 0.37"
+    assert s.take_main_block(2, 185.0, level=0.38, cue_age=40.0, main_level=0.17) is None
+    assert s.take_main_block(2, 191.0, level=0.36, cue_age=40.0, main_level=0.17) is None     # 91 s: no longer hot
+    # a Main's own level above its score is the reference
+    assert s.take_main_block(2, 185.0, level=0.45, main_level=0.30) is not None
+
+
+def test_hot_main_after_a_strong_cue_and_not_after_a_weak_one():
+    s = _hot()
+    s.set_anticipation(1, 100.0, 0.5, strong=True)          # review / penalty awarded on MAIN
+    assert s.hot_left(1, 130.0) == pytest.approx(60.0)
+    assert s.take_main_block(2, 130.0, level=0.40, main_level=0.30) is not None
+    w = _hot()
+    w.set_anticipation(1, 100.0, 0.25, strong=False)        # a chance: the 25 s cue hold of BuildUp.main_hold covers it
+    assert w.hot_left(1, 110.0) == 0.0
+
+
+def test_a_goal_or_a_review_cue_of_the_challenger_beats_a_hot_main():
+    s = _hot()
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.components = lambda tab, now: {"score": 0.17 if tab == 1 else 0.5, "event": 0.0 if tab == 1 else 0.8}
+    s.set_event(2, 184.0, 0.8, goal=True)
+    assert s.take_main_block(2, 185.0, level=0.36, main_level=0.17) is None            # own goal event
+    s2 = _hot()
+    s2.set_event(1, 100.0, 1.0, goal=True)
+    s2.set_anticipation(2, 180.0, 0.5, strong=True)                                     # VAR check on the challenger
+    assert s2.take_main_block(2, 185.0, level=0.36, main_level=0.17) is None
+
+
+def test_hot_ends_when_main_goes_to_an_ad_or_break():
+    s = _hot()
+    s.set_event(1, 100.0, 1.0, goal=True)
+    assert s.hot_left(1, 150.0) > 0
+    s.set_on_ad(1, True, 150.0)
+    assert s.hot_left(1, 150.0) == 0.0
+    s.set_on_ad(1, False)
+    s.set_auto_state(1, "break")
+    assert s.hot_left(1, 150.0) == 0.0
+
+
+def test_hot_game_off_when_zero():
+    s = _hot(); s.config.hot_game_s = 0.0
+    s.set_event(1, 100.0, 1.0, goal=True)
+    assert s.hot_left(1, 150.0) == 0.0
+
+
+def test_hot_main_also_guards_the_normal_swap():
+    s = make(hot_game_s=90.0, hot_game_margin=0.20, goal_hold_s=40.0, confirm_s=0.0)
+    now = warm_up(s)
+    s.set_event(1, now - 60.0, 1.0, goal=True)             # MAIN scored 60 s ago (hold over, still hot)
+    now = roar(s, 2, now, seconds=5, level=0.07, crowd=0.4)   # moderate roar: ~0.49
+    steady(s, 1, 0.05, 60, 5)
+    cur = s.components(1, now)["score"]
+    assert s.components(2, now)["score"] < cur + 0.20 or True
+    s.config.hot_game_margin = 5.0                        # an unreachable margin: held
+    assert s.decide(now) is None
+    s.config.hot_game_margin = 0.0
+    assert s.decide(now) is not None
+
+
+def test_hot_game_settings_overridable():
+    from daemon.scoring import OVERRIDABLE_SCORING
+    assert {"hot_game_s", "hot_game_margin"} <= OVERRIDABLE_SCORING
+
+
+# --- hot game, round 2: hard cap, a break ends the episode for good, a weak cue does not end it, the dwell bypass is for the goal stream only ---
+
+def test_hot_game_cap_counts_from_the_first_cue_of_the_episode():
+    s = _hot(); s.config.hot_game_max_s = 150.0
+    for t in (100.0, 130.0, 160.0, 190.0, 220.0, 250.0, 280.0):       # a strong cue every 30 s
+        s.set_anticipation(1, t, 0.5, strong=True)
+    assert s.hot_left(1, 249.0) == pytest.approx(1.0)                   # 100 + 150 = 250
+    assert s.hot_left(1, 251.0) == 0.0
+    assert s.hot_left(1, 300.0) == 0.0                                  # more cues do not extend it
+    s.set_anticipation(1, 300.0, 0.5, strong=True)                      # the chain goes on: still no new episode
+    assert s.hot_left(1, 301.0) == 0.0
+    s.set_anticipation(1, 400.0, 0.5, strong=True)                      # quiet for >= hot_game_s: a new episode
+    assert s.hot_left(1, 401.0) == pytest.approx(89.0)
+
+
+def test_hot_game_cap_default_and_overridable():
+    from daemon.scoring import OVERRIDABLE_SCORING
+    assert Config().hot_game_max_s == 150.0 and "hot_game_max_s" in OVERRIDABLE_SCORING
+
+
+def test_an_ad_or_break_on_main_ends_the_hot_episode_for_good():
+    s = _hot()
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.set_auto_state(1, "break")
+    s.set_auto_state(1, "live")                           # the break is over: the episode is not resumed
+    assert s.hot_left(1, 140.0) == 0.0
+    s.set_event(1, 200.0, 1.0, goal=True)                 # a new goal starts a new one
+    assert s.hot_left(1, 210.0) == pytest.approx(80.0)
+    s.set_on_ad(1, True, 220.0)
+    s.set_on_ad(1, False, 230.0)
+    assert s.hot_left(1, 235.0) == 0.0
+    s.set_event(1, 300.0, 1.0, goal=True)
+    s.set_status(1, "break")
+    s.set_status(1, None)
+    assert s.hot_left(1, 310.0) == 0.0
+
+
+def test_a_weaker_cue_replacing_the_stored_one_does_not_end_hot():
+    s = _hot()
+    s.set_anticipation(1, 100.0, 0.5, strong=True)        # VAR review on MAIN
+    s.set_anticipation(1, 110.0, 0.25, strong=False)      # a chance 10 s later: 0.25 >= the review's fading 0.22, it replaces the stored cue
+    assert s.hot_left(1, 130.0) == pytest.approx(60.0)
+
+
+def test_a_review_cue_of_a_challenger_is_not_lost_to_a_weaker_cue():
+    s = _hot()
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.set_anticipation(2, 160.0, 0.5, strong=True)
+    s.set_anticipation(2, 170.0, 0.25, strong=False)      # replaces the stored cue
+    assert s.take_main_block(2, 172.0, level=0.36, main_level=0.17) is None
+
+
+def test_the_dwell_bypass_is_only_for_the_stream_with_the_fresh_goal():
+    def run(winner):
+        s = make(confirm_s=0.0, min_dwell_s=20.0)
+        now = warm_up(s); s._last_swap = now
+        t = now + 5
+        # stream 2 has the fresh goal (quiet); stream 3 is the loud one that would win the margin
+        for tab in (1, 2, 3):
+            s.add_audio(tab, 0.05, t); s.set_tags(tab, 0.02, 0.8, 0.04, t)
+        s.set_event(2, t, 0.8, goal=True)
+        t = roar(s, 3, t, seconds=3, level=0.15, crowd=0.9)
+        for tab in (1, 2):
+            s.add_audio(tab, 0.05, t); s.set_tags(tab, 0.02, 0.8, 0.04, t)
+        s.set_event(2, t - 0.5, 0.8, goal=True)
+        if winner == 3:
+            assert s.components(3, t)["score"] > s.components(2, t)["score"]
+        return s.decide(t)
+    swap = run(3)
+    assert swap is not None and swap.promote == 2          # only the goal stream may skip the dwell (the loud one waits)

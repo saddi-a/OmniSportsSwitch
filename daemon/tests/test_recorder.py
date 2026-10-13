@@ -12,7 +12,7 @@ ROW_FIELDS = {"v", "t", "mono", "tab", "role", "is_main", "sport", "warm", "stat
               "score", "surge", "crowd", "speech", "music", "shout", "event", "cue_fade", "cue_part", "fav", "lev", "loud", "baseline", "top", "cue",
               "bu", "home", "away", "clock", "period", "replay", "goal_hold", "goal_age", "hold", "game_id", "league", "tiles", "main", "frozen",
               "last_swap_age", "swap_pending"}
-BU_FIELDS = {"level", "cues_sum", "support", "cues", "min", "gap", "live", "main_score", "main_level", "qualifies", "cooldown_left", "surge_note_left",
+BU_FIELDS = {"level", "cues_sum", "support", "cues", "min", "gap", "live", "main_score", "main_level", "hot_left", "qualifies", "cooldown_left", "surge_note_left",
              "crowd_note_left", "crowd_run", "blocked"}
 
 
@@ -180,4 +180,21 @@ def test_recorded_qualifies_and_blocked_follow_main_level_bar_and_main_hold(tmp_
     assert part["blocked"] is not None and "MAIN's own cue" in part["blocked"]     # ...but not by the hold margin
     server.scorer.config.buildup_hold_s = 0.0
     assert _buildup_part(server, 2, server.scorer.components(2, now), now)["blocked"] is None
+    recorder.close()
+
+
+def test_recorded_hot_left_and_blocked_follow_the_hot_game_hold(tmp_path):
+    from daemon.recorder import _buildup_part
+    server, recorder = _server(tmp_path, buildup_live=1.0, min_dwell_s=0.0)
+    now = time.monotonic()
+    _register(server, 1, now)
+    _register(server, 2, now)
+    cold = _buildup_part(server, 2, server.scorer.components(2, now), now)
+    assert cold["hot_left"] == 0.0
+    server.scorer.set_event(1, now - 50.0, 1.0, goal=True)   # MAIN scored 50 s ago: goal hold over, hot for 40 s more
+    server.buildup.note(1, now - 26, 0.30, "spoken:chance")   # MAIN's own level ~0.17: the hot bar is 0.17 + 0.25
+    server.buildup.note(2, now - 1, 0.40, "spoken:chance")
+    hot = _buildup_part(server, 2, server.scorer.components(2, now), now)
+    assert 35.0 < hot["hot_left"] <= 40.0 and "MAIN is hot" in (hot["blocked"] or "")
+    assert _buildup_part(server, 1, server.scorer.components(1, now), now)["hot_left"] == hot["hot_left"]
     recorder.close()

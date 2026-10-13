@@ -211,13 +211,14 @@ def _buildup_part(server, tab_id: int, c: dict | None, now: float) -> dict:
         "cues": [[_r(age, 1), _r(v), kind] for age, v, kind in details],
         "min": cfg.buildup_min, "gap": cfg.buildup_gap, "live": cfg.buildup_live,
         "main_score": _r(main_score), "main_level": _r(main_level),
+        "hot_left": _r(server.scorer.hot_left(main, now), 1) if main is not None else 0.0,   # s MAIN stays hot (its goal / strong cue); `blocked` then includes the hot margin
         "qualifies": bool(level >= cfg.buildup_min and level - max(main_score, main_level) >= cfg.buildup_gap),
     }
     part.update(bu.state(tab_id, now))
     if tab_id == main:
         part["blocked"] = "already MAIN"
     else:
-        part["blocked"] = server.scorer.take_main_block(tab_id, now, level=level, cue_age=bu.spoken_age(tab_id, now))
+        part["blocked"] = server.scorer.take_main_block(tab_id, now, level=level, cue_age=bu.spoken_age(tab_id, now), main_level=main_level)
         if part["blocked"] is None and part["qualifies"] and cfg.buildup_live > 0:   # MAIN keeps its seat after its own cue / review
             part["blocked"] = bu.main_hold(main, tab_id, now, level, main_level, cfg)
     return part

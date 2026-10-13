@@ -51,9 +51,9 @@ to subtract times inside a run; it restarts at each daemon start). Ages and "lef
 
 `bu`: `level` build-up level (faded sum of the cues of the window + `support`; 0 with no cue), `cues_sum` the faded cue sum alone, `support` the surge/crowd/shout
 part (`weights` x signals), `cues` = `[[age_s, faded_value, kind], ...]` oldest first (kind = banner cue name, `spoken:<cue>`, `note:<cue>` for a set-piece
-note, `surge_note`, `crowd_note`), `min`/`gap`/`live` = the thresholds and the live switch of this stream's sport, `main_score` MAIN's score, `main_level` MAIN's own build-up level (its cues + surge/crowd; 0 on MAIN's own row), `qualifies` level
+note, `surge_note`, `crowd_note`), `min`/`gap`/`live` = the thresholds and the live switch of this stream's sport, `main_score` MAIN's score, `main_level` MAIN's own build-up level (its cues + surge/crowd; 0 on MAIN's own row), `hot_left` seconds MAIN stays 'hot' (after its own goal or a strong cue: `scoring.hot_game_s`; 0 = not hot, also 0 on MAIN's own row when not hot), `qualifies` level
 >= `min` and >= `gap` above the larger of `main_score` and `main_level` (the cooldown and the guards ignored), `cooldown_left` s of the stream's build-up cooldown, `surge_note_left` /
-`crowd_note_left` s until another surge / crowd note can be made, `crowd_run` consecutive loud-crowd readings, `blocked` = why `take_main` would refuse now (also MAIN keeping its seat: "MAIN's own cue ..." / "MAIN under review ...", only when live and the row qualifies)
+`crowd_note_left` s until another surge / crowd note can be made, `crowd_run` consecutive loud-crowd readings, `blocked` = why `take_main` would refuse now (also MAIN keeping its seat: "MAIN's own cue ..." / "MAIN under review ...", only when live and the row qualifies; "MAIN is hot (...)" while `hot_left` > 0 and the level is below MAIN's score or level + `hot_game_margin`)
 (`dwell`, `goal on MAIN N s ago`, `not live`, `slot rules`, `on an ad`, `manual hold`, `MAIN is frozen`, `already MAIN`) or null.
 
 `tiles[]`: `i` tile index, `sport` / `sport_src` (popup, hard, feed, title, weak, memory), `state`, `ad`, `replay`, `period`, `clock` (text), `clock_min`,
@@ -131,3 +131,5 @@ the script at another `logs/`. Code: `daemon/espn_history.py` (fetch, parse), `d
 * Rows get `y_t12_60` with the commentary and `y_t12_60_feed` without. Cues stay circular and out of the verdict: commentary is outside evidence, a spoken cue is not.
 * Limits: tier-2 shots/corners are many per game (about 30), so misses and regrets with them are far more frequent than with the feed alone; the tier-2 definition
   (every corner, every on-target shot) is a v1 choice to tune. The text of the operator's sentences is never written to the outputs.
+
+* `rows.jsonl` also carries `event`, `cue_part`, `cue_fade` (added 2026-10-13 for `director_training`, which fits the weights on the score components; older files read them as 0). `build()` returns a `context` (tab events, cues, lags) so another swap sequence can be judged with the same code (`director_training/evaluate.py`).

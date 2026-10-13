@@ -1,4 +1,4 @@
-from daemon.score_watch import STAT_GRAPHIC_RE, ScoreWatcher, find_score
+from daemon.score_watch import STAT_GRAPHIC_RE, ScoreWatcher, find_score, find_score_geo
 from daemon.scoring import Config
 
 
@@ -567,3 +567,34 @@ def test_readings_during_a_replay_neither_fire_nor_change_the_baseline():
         assert w.update(texts, [], items=replay_board, replay=True) is False
     assert w.score == (31, 17)
     assert feed_items(w, [BOARD], 4) == []   # back to the live board: nothing happened
+
+
+# ---- ATM-MUN 2026-10-13 (boxes.log): "LIVE 3" (the channel label, same height as the score, far right) matched the "PHI| 14" pattern
+# ('LIV' + 'E' as the separator + '3') and the 3 became the away score: 1-0 was read as 1-3 whenever the merged '1 0' item came out wider,
+# and every flip back and forth was announced as a goal (22:12:56, 22:16:13, 22:30:57, 22:33:02, 22:35:00). ----
+
+def _atm_items(width):
+    rows = [("72.38", 42, 153, 71), ("ATM", 42, 329, 71), ("1 0", 42, 475, 71), ("MUN", 44, 617, 71), ("LIVE 3", 43, 2086, 72),
+            ("Vaa", 26, 118, 1198), ("POTENTIAL RED CARD CHECK", 43, 181, 1188)]
+    return [{"text": t, "x0": x, "y0": y, "x1": x + h * width * len(t), "y1": y + h} for t, h, x, y in rows]
+
+
+def test_live_channel_label_is_not_a_team_code_with_a_score():
+    for width in (0.5, 0.6, 0.7):
+        assert find_score_geo(_atm_items(width), ["72:38"]) in ((1, 0), None), width
+
+
+def test_a_real_code_before_a_score_is_still_split():
+    items = [{"text": "LIV| 2", "x0": 100, "y0": 50, "x1": 190, "y1": 80}, {"text": "MCI| 1", "x0": 300, "y0": 50, "x1": 390, "y1": 80}]
+    assert find_score_geo(items, []) is not None
+
+
+def test_the_atm_reading_does_not_fire_a_goal_when_the_score_is_unchanged():
+    w = ScoreWatcher(Config())
+    t = 0.0
+    fired = []
+    for i in range(30):
+        items = _atm_items(0.6 if i % 4 else 0.7)
+        fired.append(w.update(["72.38", "ATM", "1 0", "MUN", "LIVE 3"], ["72:38"], t, items))
+        t += 3
+    assert not any(fired) and w.score == (1, 0)

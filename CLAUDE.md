@@ -1,37 +1,36 @@
 # OmniSportsSwitch (guide for Claude)
 
-A local "live broadcast director": an Edge extension plus a Python daemon that watch several browser sports streams and move the most exciting one into the `MAIN` window. Everything must run locally (no cloud, accounts or APIs).
+A local "live broadcast director": an Edge extension plus a Python daemon that watch several browser sports streams and move the most exciting one into the Main window (internal id `MAIN`).
 
-**Read `PLAN.md` section 0 first.** It has the current state, how to run and test, what is verified live, next steps and gotchas. It is the durable hand-over; keep it up to date after every change. Sections 1 to 8 hold the architecture, display layout, scoring and risks. `README.md` is for users; do not duplicate it here.
+**Read `PLAN.md` section 0 first.** It is the durable hand-over (current state, how to run and test, what is verified live, next steps, gotchas); keep it up to date after every change. Sections 1 to 8 hold the architecture, display layout, scoring and risks. `README.md` is for users; do not duplicate it here.
 
-## Layout
+## Non-negotiables
 
-- `daemon/` Python daemon (see `daemon/CLAUDE.md`).
-- `extension/` Edge Manifest V3 extension, plain JS, no build step (see `extension/CLAUDE.md`).
-- `settings.toml` every threshold/weight/phrase; a test keeps it equal to the built-in defaults.
-- `launcher/` the tray launcher (`launcher.py`, built into `dist/OmniSportsSwitch.exe` by `scripts/build_launcher.ps1`; build tools in `requirements-build.txt`); it starts this project's `.venv` daemon and the test Edge profile.
-- `scripts/` (also `backtest.py`, read-only: how far ahead of each goal a stream scored, per sport) PowerShell `setup.ps1` (one-time install: venv, CUDA PyTorch, packages, models, tests), start/stop scripts (`start_all.ps1 -NoEdge`, `stop_all.ps1 -Edge`), `capture_samples.py` (saves screenshots to untracked `samples/`).
-- `tmp/` scratch space, ignored by git (nothing in it is kept). The Phase 0 experiments (`spike/`) were removed; their conclusions are in `PLAN.md` and the code is in the git history before the commit that removed it.
-- `models/`, `logs/`, `samples/`, `dist/`, `build/`, `tmp/`, `.venv/` are not tracked.
+- Everything runs locally: no cloud, accounts or paid APIs.
+- The repo is PUBLIC: never commit logs, samples, screenshots, stream URLs or personal data.
+- Work on `develop` only; never commit on `main`, never force-push, never edit git config.
+- Add a test for every behaviour you add; run the suite before every commit.
+- Do not trust single readings (music probability, OCR text, clocks flicker): use votes, memory and confirmations.
+- Never cover a stream with a window (OCR reads the screen); keep Edge hardware acceleration off.
+- The aim is to move Main BEFORE the goal (build-up: big chance, save, VAR, penalty awarded), not after it; each sport has its own clues and is calibrated and reported on its own.
+- Ask before architecture or design decisions: options with pros and cons and a recommendation. Implementation details are yours.
+- The main chat is for planning, decisions and logging the user's feedback; background agents do the work, but spend them deliberately (usage is limited): routine agents run on the cheaper model, follow-ups resume an existing agent, work is batched per area, and tiny edits are done inline (rules in `docs/claude/workflow.md`, "Agent economy").
+- Talk to the user with the window names Main, Window 2 to 5, not the internal ids.
 
-## How to work here
+## Index: read the file when
 
-- **Ask before architecture or design decisions**: give options with pros and cons and a recommendation. Implementation details are yours; explain them briefly. The user is new to web development, knows Python and C. Keep replies short and plain.
-- **The main chat is for planning, decisions and logging the user's feedback; agents do the work** (user, 2026-10-13). Once the options are decided, hand the implementation (edits, tests, log replays, doc updates) to a background agent with a self-contained prompt (decisions, current state, tasks, report format) and stay in the chat: ask the user the decision questions (with options), and write their feedback and decisions down at once (memory and `PLAN.md` section 0). Do not run long edit/test loops inline. The agent must not commit, push or restart the daemon unless told.
-- **Git**: the GitHub repo `saddi-a/OmniSportsSwitch` was made PUBLIC on 2026-10-11 (so friends can use it); everything pushed is visible to everyone, so never commit logs, samples, screenshots, stream URLs or personal data. Work on `develop` (renamed from `phase-0-1-spike-and-daemon` on 2026-10-11); other sessions work on their own branches from `develop` and the main session merges them. Never commit directly on `main`: it is only fast-forwarded from `develop` (`git push origin develop:main`) when the user asks; the permission system blocked this once and allowed it after the user asked explicitly. Push `develop` freely. Never force-push. Never edit git config; commit with `git -c user.name=saddi-a -c user.email=72130894+saddi-a@users.noreply.github.com`. Cleaning the public history is a pending decision (see `PLAN.md` section 0, "Public repo").
-- **Tests**: `.venv\Scripts\python.exe -m pytest daemon -q` (one expected failure: the UCF layout). About 815 tests. After a football change also run `scripts\backtest.py --summary` on the logs. Add a test for every behaviour you add. Real scoreboard fixtures are in `daemon/tests/fixtures/`.
-- **After changes**: daemon or settings changes need a daemon restart (`scripts\stop_all.ps1`, `scripts\start_all.ps1`). Extension changes need the user to press "Reload extension" in the popup and re-track each tab.
-- **The aim is to move MAIN BEFORE the goal** (build-up: big chance, save, VAR, penalty awarded), not to detect the goal afterwards, and **each sport has its own clues**: calibrate and report football, American football and basketball separately (the first calibration, 2026-10-10/11, was American football only). Measure with `scripts\backtest.py` before changing weights; see `PLAN.md` section 0.
-- **Do not trust single readings**: music probability, OCR text and clocks flicker. Use votes, memory and confirmations over several readings.
-- **Never cover a stream** with a window (OCR reads the screen) and keep Edge hardware acceleration off.
+Plain links on purpose (not `@` imports), so a file loads only when needed.
 
-## Names
-
-Windows are shown to the user as Main, Window 2, 3, 4, 5. The internal ids stay `MAIN`, `LEFT`, `RIGHT_BOT`, `RIGHT_MID`, `RIGHT_TOP` (in this order of filling) because they are saved in the browser and used by the daemon, arrange and the tests: Window 2 = `LEFT`, Window 3 = `RIGHT_BOT`, Window 4 = `RIGHT_MID`, Window 5 = `RIGHT_TOP`. The labels live in `ROLE_NAMES` in `extension/popup.js`. Use the user-facing names when talking to the user.
-
-## Windows quirks
-
-- Source files use CRLF line endings. Multi-line Edit calls can fail to match; patch from a Python script (read bytes, replace, write bytes) instead. Write patch scripts to files rather than inline shell.
-- In Python strings `\b` is a backspace. Use raw strings or lookarounds in regexes.
-- Install `torch` and `torchvision` from the CUDA index first, and use `--no-deps` for packages that depend on them, or pip replaces them with CPU builds.
-- The bash `python` is a Microsoft Store stub; use `.venv\Scripts\python.exe`. In PowerShell, `git` may not be on PATH; use bash for git.
+| File | Read it when |
+|---|---|
+| [docs/claude/workflow.md](docs/claude/workflow.md) | replying to the user, asking design questions, delegating to agents, restarting, working in several sessions |
+| [docs/claude/git.md](docs/claude/git.md) | committing, pushing, merging, touching `main` |
+| [docs/claude/testing.md](docs/claude/testing.md) | running tests, the backtest, adding fixtures or settings |
+| [docs/claude/layout.md](docs/claude/layout.md) | looking for where something lives in the repo |
+| [docs/claude/names-and-windows.md](docs/claude/names-and-windows.md) | naming windows (Main, Window 2..5 vs `LEFT`, `RIGHT_BOT`...) |
+| [docs/claude/windows-quirks.md](docs/claude/windows-quirks.md) | editing files or installing packages on this Windows machine |
+| [daemon/CLAUDE.md](daemon/CLAUDE.md) | changing daemon code: file table and rules for changes |
+| [extension/CLAUDE.md](extension/CLAUDE.md) | changing the Edge extension |
+| [docs/learning-plan.md](docs/learning-plan.md), [docs/dataset-format.md](docs/dataset-format.md), [docs/per-tile-sport.md](docs/per-tile-sport.md) | the learned-weights plan, its dataset format and tools, per-tile sport detection |
+| [director_training/README.md](director_training/README.md) | Director Training: fitting, shadow evaluation and shipping per-sport weights offline (`scripts/director_training.py`, runs in `logs/director_training/`) |
+| [docs/api-plan.md](docs/api-plan.md) | the ESPN feed (measuring only) |
