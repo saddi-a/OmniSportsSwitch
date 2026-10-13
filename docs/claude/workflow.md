@@ -14,6 +14,17 @@
 - An agent prompt must be self-contained: the decisions taken, the current state (branch, folder, what is uncommitted), the tasks, what it must not touch, and the report format.
 - Agents must not commit, push, or start/stop/restart the daemon unless told.
 
+## Agent economy (user, 2026-10-13: 100% of the usage had come from subagents; a mix of "cheaper model" and "batch per area")
+Every agent re-reads docs and code before it starts, so a new agent per small task is the main cost. Rules:
+- **Cheaper model for routine agents**: pass `model: "sonnet"` for docs edits, read-only probes (ESPN, logs), mechanical merges and reviews, log and data analysis, renames, and test-writing from a clear spec. Keep the default (strongest) model only for design-heavy code: scoring logic, the Director Training fit and evaluation, anything with subtle timing or state.
+- **Resume, do not respawn**: a follow-up on the same area goes to the existing agent with `SendMessage` (it keeps its context), not to a new agent.
+- **Batch per area**: one long-lived agent per area (data pipeline = builder, review, ESPN history, Director Training; scoring = the scoring session; docs; team tables) that I keep feeding, instead of one agent per task. Give a batch of related tasks in one prompt.
+- **Short prompts**: list only the files to read and the decisions already taken; do not paste long background; point to `docs/` for the rest. Ask for a short report (under about 25 lines).
+- **Do tiny things inline**: an edit of a few lines, one log check, a fast-forward merge, a memory note, a commit or a push is done in the chat; spawn an agent only when the job needs many steps or long reads.
+- **Check before spawning**: is an agent already running on this area? Can the answer come from a file I already know? Then do not spawn.
+- **Parallel only when independent** (different files); never two agents on the same file.
+- Prefer ONE read-only agent for all the facts a decision needs over several probes.
+
 ## After changes
 - Daemon or settings changes need a daemon restart: `scripts\stop_all.ps1`, then `scripts\start_all.ps1` (`-NoEdge` keeps Edge; `stop_all.ps1 -Edge` also closes it). The user pre-approves restarts when testing or debugging needs them.
 - Extension changes need the user to press "Reload extension" in the popup and re-track each tab.

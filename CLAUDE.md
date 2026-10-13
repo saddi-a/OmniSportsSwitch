@@ -14,7 +14,7 @@ A local "live broadcast director": an Edge extension plus a Python daemon that w
 - Never cover a stream with a window (OCR reads the screen); keep Edge hardware acceleration off.
 - The aim is to move Main BEFORE the goal (build-up: big chance, save, VAR, penalty awarded), not after it; each sport has its own clues and is calibrated and reported on its own.
 - Ask before architecture or design decisions: options with pros and cons and a recommendation. Implementation details are yours.
-- The main chat is for planning, decisions and logging the user's feedback; background agents do the work.
+- The main chat is for planning, decisions and logging the user's feedback; background agents do the work, but spend them deliberately (usage is limited): routine agents run on the cheaper model, follow-ups resume an existing agent, work is batched per area, and tiny edits are done inline (rules in `docs/claude/workflow.md`, "Agent economy").
 - Talk to the user with the window names Main, Window 2 to 5, not the internal ids.
 
 ## Index: read the file when
