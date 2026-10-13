@@ -1,4 +1,4 @@
-"""Director Training: offline learning of the per-sport weights of OmniSportsSwitch (plan: docs/learning-plan.md).
+"""Director Training: offline learning of the per-sport weights of OmniSportsSwitch (plan: docs/director-training.md).
 
 OFFLINE ONLY. The live daemon must never import this package (a test greps daemon/*.py for it). This package may import `daemon`
 (the scoring formula, the settings loader, the dataset builder) because it needs to use exactly the same numbers and metric code.

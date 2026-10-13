@@ -1,4 +1,4 @@
-"""Dataset builder (task T2 of docs/learning-plan.md): turns the recorder's files (`logs/dataset/<date>.jsonl` rows and
+"""Dataset builder (task T2 of docs/director-training.md): turns the recorder's files (`logs/dataset/<date>.jsonl` rows and
 `<date>.events.jsonl` events) and the feed recordings (`logs/feed/*.jsonl`) into LABELLED rows and per-swap REGRET / MISS verdicts.
 
 OFFLINE and READ-ONLY on `logs/`: nothing here talks to the daemon, the network or a setting. Only `write_outputs` writes, and only inside the
@@ -7,7 +7,7 @@ directory it is given (it refuses any other path). The functions are pure so the
 Times. Rows and events carry `t` = wall clock epoch seconds. The feed's `t` is ISO with an offset; it is converted to epoch. A row's `t` is
 STREAM time (the picture shown at that moment). A feed event is first placed in stream time (its PICTURE time `pt`); all windows
 ("the next 30 s", the regret window, the miss test) are then measured in stream time of the stream concerned. This is the "shifted by the
-picture lag" of the learning plan.
+picture lag" of the Director Training plan.
 
 Alignment of a feed event to the picture, in this order (each result records its source in `align`):
   1. `clock`  (football only: the football clock runs 1 s per second). Rows of the game with a parsed on-screen clock "MM:SS" (state live, no
@@ -44,10 +44,12 @@ import pathlib
 import statistics
 import time
 
+from daemon.espn_history import tier2_group
+
 GOAL_LAG_S = 12.0                      # same value as daemon.backtest.GOAL_LAG_S (OCR confirms a goal this long after the picture)
 SPORT_OF_FEED = {"soccer": "football", "american football": "american football", "basketball": "basketball"}
 GOAL_KINDS = {"football": ("goal", "penalty goal", "own goal"), "american football": ("touchdown", "field goal good")}
-# Event tiers v1 (docs/learning-plan.md section 3). A kind not listed is tier 3 (note only). Basketball is parked: no tiers.
+# Event tiers v1 (docs/director-training.md section 3). A kind not listed is tier 3 (note only). Basketball is parked: no tiers.
 FEED_TIER = {
     "football": {"goal": 1, "penalty goal": 1, "own goal": 1, "red card": 1, "penalty": 1, "yellow card": 3},
     "american football": {"touchdown": 1, "field goal good": 1, "safety": 1, "score": 1, "interception": 2, "fumble": 2, "field goal": 2,
@@ -75,6 +77,8 @@ class Params:
     regret_window_s: float = 30.0      # W (user decision 2026-10-13)
     flipflop_s: float = 30.0           # a swap back within this is a flip-flop (starting flag)
     miss_ahead_s: float = 12.0         # a swap must come at least this long before the event to count as ahead
+    overturn_window_s: float = 90.0    # a goal followed by a commentary 'goal overturned' within this is cancelled
+    overturn_feed_slack_s: float = 20.0  # the feed may learn the goal this long after the overturn's wallclock (feed lag)
     miss_back_s: float = 10.0          # Main's own tier is read from pt - this
     clock_window_s: float = 90.0
     clock_min_rows: int = 3
@@ -246,7 +250,8 @@ def feed_events(feed_rows: list[dict]) -> list[dict]:
             before = [x for x in rises.get(e["game"], []) if 0 <= e["t"] - x <= SNAP_BEFORE_S]
             t = max(before) if before else t
         out.append({"game": e["game"], "league": e.get("league"), "sport": sport, "kind": e["kind"], "tier": tier_of(sport, e["kind"]),
-                    "goal": goal, "t": t, "clock_s": e.get("clock_s"), "team": e.get("team", "")})
+                    "goal": goal, "t": t, "clock_s": e.get("clock_s"), "team": e.get("team", ""),
+                    "group": "2a" if tier_of(sport, e["kind"]) == 2 else None})
     return sorted(out, key=lambda x: x["t"])
 
 
@@ -335,8 +340,23 @@ def commentary_to_events(commentary: list[dict], watched) -> list[dict]:
             continue
         out.append({"game": str(c["game_id"]), "league": c.get("league"), "sport": "football", "kind": c["kind"], "tier": c["tier"],
                     "goal": c.get("family") == "goal", "t": c["wallclock_epoch"], "clock_s": c.get("game_seconds"), "team": c.get("team") or "",
-                    "src": "commentary", "family": c.get("family"), "period": c.get("period"), "pt": None, "align": None, "pt_jitter": None})
+                    "src": "commentary", "group": c.get("group") or tier2_group(c["kind"], c["tier"]), "family": c.get("family"), "period": c.get("period"), "pt": None, "align": None, "pt_jitter": None})
     return out
+
+
+def cancel_overturned_goals(fev: list[dict], com: list[dict], p: Params = Params()) -> int:
+    """A goal (feed or commentary) followed by a commentary 'goal overturned' of the same game within `overturn_window_s` is not a goal: it
+    becomes a tier-2a event (`cancelled_goal`). One overturn cancels one goal (the nearest earlier one). Works on raw times, before placing.
+    Returns the number cancelled."""
+    n = 0
+    for o in sorted((c for c in com if c["kind"] == "goal overturned"), key=lambda c: c["t"]):
+        cands = [g for g in fev + com if g["goal"] and g["game"] == o["game"] and -p.overturn_feed_slack_s <= o["t"] - g["t"] <= p.overturn_window_s]
+        if not cands:
+            continue
+        g = min(cands, key=lambda g: abs(o["t"] - g["t"]))
+        g.update(goal=False, tier=2, group="2a", cancelled_goal=True)
+        n += 1
+    return n
 
 
 def _pair_nearest(feeds: list[dict], coms: list[dict], p: Params) -> list[tuple]:
@@ -557,7 +577,7 @@ def tab_events(events: list[dict], rows: list[dict], assumed: dict | None = None
             pt, align = e["t"] + assumed.get(e["sport"], 0.0), "assumed"
         for tab in tabs.get(e["game"], ()):
             out[tab].append({"tab": tab, "game": e["game"], "pt": pt, "tier": e["tier"], "kind": e["kind"], "goal": e["goal"],
-                             "align": align, "src": e.get("src", "feed"), "sport": e["sport"], "ocr_check_s": e.get("ocr_check_s")})
+                             "align": align, "src": e.get("src", "feed"), "sport": e["sport"], "group": e.get("group"), "ocr_check_s": e.get("ocr_check_s")})
     for v in out.values():
         v.sort(key=lambda x: x["pt"])
     return out
@@ -720,7 +740,7 @@ def judge_events(events: list[dict], rows: list[dict], swaps: list[dict], index:
             pt = e["pt"]
             row = index.at(tab, pt)
             d = {"t": pt, "tab": tab, "game": e["game"], "sport": e["sport"], "kind": e["kind"], "tier": e["tier"], "goal": e["goal"],
-                 "align": e["align"], "status": None, "lead_s": None, "swap_source": None, "ocr_check_s": e.get("ocr_check_s"),
+                 "group": e.get("group"), "align": e["align"], "status": None, "lead_s": None, "swap_source": None, "ocr_check_s": e.get("ocr_check_s"),
                  "src": e.get("src"), "lead_last_s": None, "last_swap_source": None, "left_main_s": None}
             out.append(d)
             if row is None:
@@ -813,6 +833,9 @@ def summarise(rows: list[dict], swaps: list[dict], event_rows: list[dict], minut
             "regret_share": (len(regrets) / len(judged)) if judged else None,
             "tier12_events": len([e for e in ev if e["status"] != "no-rows"]), "misses": len(misses),
             "tier12_commentary": len([e for e in ev if e.get("src") == "commentary" and e["status"] != "no-rows"]),
+            "tier2a_events": len([e for e in ev if e.get("group") == "2a" and e["status"] != "no-rows"]),
+            "tier2b_events": len([e for e in ev if e.get("group") == "2b" and e["status"] != "no-rows"]),
+            "misses_2a": len([e for e in misses if e.get("group") == "2a"]), "misses_2b": len([e for e in misses if e.get("group") == "2b"]),
             "misses_commentary": len([e for e in misses if e.get("src") == "commentary"]),
             "y_t12_60_feed": sum(1 for r in rs if r.get("y_t12_60_feed")),
             "miss_per_10min": (len(misses) / mins * 10.0) if mins else None, "event_status": dict(collections.Counter(e["status"] for e in ev)),
@@ -845,6 +868,9 @@ def format_summary(summary: dict) -> str:
         lines.append(f"        of which a tier-1 event on the stream left: {s['regrets_goal_left']}; [column: regrets if ALL cues counted, unconfirmed: {s['regrets_with_cues']}]")
         lines.append(f"    MISS (tier-1/2 events, {s['tier12_events']}): {s['misses']} ({f(s['miss_per_10min'], '.2f')} per 10 min); of which Main had left that stream <= 30 s before: {s['misses_left_just_before']}; "
                      f"user-marked missed chances {s['user_event_marks']} ({s['user_event_marks_missed']} counted as misses); status {s['event_status']}")
+        if s["tier2a_events"] or s["tier2b_events"]:
+            lines.append(f"        tier 2a (save, woodwork, VAR, penalty-related; the main miss number): {s['tier2a_events']} events, {s['misses_2a']} misses; "
+                         f"tier 2b (corners, blocked / off-target shots): {s['tier2b_events']} events, {s['misses_2b']} misses")
         if s["tier12_commentary"] or s["misses_commentary"]:
             lines.append(f"        of the tier-1/2 events {s['tier12_commentary']} come from the ESPN commentary, of the misses {s['misses_commentary']}; "
                          f"y_t12_60 positives without the commentary {s['y_t12_60_feed']}")
@@ -865,9 +891,11 @@ def build(rows: list[dict], events_file: list[dict], feed_rows: list[dict], p: P
     watched = {r["game_id"] for r in rows if r.get("game_id")}
     fev = [e for e in fev if e["game"] in watched]
     changes = [e for e in events_file if e.get("kind") == "score_change"]
+    com_raw = commentary_to_events(commentary, watched) if commentary else []
+    n_cancelled = cancel_overturned_goals(fev, com_raw, p)
     games = align_events(fev, rows, changes, p)
     add_coverage(games, feed_rows, rows, p)
-    cev, creport = place_commentary(commentary_to_events(commentary, watched), fev, rows, games, p) if commentary else ([], {})
+    cev, creport = place_commentary(com_raw, fev, rows, games, p) if commentary else ([], {})
     feed_only = fev
     fev = sorted(fev + cev, key=lambda e: e["t"])
     cues = cue_events(events_file, sports)
@@ -891,7 +919,7 @@ def build(rows: list[dict], events_file: list[dict], feed_rows: list[dict], p: P
     game_rows = [{"game": g, **{k: v for k, v in i.items() if k != "covered"}} for g, i in sorted(games.items())]
     context = {"params": p, "sports": sports, "tab_ev": tab_ev, "tab_ev_wide": tab_ev_wide, "cues_by_tab": cues_by_tab, "lags": lags, "feed_events": fev}   # lets a caller re-judge another swap sequence (director_training); fev = feed + commentary events
     return {"rows": rows, "swaps": swaps, "events": event_rows, "games": game_rows, "summary": summary, "feed_events": feed_only, "commentary_events": cev,
-            "commentary_report": creport, "assumed_lags": lags, "confirmed_cues": n_confirmed, "context": context}
+            "commentary_report": ({**creport, "goals_cancelled": n_cancelled} if commentary else creport), "assumed_lags": lags, "confirmed_cues": n_confirmed, "context": context}
 
 
 def slim_row(r: dict) -> dict:

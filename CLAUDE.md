@@ -31,6 +31,6 @@ Plain links on purpose (not `@` imports), so a file loads only when needed.
 | [docs/claude/windows-quirks.md](docs/claude/windows-quirks.md) | editing files or installing packages on this Windows machine |
 | [daemon/CLAUDE.md](daemon/CLAUDE.md) | changing daemon code: file table and rules for changes |
 | [extension/CLAUDE.md](extension/CLAUDE.md) | changing the Edge extension |
-| [docs/learning-plan.md](docs/learning-plan.md), [docs/dataset-format.md](docs/dataset-format.md), [docs/per-tile-sport.md](docs/per-tile-sport.md) | the learned-weights plan, its dataset format and tools, per-tile sport detection |
+| [docs/director-training.md](docs/director-training.md), [docs/dataset-format.md](docs/dataset-format.md), [docs/per-tile-sport.md](docs/per-tile-sport.md) | the learned-weights plan, its dataset format and tools, per-tile sport detection |
 | [director_training/README.md](director_training/README.md) | Director Training: fitting, shadow evaluation and shipping per-sport weights offline (`scripts/director_training.py`, runs in `logs/director_training/`) |
 | [docs/api-plan.md](docs/api-plan.md) | the ESPN feed (measuring only) |

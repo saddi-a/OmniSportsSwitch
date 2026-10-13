@@ -1,4 +1,4 @@
-# Learning plan (DRAFT v2, 2026-10-13, decisions added)
+# Director Training plan (DRAFT v2, 2026-10-13, decisions added)
 
 Status: a plan only. Nothing here is built, and nothing runs in the daemon. The user parked it on 2026-10-13 ("not building it tonight").
 Numbers marked **[checked]** were read from the code or the logs on 2026-10-13. Anything marked **[unverified]** is an assumption.
@@ -230,3 +230,14 @@ J. DECIDED: flip-flop window 30 s as a starting flag; it counts as regret only w
 K. DECIDED: regret weight by the tier gap.
 
 Per-tile sport (question A) is worked out in `docs/per-tile-sport.md` (Stage 1 then Stage 2: popup sport per tile; an unknown-sport tile is treated as football; freer tile focus off Main; stricter build-up threshold for silent tiles; instant sound switch on a build-up). Follow that file for the multiview limitation.
+
+## 10. Decisions (2026-10-13, second round)
+
+1. Tier 2 is split for football. 2a = shot on target, save, woodwork, VAR outcomes, goal overturned, own-box handball (penalty-related); 2b = corners, shots blocked / off target from the box, near free kicks. Rows and metrics report them apart (`group` on events, `tier2a_events`, `tier2b_events`, `misses_2a`, `misses_2b` in the summary); 2a is the main miss number. `tier` and the old columns stay unchanged.
+2. A goal (feed or commentary) followed by a commentary 'goal overturned' of the same game within 90 s is cancelled as a goal (`cancelled_goal`, becomes tier 2a); the VAR chain stays 2a.
+3. The feed stays the source for cards and penalties (no change).
+4. One pipeline in two stages, shipped together: stage 1 fits the weights; stage 2 searches the build-up thresholds by replay.
+5. The offline test replays the build-up as well: yes, but light (a small grid, not a full search).
+6. Hold-out games are fixed, chosen once when 8 or more games exist, and not changed afterwards.
+7. The ship gate adds "misses not higher than today" once the per-sport budgets are set (question G).
+8. `ship --apply` needs an explicit `--target` file; it never guesses the settings file.

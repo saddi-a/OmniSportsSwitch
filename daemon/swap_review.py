@@ -4,7 +4,7 @@ OFFLINE and read-only on the logs (`scripts/review_swaps.py`). The only thing th
 last mark for the same id wins) and, on request, `logs/review/<date>.md` (a readable sheet). Pure logic otherwise: no sockets, no sleeps.
 
 Sources of a day's swaps: `logs/dataset/<date>.events.jsonl` when present, else the `swap:` lines of `logs/events.log`. Swaps with
-`MAIN forced by the user` (source `user`) are listed but never judged. The user's marks are the FINAL reference (docs/learning-plan.md section 9).
+`MAIN forced by the user` (source `user`) are listed but never judged. The user's marks are the FINAL reference (docs/director-training.md section 9).
 """
 from __future__ import annotations
 

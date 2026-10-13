@@ -1,7 +1,7 @@
 # Director Training (offline)
 
 Learns, per sport, the numbers of the existing score (weights and the `min_score` threshold) from the recorded games, checks them on games the fit
-did not see, and turns a passing result into a settings patch. Plan and decisions: `docs/learning-plan.md`. Football and American football first.
+did not see, and turns a passing result into a settings patch. Plan and decisions: `docs/director-training.md`. Football and American football first.
 
 Rules: it only READS `logs/` and writes only `logs/director_training/` (gitignored); the live daemon never imports it (a test checks); it may import
 `daemon` to use the same scoring formula, settings loader and metric code. No new dependencies (numpy, scikit-learn are in the venv).

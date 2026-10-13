@@ -129,6 +129,10 @@ the script at another `logs/`. Code: `daemon/espn_history.py` (fetch, parse), `d
   time, feed 60 s before to 900 s after the commentary entry); the feed event stays (`also_commentary`; a non-goal feed event placed only by the weak lag takes the
   commentary picture time, `align_refined`). Other commentary events are added with `src` 'commentary' in `events.jsonl` (misses are counted apart in the summary).
 * Rows get `y_t12_60` with the commentary and `y_t12_60_feed` without. Cues stay circular and out of the verdict: commentary is outside evidence, a spoken cue is not.
+* Tier 2 groups: events carry `group` ('2a' = shot on target, save, woodwork, VAR, goal overturned, own-box handball; '2b' = corner, shot off target / blocked from the
+  box, near free kick; feed tier-2 events are 2a). The summary reports `tier2a_events`, `misses_2a`, `tier2b_events`, `misses_2b` next to the unchanged `misses`; 2a is the main miss number.
+* Goal overturned: a feed or commentary goal followed by a commentary `goal overturned` of the same game within 90 s (`overturn_window_s`; the feed time may be up to
+  20 s after the overturn's wallclock) is no goal: `goal` false, tier 2, group 2a, `cancelled_goal` true; the count is `commentary_report["goals_cancelled"]`.
 * Limits: tier-2 shots/corners are many per game (about 30), so misses and regrets with them are far more frequent than with the feed alone; the tier-2 definition
   (every corner, every on-target shot) is a v1 choice to tune. The text of the operator's sentences is never written to the outputs.
 

@@ -19,7 +19,7 @@ SPORTS = ("football", "american football")
 
 
 def _parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="director_training", description="Offline learning of the per-sport weights (docs/learning-plan.md).")
+    p = argparse.ArgumentParser(prog="director_training", description="Offline learning of the per-sport weights (docs/director-training.md).")
     p.add_argument("--logs-dir", default=str(REPO / "logs"), help="the logs folder (read-only except <logs>/director_training)")
     p.add_argument("--settings", default=str(REPO / "settings.toml"), help="the settings file that defines 'today' (read-only)")
     sub = p.add_subparsers(dest="command", required=True)

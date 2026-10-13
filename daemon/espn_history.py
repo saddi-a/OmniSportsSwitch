@@ -1,4 +1,4 @@
-"""ESPN history for FINISHED soccer games (tasks T2/T4 of docs/learning-plan.md): a polite fetcher with an on-disk cache and the parsing of the
+"""ESPN history for FINISHED soccer games (tasks T2/T4 of docs/director-training.md): a polite fetcher with an on-disk cache and the parsing of the
 summary `commentary` list and of the core `plays` endpoint into normalised, tiered events. OFFLINE use only: nothing here is called by the daemon.
 
 Cache (gitignored, never committed): `logs/feed/history/<league>/<event>/` = `summary.json`, `plays-001.json` ..., `meta.json`. Raw ESPN JSON and
@@ -22,7 +22,7 @@ Normalised event: {game_id, league, wallclock_epoch, game_seconds, period, type,
 src ('commentary' or 'plays'), wallclock_est}. `text` is the operator's sentence (names); it is kept in memory for matching only and the
 dataset builder never writes it out.
 
-Tier mapping v1 (docs/learning-plan.md section 3), one table, `kind` -> tier:
+Tier mapping v1 (docs/director-training.md section 3), one table, `kind` -> tier:
   tier 1  goal, own goal, penalty goal (ids 70, 137 header, 173 volley, 97, 98), red card (93), penalty AWARDED (no id: two foul entries (66)
           in the same second whose text starts 'Penalty '; one event is kept, the one that does not start 'Penalty conceded').
   tier 2  shot on target (106; kind `save` when the text says 'saved'), shot off target (117) and shot blocked (135) ONLY from inside the
@@ -30,6 +30,9 @@ Tier mapping v1 (docs/learning-plan.md section 3), one table, `kind` -> tier:
           VAR outcome (172 'VAR - Referee decision cancelled': kind `var goal` / `var no goal` / `var decision` from the text 'VAR Decision: Goal'
           / 'No Goal' / other; 175 'Deleted After Review' = kind `goal overturned`), corner (95), free kick (plays 'Free Kick', taker with
           fieldPositionX >= FREE_KICK_X 75, about 26 m from goal or closer; from further out it is tier 3).
+          Tier 2 is reported in two groups (`group`): 2a = shot on target, save, woodwork, VAR outcomes, goal overturned, handball in own box;
+          2b = corner, shot off target / blocked (from the box), free kick. A feed goal followed by a 'goal overturned' within 90 s is cancelled
+          as a goal by the dataset builder (the VAR chain stays 2a).
   tier 3  foul (66), offside (68), yellow card (94), substitution (76), shots off target / blocked from outside the box, handballs elsewhere,
           free kicks from far out. Tier 3 events are parsed (and exported by `parse_*`) but the dataset builder does not load them (they
           change no label and would flood `next_event_kind`).
@@ -70,6 +73,18 @@ FAMILY = {"goal": "goal", "own goal": "goal", "penalty goal": "goal", "red card"
 TIER_BY_KIND = {"goal": 1, "own goal": 1, "penalty goal": 1, "red card": 1, "penalty awarded": 1,
                 "shot on target": 2, "save": 2, "hit woodwork": 2, "var goal": 2, "var no goal": 2, "var decision": 2, "goal overturned": 2, "corner": 2,
                 "foul": 3, "offside": 3, "yellow card": 3, "substitution": 3}
+# Tier 2 is split (user decision 2026-10-13): 2a = a save, woodwork, VAR and penalty-related events (the main miss number); 2b = corners,
+# shots blocked / off target (from the box) and near free kicks. A tier-2 kind not listed counts as 2a.
+TIER2B_KINDS = frozenset({"corner", "shot off target", "shot blocked", "free kick"})
+
+
+def tier2_group(kind, tier) -> str | None:
+    """'2a' or '2b' for a tier-2 event, None for any other tier."""
+    if tier != 2:
+        return None
+    return "2b" if kind in TIER2B_KINDS else "2a"
+
+
 IN_BOX_WORDS = re.compile(r"\b(from (?:the (?:centre|center|left side|right side) of )?the box|very close range|six yard box|penalty spot)\b", re.I)
 
 
@@ -262,7 +277,7 @@ def classify(type_id, type_text, text: str, x, y) -> tuple:
 def _event(game_id, league, wallclock, game_seconds, period, play: dict, kind, tier, team, text, x, y, src, est=False, extra=None) -> dict:
     ev = {"game_id": str(game_id), "league": league, "wallclock_epoch": wallclock, "game_seconds": game_seconds, "period": period,
           "type": (play.get("type") or {}).get("text"), "type_id": str((play.get("type") or {}).get("id")), "kind": kind,
-          "family": FAMILY.get(kind), "tier": tier, "team": team, "text": text, "x": x, "y": y, "in_box": in_box(x, y, text) if x is not None else None,
+          "family": FAMILY.get(kind), "tier": tier, "group": tier2_group(kind, tier), "team": team, "text": text, "x": x, "y": y, "in_box": in_box(x, y, text) if x is not None else None,
           "play_id": str(play.get("id")) if play.get("id") is not None else None, "src": src, "wallclock_est": est}
     if extra:
         ev.update(extra)
