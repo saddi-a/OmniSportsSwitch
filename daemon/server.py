@@ -392,13 +392,13 @@ class Server:
                     outcome, stopped = "not moved: sport not detected as football", True
                 else:
                     # the swap guards, then MAIN keeping its seat after its own cue / review (log-only mode applies neither)
-                    blocked = (self.scorer.take_main_block(tab_id, now, level=level, cue_age=self.buildup.spoken_age(tab_id, now))
+                    blocked = (self.scorer.take_main_block(tab_id, now, level=level, cue_age=self.buildup.spoken_age(tab_id, now), main_level=main_level)
                                or self.buildup.main_hold(self.scorer.main, tab_id, now, level, main_level, cfg))
                     if blocked is not None:
                         outcome, stopped = f"not moved: {blocked}", True
                     else:
                         reason = f"build-up: level {level:.2f} (cues {cues}) vs main {main_score:.2f}"
-                        swap = self.scorer.take_main(tab_id, now, reason, level=level, cue_age=self.buildup.spoken_age(tab_id, now))
+                        swap = self.scorer.take_main(tab_id, now, reason, level=level, cue_age=self.buildup.spoken_age(tab_id, now), main_level=main_level)
                         outcome = "moved MAIN"
             if stopped:
                 if not self.buildup.blocked_log_due(tab_id, now):

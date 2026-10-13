@@ -855,3 +855,54 @@ def test_buildup_yields_to_a_fresh_goal_on_another_stream(caplog):
     with caplog.at_level(logging.INFO):
         assert _check(server) is None
     assert server.scorer.main == 1 and "goal on tab 3" in caplog.text
+
+
+# ---- 'hot game' (2026-10-13): MAIN that scored / had a strong cue lately needs hot_game_margin more; wired through main_level ----
+def _hot_main_server(challenger=0.40, tabs=(1, 2)):
+    server = _buildup_server("football", level=challenger, tabs=tabs)
+    server.scorer.set_event(1, 10.0, 1.0, goal=True)   # MAIN scored 50 s ago: the goal hold (40 s) is over, MAIN is hot for 40 s more
+    server.buildup.note(1, 34.0, 0.30, "spoken:chance")   # MAIN's own level ~0.17 (its cue is older than buildup_hold_s): bar = 0.17 + 0.25
+    return server
+
+
+def test_hot_main_resists_a_build_up_challenger_below_the_margin(caplog):
+    server = _hot_main_server()
+    assert server.scorer.hot_left(1, 60.0) > 0
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert server.scorer.main == 1 and "not moved: MAIN is hot (goal 50 s ago)" in caplog.text
+
+
+def test_hot_main_control_without_the_hot_game_the_same_build_up_takes_main():
+    server = _hot_main_server()
+    server.scorer.config.hot_game_s = 0.0
+    swap = _check(server)
+    assert swap is not None and server.scorer.main == 2
+
+
+def test_hot_main_is_taken_by_a_challenger_with_a_fresh_goal():
+    server = _hot_main_server()
+    server.scorer.set_event(2, 59.0, 1.0, goal=True)
+    swap = _check(server)
+    assert swap is not None and server.scorer.main == 2
+
+
+def test_hot_main_is_taken_by_a_challenger_with_a_var_cue():
+    server = _hot_main_server()
+    server.scorer.set_anticipation(2, 59.0, 0.6, strong=True)   # a VAR check on the challenger
+    server.buildup.note(2, 59.0, 0.50, "review")
+    swap = _check(server)
+    assert swap is not None and server.scorer.main == 2
+
+
+def test_arsenal_build_up_does_not_beat_a_barcelona_goal_read_just_before_the_goal_stream_takes_main(caplog):
+    # 22:14:06: Arsenal (tab 2) build-up swap and a Barcelona goal (tab 3) read 0.55 s earlier: the goal stream must get MAIN
+    server = _buildup_server("football", level=0.60, tabs=(1, 2, 3))
+    server.sports[3] = "football"
+    server.scorer.set_event(3, 59.45, 1.0, goal=True)
+    with caplog.at_level(logging.INFO):
+        assert _check(server, 60.0) is None
+    assert server.scorer.main == 1 and "goal on tab 3" in caplog.text
+    assert server.scorer.decide(60.0) is None                    # confirmation
+    swap = server.scorer.decide(62.5)
+    assert swap is not None and swap.promote == 3 and server.scorer.main == 3
