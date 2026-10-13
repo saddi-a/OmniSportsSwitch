@@ -54,7 +54,8 @@ CUE_TIER = {
 FEED_DEDUP_S = 120.0                   # the feed repeats an event: same game, kind, team within this = one
 SNAP_BEFORE_S = 180.0                  # a score rise this long before the event row is when the feed first knew a goal
 ROW_KEYS = ("date", "t", "tab", "role", "game_id", "league", "sport", "is_main", "state", "ad", "replay", "goal_hold", "clock", "period",
-            "home", "away", "score", "surge", "crowd", "speech", "music", "shout", "fav", "lev", "swap_pending")
+            "home", "away", "score", "surge", "crowd", "speech", "music", "shout", "fav", "lev", "swap_pending",
+            "event", "cue_part", "cue_fade")   # the last three: the fit (director_training) needs the event and cue parts of the score
 
 
 @dataclasses.dataclass(frozen=True)
@@ -772,7 +773,9 @@ def build(rows: list[dict], events_file: list[dict], feed_rows: list[dict], p: P
     minutes = watched_live_minutes(rows, sports, p)
     summary = summarise(rows, swaps, event_rows, minutes)
     game_rows = [{"game": g, **{k: v for k, v in i.items() if k != "covered"}} for g, i in sorted(games.items())]
-    return {"rows": rows, "swaps": swaps, "events": event_rows, "games": game_rows, "summary": summary, "feed_events": fev, "assumed_lags": lags, "confirmed_cues": n_confirmed}
+    context = {"params": p, "sports": sports, "tab_ev": tab_ev, "tab_ev_wide": tab_ev_wide, "cues_by_tab": cues_by_tab, "lags": lags, "feed_events": fev}   # lets a caller re-judge another swap sequence (director_training)
+    return {"rows": rows, "swaps": swaps, "events": event_rows, "games": game_rows, "summary": summary, "feed_events": fev, "assumed_lags": lags, "confirmed_cues": n_confirmed,
+            "context": context}
 
 
 def slim_row(r: dict) -> dict:
