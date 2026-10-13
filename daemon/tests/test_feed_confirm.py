@@ -124,6 +124,6 @@ def test_a_replay_clock_is_not_trusted():
 
 def test_the_settings_exist_and_are_shown_in_the_popup():
     c = Config()
-    assert c.feed_unconfirmed_factor == 0.5 and c.feed_confirm_s == 30.0
+    assert c.feed_unconfirmed_factor == 0.8 and c.feed_confirm_s == 30.0
     shown = {key for _, rows in LAYOUT for key, _, _ in rows}
     assert {"scoring.feed_unconfirmed_factor", "scoring.feed_confirm_s"} <= shown

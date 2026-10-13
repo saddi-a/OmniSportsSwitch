@@ -37,7 +37,7 @@ log_archive_max_mb = 50000  # ...and the archive never grows beyond this many MB
 feed_poll_s = 5.0       # a league with a live game is asked this often (never less than 5 s)
 feed_idle_poll_s = 120.0  # a league with nothing live or starting soon is asked this often
 feed_summary_s = 10.0   # American football: the plays of each live game are fetched this often; 0 = off
-feed_unconfirmed_factor = 0.5  # BOTH mode: an OCR score change on a mapped game that no feed event preceded counts this much until the feed confirms it (1.0 = off)
+feed_unconfirmed_factor = 0.8  # BOTH mode: an OCR score change on a mapped game that no feed event preceded counts this much until the feed confirms it (1.0 = off)
 feed_confirm_s = 30.0   # ...and the feed has this long after the OCR change to confirm it
 feed_event_weight = 0.0  # a feed goal/touchdown on a mapped game counts this much of its strength (0 = only logged, 1 = full)
 feed_lead_s = 10.0      # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
@@ -54,6 +54,7 @@ goal_hold_s = 40.0       # build-up tracker: MAIN keeps its place this long afte
 goal_hold_extend_s = 10.0   # ...and longer while a replay sign (replay over the scorebug, hidden scorebug, replay by clock, spoken replay) is seen: until its time + this...
 goal_hold_max_s = 75.0   # ...but never longer than this after the goal
 goal_hold_break = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
+goal_hold_break_event = 0.5   # ...or a fresh score change / goal banner of its own this strong (a quiet stream that just scored scores ~0.74, below goal_hold_break)
 buildup_crowd_note = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event

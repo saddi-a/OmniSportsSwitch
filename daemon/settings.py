@@ -218,6 +218,7 @@ LAYOUT = [
         ("scoring.goal_hold_extend_s", "Goal hold: extend after a replay sign (s)", "Each replay sign seen during the hold (replay over the scorebug, hidden scorebug, replay by clock, the commentator saying replay) keeps the hold until its time plus this."),
         ("scoring.goal_hold_max_s", "Goal hold: longest (s)", "The hold never lasts longer than this after the goal."),
         ("scoring.goal_hold_break", "Goal hold: score that breaks it", "A challenger scoring at least this (a goal or a very big moment) still takes Main during the hold."),
+        ("scoring.goal_hold_break_event", "Goal hold: own goal that breaks it", "A challenger with a fresh score change or goal banner of its own at least this strong (1 = just now) takes Main during the hold even if its score is below the value above."),
         ("scoring.buildup_crowd_note", "Build-up: value of a crowd sign", "The value of that note, at most once per cooldown per stream."),
     ]),
     ("Manual control", [

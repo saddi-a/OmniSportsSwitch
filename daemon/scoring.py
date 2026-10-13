@@ -35,7 +35,7 @@ OVERRIDABLE_SCORING = frozenset({
     "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
     "lev_soccer_close", "lev_soccer_blowout",
     "goal_hold_s", "goal_hold_extend_s", "goal_hold_max_s",                          # the hold of the stream that scored: ITS sport
-    "goal_hold_break",                                                               # ...and what breaks it: the challenger's sport
+    "goal_hold_break", "goal_hold_break_event",                                      # ...and what breaks it: the challenger's sport
     "buildup_mode", "buildup_live", "buildup_window_s", "buildup_min", "buildup_cooldown_s", "buildup_surge_min",
     "buildup_surge_note", "buildup_gap", "buildup_crowd_min", "buildup_crowd_note",
 })
@@ -139,7 +139,7 @@ class Config:
     feed_poll_s: float = 5.0        # a league with a live game is asked this often (never less than 5 s: the feed's own cache time)
     feed_idle_poll_s: float = 120.0 # a league with nothing live or starting soon is asked this often
     feed_summary_s: float = 10.0    # American football: the plays of each live game (up to 6) are fetched this often; 0 = off
-    feed_unconfirmed_factor: float = 0.5   # BOTH mode: a score change read by OCR on a mapped game that no feed event preceded counts this much until the feed confirms it (1.0 = off)
+    feed_unconfirmed_factor: float = 0.8   # BOTH mode: a score change read by OCR on a mapped game that no feed event preceded counts this much until the feed confirms it (1.0 = off)
     feed_confirm_s: float = 30.0    # ...and the feed has this long after the OCR change to confirm it
     feed_event_weight: float = 0.0  # a feed goal/touchdown on a mapped game counts this much of its strength in the scorer (0 = shadow: only logged)
     feed_lead_s: float = 10.0       # shadow gate: an event 'would fire' when the stream clock is this many seconds before it (measuring only)
@@ -156,6 +156,7 @@ class Config:
     goal_hold_extend_s: float = 10.0   # ...and longer while a replay sign (replay over the scorebug, hidden scorebug, replay by clock, spoken replay) is seen: until its time + this...
     goal_hold_max_s: float = 75.0   # ...but never longer than this after the goal
     goal_hold_break: float = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
+    goal_hold_break_event: float = 0.5   # ...or a fresh score change / goal banner of its own this strong (a quiet stream that just scored scores ~0.74, below goal_hold_break)
     buildup_crowd_note: float = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
 
     def __post_init__(self):
@@ -485,6 +486,9 @@ class Scorer:
             self._candidate = None
             return None   # the user put this stream on MAIN: only something really exciting takes it away
         if not idle:
+            if target is None and self.goal_hold_left(replaced, now) > 0 and not self.goal_hold_broken(best_c, cfg):
+                self._candidate = None
+                return None   # MAIN just scored and its replays still run (the tracker has the same hold, see `take_main_block`)
             if (best_c["score"] < cfg.min_score
                     or best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + cfg.min_gap)):
                 self._candidate = None
@@ -536,11 +540,17 @@ class Scorer:
             if (c["score"] if c else 0.0) < cfg.hold_break_score:
                 return "manual hold"
         if self.goal_hold_left(self.main, now) > 0:   # MAIN just had a goal: its replays still run; stay unless a big moment is elsewhere
-            c = self.components(tab_id, now)
-            if (c["score"] if c else 0.0) < cfg.goal_hold_break:
+            if not self.goal_hold_broken(self.components(tab_id, now), cfg):
                 ago = now - self.streams[self.main].goal_at
                 return f"goal on MAIN {ago:.0f} s ago" + (", replay still showing" if ago >= cfg.goal_hold_s else "")
         return None
+
+    @staticmethod
+    def goal_hold_broken(c: dict | None, cfg) -> bool:
+        """A challenger (its components `c`, its sport's `cfg`) may take MAIN during MAIN's post-goal hold: it scores at least
+        `goal_hold_break` (a big moment) or has a fresh goal of its own (event >= `goal_hold_break_event`)."""
+        score, event = (c["score"], c.get("event", 0.0)) if c else (0.0, 0.0)
+        return score >= cfg.goal_hold_break or event >= cfg.goal_hold_break_event
 
     def take_main(self, tab_id: int, now: float, reason: str) -> Swap | None:
         """The build-up tracker asks for MAIN (football only, the server checks the sport). Same guards as a normal swap (see

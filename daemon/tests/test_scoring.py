@@ -1274,3 +1274,90 @@ def test_goal_hold_changes_report_start_and_over_once():
     assert s.goal_hold_changes(110.0) == []
     assert s.goal_hold_changes(141.0) == [(1, "over", pytest.approx(41.0))]
     assert s.goal_hold_changes(150.0) == []
+
+
+def _ocr_goal_swap(factor, delay=2.0):
+    """A quiet stream 2 reads a goal by OCR with the strength the server gives an unconfirmed one (0.98 x factor); does it take a quiet MAIN?"""
+    s = make(confirm_s=Config().confirm_s)
+    now = warm_up(s)
+    for tab in (1, 2, 3):
+        s.set_tags(tab, 0.02, 0.8, 0.04, now)
+    steady(s, 1, 0.05, 60, 10); steady(s, 2, 0.05, 60, 10); steady(s, 3, 0.05, 60, 10)
+    s.set_event(2, now + 10, 0.98 * factor, goal=True)
+    t = now + 10
+    swap = None
+    while t <= now + 10 + delay + 3 and swap is None:
+        for tab in (1, 2, 3):
+            s.add_audio(tab, 0.05, t); s.set_tags(tab, 0.02, 0.8, 0.04, t)
+        swap = s.decide(t)
+        t += 0.5
+    return swap
+
+
+def test_ocr_goal_on_a_quiet_stream_is_halved_below_min_score_but_the_default_factor_passes():
+    # 21:29:03 GAL-BAR 2026-10-13: the feed was 87 s behind and could not confirm, the goal stayed at 0.5 x: score 0.325 < min_score, no swap
+    assert _ocr_goal_swap(0.5) is None
+    assert _ocr_goal_swap(1.0) is not None
+    # the default factor (settings.toml) must let a real OCR goal through on a quiet stream even if the feed never confirms it
+    assert _ocr_goal_swap(Config().feed_unconfirmed_factor) is not None
+
+
+# --- the post-goal hold also guards the NORMAL swap (21:46:14 2026-10-13: MAIN left ATM 23 s after its goal, goal_hold_s is 40) ---
+
+def _goal_on_main_then_roar(gap_s, **cfg):
+    """MAIN (tab 1) scored `gap_s` s before the roar starts on tab 2; returns (scorer, time right after the roar)."""
+    s = make(**cfg)
+    now = warm_up(s)
+    s.set_event(1, now - 30.0 + 0.0, 1.0, goal=True)    # the goal is 30 s old when the roar starts
+    now = roar(s, 2, now, seconds=5, level=0.07, crowd=0.4)   # a moderate roar: score ~0.49, below goal_hold_break
+    steady(s, 1, 0.05, 60, 5)
+    return s, now
+
+
+def test_normal_swap_waits_out_the_goal_hold_of_main():
+    s, now = _goal_on_main_then_roar(30)
+    assert s.goal_hold_left(1, now) > 0
+    assert s.decide(now) is None                       # goal 35 s ago: still held
+    assert s.decide(now + 0.5) is None
+    s2 = make(goal_hold_s=0.0)                         # hold off: the old behaviour, the roar takes MAIN
+    now = warm_up(s2)
+    s2.set_event(1, now - 30.0, 1.0, goal=True)
+    now = roar(s2, 2, now, seconds=5, level=0.07, crowd=0.4)
+    assert s2.decide(now) is not None
+
+
+def test_normal_swap_is_allowed_after_the_goal_hold():
+    s = make()
+    now = warm_up(s)
+    s.set_event(1, now - 42.0, 1.0, goal=True)         # goal 42 s ago: hold (40 s) over, event almost faded
+    now = roar(s, 2, now, seconds=5)
+    assert s.goal_hold_left(1, now) == 0.0
+    assert s.decide(now) is not None
+
+
+def test_normal_swap_breaks_the_goal_hold_with_a_goal_of_its_own_even_below_goal_hold_break():
+    s = make()
+    now = warm_up(s)
+    s.set_event(1, now - 30.0, 1.0, goal=True)         # MAIN scored 30 s ago
+    for tab in (1, 2, 3):
+        steady(s, tab, 0.05, now, 3)
+        s.set_tags(tab, 0.02, 0.8, 0.04, now)
+    now += 3
+    s.set_event(2, now, 0.95, goal=True)               # the quiet challenger reads a goal too: score ~0.74 < goal_hold_break 0.8
+    assert s.components(2, now)["score"] < s.config.goal_hold_break
+    assert s.decide(now + 2.5) is not None or s.decide(now + 5.0) is not None
+
+
+def test_normal_swap_does_not_break_the_goal_hold_with_an_old_or_weak_event():
+    s, now = _goal_on_main_then_roar(30)
+    s.set_event(2, now - 40.0, 0.5, goal=True)         # a faded event (0.1 left) is no goal of the moment
+    assert s.decide(now) is None
+
+
+def test_goal_hold_does_not_block_handover_from_an_idle_main():
+    s = make()
+    now = warm_up(s)
+    s.set_event(1, now - 10.0, 1.0, goal=True)
+    s.set_on_ad(1, True, now)                          # MAIN shows an ad: any live stream is better
+    now = roar(s, 2, now, seconds=3)
+    assert s.decide(now) is not None
