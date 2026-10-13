@@ -45,7 +45,7 @@ from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
 from daemon.buildup import BuildUp, is_soccer, moves_main
-from daemon.cues import GoalPhraseWatch, SpeechMemory, cue_weight, end_zone_factor, is_strong_cue, speech_cue_weight, tracker_note_weight
+from daemon.cues import GoalPhraseWatch, SpeechMemory, SurgeRiseWatch, surge_rise_weight, cue_weight, end_zone_factor, is_strong_cue, speech_cue_weight, tracker_note_weight
 from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer, Swap
 
@@ -121,6 +121,7 @@ class Server:
         self.cue_speech = SpeechMemory(self.scorer.config.cue_speech_window_s)   # review subjects the commentary named lately, per tab
         self.tab_titles: dict[int, str] = {}   # tab id -> page title sent by the extension (league words are weak evidence of the sport)
         self.buildup = BuildUp()   # the cues of a soccer stream added up over a minute (measuring only: logs "buildup would take MAIN")
+        self.surge_rise = SurgeRiseWatch()   # soccer: the crowd noise rising fast, a medium cue heard before the commentator's words
         self.goal_watch = GoalPhraseWatch()   # a goal phrase heard near a loud surge (measuring only)
         self.fed: dict[tuple[int, int], float] = {}   # (tab, tile) -> when a feed goal was counted there
         self.replay_signal: dict[tuple[int, int, str], bool] = {}   # (tab, tile, 'bug' / 'clock') -> scorebug hidden / clock shows a replay (for the post-goal hold)
@@ -163,6 +164,7 @@ class Server:
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
             self.buildup.remove(msg["tab_id"])
+            self.surge_rise.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
             self.speech_buffers.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
@@ -359,9 +361,28 @@ class Server:
             self.goal_watch.surge_min, self.goal_watch.window_s = cfg.goal_phrase_surge, cfg.goal_phrase_window_s
             if self.goal_watch.surge(tab_id, c["surge"], now):
                 log.info("goal phrase + surge would fire tab %s (measuring only)", tab_id)
+            self._check_surge_rise(tab_id, c, now)
             taken = taken or self._check_buildup(tab_id, c, now)
         self._record_rows(now)
         return taken
+
+    def _check_surge_rise(self, tab_id: int, c: dict, now: float) -> bool:
+        """Soccer: the loudness of a live stream rises fast over a few seconds (voted over consecutive readings, with a cooldown): a medium
+        cue (`cue_surge_rise`) that arrives before the commentator's words. It feeds the score like a banner cue, the build-up tracker (kind
+        'surge_rise') and the dataset (event 'surge_rise'). Not on an ad, a break or a replay."""
+        cfg = self.scorer.cfg_for(tab_id)
+        sport = self._tab_sport(tab_id)
+        weight = surge_rise_weight(sport, cfg.weights)
+        if weight is None or c["ad"] or c["status"] != "live" or self.scorer.streams[tab_id].replay:
+            self.surge_rise.reading(tab_id, now, c["level"], 0.0, cfg)   # keeps the history and resets the vote
+            return False
+        if not self.surge_rise.reading(tab_id, now, c["level"], c["surge"], cfg):
+            return False
+        log.info("anticipation surge rise tab %s (sound) weight %.2f: surge %.2f level %.4f", tab_id, weight, c["surge"], c["level"])
+        self.scorer.set_anticipation(tab_id, now, weight)
+        self.buildup.note(tab_id, now, weight, "surge_rise")
+        self._rec_event("surge_rise", tab_id, weight=round(weight, 3), surge=round(c["surge"], 3), crowd=round(c["crowd"], 3), level=round(c["level"], 5))
+        return True
 
     def _check_buildup(self, tab_id: int, c: dict, now: float) -> Swap | None:
         """Measuring only, soccer only (each sport has its own clues and needs its own calibration): log when the cues of a stream added

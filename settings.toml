@@ -69,6 +69,15 @@ buildup_review_hold_s = 60.0  # a review (VAR check, penalty awarded: a cue of w
 buildup_review_min = 0.40     # ...(see above)
 buildup_review_margin = 0.35  # ...and the challenger needs this much above MAIN's build-up level (a goal on the challenger is the normal swap rule, not held)
 buildup_crowd_note = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
+surge_rise_min = 0.5     # soccer, rising-loudness cue (heard before the commentator's words): the loudness surge must be at least this...
+surge_rise_ratio = 1.5   # ...and the level must have grown by this factor over the last surge_rise_window_s seconds...
+surge_rise_window_s = 6.0   # ...(compared with a reading at least half this old)...
+surge_rise_votes = 2     # ...on this many consecutive score readings (2 s apart)...
+surge_rise_cooldown_s = 40.0   # ...and then not again for this long on the same stream
+blowout_goal_bonus = 0.25   # a goal in a decided game adds this to its score, but only while every other stream is quiet (0 = off)
+blowout_goal_lev = 0.3      # ...a game is decided when its leverage is at most minus this (-1 = late blowout)...
+blowout_goal_event = 0.5    # ...the goal must still be this fresh (1 = just now)...
+blowout_goal_quiet = 0.20   # ...quiet = every other live stream scores below this and has no cue
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event
 anticipation_s = 18.0       # a cue boosts a stream this long (fading)
@@ -124,6 +133,7 @@ cue_review_low = 0.10    # ...with no subject known
 cue_chance = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
 cue_minor = 0.10         # corner, flag, 4th down, big gain, added time, timeout...
 cue_free_kick = 0.25     # a free kick (soccer): the user finds minor (0.10) too low
+cue_surge_rise = 0.20    # soccer: the crowd noise is rising fast (a medium cue, heard BEFORE the commentator's words); 0 = off
 cue_zone_far = 0.15      # American football: a goal-to-go / yard line cue with the ball ~10 yards from the end zone
 cue_zone_near = 0.40     # ...and 1-3 yards from it (or a 4th down at the goal line); no distance read = cue_chance
 shout = 0.0          # shouting / yelling / screaming (0 = off; try 0.2 after checking it on live games)

@@ -40,6 +40,8 @@ OVERRIDABLE_SCORING = frozenset({
     "buildup_surge_note", "buildup_gap", "buildup_crowd_min", "buildup_crowd_note",
     "buildup_hold_s", "buildup_hold_cue_min", "buildup_hold_margin",                 # MAIN keeps its seat after its own cue / review
     "buildup_review_hold_s", "buildup_review_min", "buildup_review_margin",
+    "surge_rise_min", "surge_rise_ratio", "surge_rise_window_s", "surge_rise_votes", "surge_rise_cooldown_s",   # the rising-loudness cue: the stream's sport
+    "blowout_goal_bonus", "blowout_goal_lev", "blowout_goal_event", "blowout_goal_quiet",                    # a goal in a decided game: the challenger's sport
 })
 
 
@@ -65,6 +67,7 @@ class Weights:
     cue_chance: float = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
     cue_minor: float = 0.10         # corner, flag, 4th down, big gain, added time, timeout...
     cue_free_kick: float = 0.25     # a free kick (soccer): the user finds minor (0.10) too low
+    cue_surge_rise: float = 0.20    # soccer: the crowd noise is rising fast (a medium cue, heard BEFORE the commentator's words); 0 = off
     cue_zone_far: float = 0.15      # American football: a goal-to-go / yard line cue with the ball ~10 yards from the end zone
     cue_zone_near: float = 0.40     # ...and 1-3 yards from it (or a 4th down at the goal line); no distance read = cue_chance
     favourite: float = 0.4  # steady bonus per +1 of a favourite team's multiplier (x2 favourite = +0.4)
@@ -176,6 +179,15 @@ class Config:
     buildup_review_min: float = 0.40     # ...(see above)
     buildup_review_margin: float = 0.35  # ...and the challenger needs this much above MAIN's build-up level (a goal on the challenger is the normal swap rule, not held)
     buildup_crowd_note: float = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
+    surge_rise_min: float = 0.5     # soccer, rising-loudness cue: the loudness surge must be at least this (clearly above the stream's own baseline)...
+    surge_rise_ratio: float = 1.5   # ...and the level must have grown by this factor over the last surge_rise_window_s seconds (a rise, not a plateau)...
+    surge_rise_window_s: float = 6.0   # ...(the reading it is compared with is at least half this old)...
+    surge_rise_votes: float = 2.0   # ...on this many consecutive score readings (2 s apart): one reading is never enough...
+    surge_rise_cooldown_s: float = 40.0   # ...and then not again for this long on the same stream
+    blowout_goal_bonus: float = 0.25   # a goal in a decided game (leverage <= -blowout_goal_lev) adds this to its score, but only while every other stream is quiet (0 = off)
+    blowout_goal_lev: float = 0.3      # ...a game counts as decided when its leverage is at most minus this (-1 = late blowout)...
+    blowout_goal_event: float = 0.5    # ...the goal must still be this fresh (event 1 = just now)...
+    blowout_goal_quiet: float = 0.20   # ...and "quiet" means every other live stream scores below this and has no cue
 
     def __post_init__(self):
         # Per-sport overrides {sport key: {name: value}}, filled from settings.toml. Plain attributes, not fields: the shared values
@@ -520,6 +532,7 @@ class Scorer:
         if target is None and self.hold_left(now) > 0 and best_c["score"] < cfg.hold_break_score:
             self._candidate = None
             return None   # the user put this stream on MAIN: only something really exciting takes it away
+        bonus = 0.0
         if not idle:
             if target is None and self.goal_hold_left(replaced, now) > 0 and not self.goal_hold_broken(best_c, cfg):
                 self._candidate = None
@@ -527,8 +540,10 @@ class Scorer:
             gap = cfg.min_gap
             if target is None and self.hot_left(replaced, now) > 0 and not self._hot_exempt(best_id, best_c, now):
                 gap = max(gap, cfg.hot_game_margin)   # MAIN is hot (its own goal / a strong cue lately): a bigger lead is needed
-            if (best_c["score"] < cfg.min_score
-                    or best_c["score"] < max(current_score * (1 + cfg.threshold), current_score + gap)):
+            bonus = self.blowout_goal_bonus(best_id, best_c, now)
+            best_score = best_c["score"] + bonus
+            if (best_score < cfg.min_score
+                    or best_score < max(current_score * (1 + cfg.threshold), current_score + gap)):
                 self._candidate = None
                 return None
             if self._candidate is None or self._candidate[:2] != (replaced, best_id):
@@ -540,12 +555,32 @@ class Scorer:
         fmt = lambda c: " ".join(f"{k}={c[k]:.2f}" for k in ("score", "surge", "crowd", "speech", "music", "event"))
         label = "main" if target is None else "left (MAIN frozen)"
         slot = "MAIN" if target is None else "LEFT"
-        reason = f"{slot + ' idle: ' if idle else ''}challenger [{fmt(best_c)}] vs {label} [{fmt(current_c) if current_c else 'no data'}]"
+        reason = f"{slot + ' idle: ' if idle else ''}{'blowout goal +%.2f: ' % bonus if bonus else ''}challenger [{fmt(best_c)}] vs {label} [{fmt(current_c) if current_c else 'no data'}]"
         swap = Swap(promote=best_id, demote=replaced, reason=reason)
         if target is None:
             self._set_main(best_id)
         self._last_swap = now
         return swap
+
+    def blowout_goal_bonus(self, tab_id: int, c: dict | None, now: float) -> float:
+        """The small bonus a goal in a DECIDED game gets (leverage takes most of its worth away): `blowout_goal_bonus` of the stream's sport
+        when the stream has a fresh goal of its own (score change or goal banner, event >= `blowout_goal_event`), its leverage is at most
+        minus `blowout_goal_lev`, and every OTHER live stream (MAIN included) is quiet: a score below `blowout_goal_quiet` and no cue. Else 0.
+        So such a goal can win MAIN only when nothing else is going on."""
+        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)
+        if stream is None or c is None or cfg.blowout_goal_bonus <= 0 or stream.goal_at == float("-inf"):
+            return 0.0
+        if c.get("event", 0.0) < cfg.blowout_goal_event or stream.leverage > -cfg.blowout_goal_lev:
+            return 0.0
+        for other in self.streams:
+            if other == tab_id:
+                continue
+            oc = self.components(other, now)
+            if oc is None or oc["ad"] or oc["status"] != "live":
+                continue   # no sound, an ad, a break or over: nothing going on there
+            if oc["score"] >= cfg.blowout_goal_quiet or oc["cue"] > 0:
+                return 0.0
+        return cfg.blowout_goal_bonus
 
     def _fresh_goal_streams(self, now: float) -> set:
         """The streams other than MAIN that have a fresh goal of its own (a score change or goal banner: `goal_at`, and its event still at

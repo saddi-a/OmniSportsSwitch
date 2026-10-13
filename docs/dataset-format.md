@@ -51,7 +51,7 @@ to subtract times inside a run; it restarts at each daemon start). Ages and "lef
 
 `bu`: `level` build-up level (faded sum of the cues of the window + `support`; 0 with no cue), `cues_sum` the faded cue sum alone, `support` the surge/crowd/shout
 part (`weights` x signals), `cues` = `[[age_s, faded_value, kind], ...]` oldest first (kind = banner cue name, `spoken:<cue>`, `note:<cue>` for a set-piece
-note, `surge_note`, `crowd_note`), `min`/`gap`/`live` = the thresholds and the live switch of this stream's sport, `main_score` MAIN's score, `main_level` MAIN's own build-up level (its cues + surge/crowd; 0 on MAIN's own row), `hot_left` seconds MAIN stays 'hot' (after its own goal or a strong cue: `scoring.hot_game_s`; 0 = not hot, also 0 on MAIN's own row when not hot), `qualifies` level
+note, `surge_note`, `crowd_note`, `surge_rise`), `min`/`gap`/`live` = the thresholds and the live switch of this stream's sport, `main_score` MAIN's score, `main_level` MAIN's own build-up level (its cues + surge/crowd; 0 on MAIN's own row), `hot_left` seconds MAIN stays 'hot' (after its own goal or a strong cue: `scoring.hot_game_s`; 0 = not hot, also 0 on MAIN's own row when not hot), `qualifies` level
 >= `min` and >= `gap` above the larger of `main_score` and `main_level` (the cooldown and the guards ignored), `cooldown_left` s of the stream's build-up cooldown, `surge_note_left` /
 `crowd_note_left` s until another surge / crowd note can be made, `crowd_run` consecutive loud-crowd readings, `blocked` = why `take_main` would refuse now (also MAIN keeping its seat: "MAIN's own cue ..." / "MAIN under review ...", only when live and the row qualifies; "MAIN is hot (...)" while `hot_left` > 0 and the level is below MAIN's score or level + `hot_game_margin`)
 (`dwell`, `goal on MAIN N s ago`, `not live`, `slot rules`, `on an ad`, `manual hold`, `MAIN is frozen`, `already MAIN`) or null.
@@ -70,6 +70,7 @@ Common: `v`, `t`, `mono`, `kind`, `tab`, `tile` (null when not about a tile), `s
 | `goal_banner`, `big_play` | `text` (banner text), `strength` |
 | `banner_cue` | `cue`, `banner` (text), `weight` |
 | `speech_cue` | `cue`, `text` (what the commentators said), `language` |
+| `surge_rise` | `weight`, `surge`, `crowd`, `level` (soccer: the crowd sound rose fast, a medium cue heard before the words; also a build-up cue of kind `surge_rise`) |
 | `game_state` | `old`, `new` |
 | `buildup` | `level`, `main_score`, `surge`, `crowd`, `outcome` (`moved MAIN`, `log only`, `not moved: <why>`), `moved` |
 | `feed_goal` | `goal_kind`, `strength` (a feed goal released by the shadow gate) |
