@@ -1,6 +1,6 @@
-# Sport per tile (planning, nothing built)
+# Sport per tile (built in two stages, see section 8)
 
-Status: SCOPING ONLY, 2026-10-13. No code was changed. Line numbers are from the working tree of `develop` on 2026-10-13
+Status: Stage 1 (T1, T2) and Stage 2 (T3 to T6) are BUILT (2026-10-13 and 2026-10-14); sections 1 to 7 are the original scoping (what it looked like BEFORE), section 8 the Stage 2 result and live checklist. Line numbers are from the working tree of `develop` on 2026-10-13
 (includes the uncommitted per-sport overrides), so they may move.
 
 User decision (2026-10-13): today one sport is picked per TAB. In a DAZN multiview a tab can hold tiles of different
@@ -270,17 +270,17 @@ Stage 2 (per-tile slots):
   use it; on an audible change clear `speech_buffers`, `buffers`, mark `tags` stale. Acceptance: tests 2, 3, 4, 5 pass; golden
   single-tile sequence identical; a log line "audible tile tab T: tile A -> B (sport X -> Y)" at each change.
   Stage 1 ends here (T1 + T2); deliverable live.
-* T3 (M) Scorer per-tile picture slots (B2 part 1). `_Stream.tiles`, `set_event/anticipation/leverage/replay/on_ad/auto_state` get an
+* T3 (M) DONE 2026-10-14 (branch `per-tile-2`). Scorer per-tile picture slots (B2 part 1). `_Stream.tiles`, `set_event/anticipation/leverage/replay/on_ad/auto_state` get an
   optional `tile`, `components()` per tile and max; `decide`, `take_main_block`, `goal_hold_*` use the winning tile; audio on the
   audible tile only. Acceptance: tests 7, 8, 9, 11, 12, 13, 16 pass; `components()` result keeps all existing keys (plus `tile`,
   `sport`); recorder still works.
-* T4 (M) Server wiring and per-tile build-up/speech (B2 part 2). Pass the tile index from `_update_game_states` and the feed code;
+* T4 (M) DONE 2026-10-14 (branch `per-tile-2`). Server wiring and per-tile build-up/speech (B2 part 2). Pass the tile index from `_update_game_states` and the feed code;
   `BuildUp` and `SpeechMemory` keyed per tile; `_check_buildup` per tile with its own sport; `SportMemory` per tile; spoken cues to
   the audible tile. Acceptance: test 10 passes; the logs say tile and sport for each build-up line; `scripts\backtest.py --summary`
   runs on the new logs (backtest parsing of the changed log lines updated and tested).
-* T5 (S-M) Tile focus uses the wanted tile. Add a per-tile score output for the focuser, keep the 30 s dwell, the pending expand
+* T5 (S-M) DONE 2026-10-14 (branch `per-tile-2`). Tile focus uses the wanted tile. Add a per-tile score output for the focuser, keep the 30 s dwell, the pending expand
   handling and the "only selected" fallback. Acceptance: test 14; existing multiview tests unchanged.
-* T6 (S) Docs and live checklist: PLAN section 0, `daemon/CLAUDE.md` (keys), `README` per-sport text ("mixed tabs"), dataset docs.
+* T6 (S) DONE 2026-10-14 (branch `per-tile-2`; checklist = section 8). Docs and live checklist: PLAN section 0, `daemon/CLAUDE.md` (keys), `README` per-sport text ("mixed tabs"), dataset docs.
   Acceptance: a live script for the user (mixed NFL+football multiview, read the new log lines).
 
 Order: T1, T2 (release), then T3, T4, T5, T6. Each task needs its tests added with it; T3 and T4 must not run in parallel (same files).
@@ -301,3 +301,24 @@ the effect sizes of every item listed under "Cons". No test was run in this scop
 ## 7. Open design questions (for the user; not decided here)
 
 See the final report of the scoping task; they are copied to PLAN.md section 0 when the user answers.
+
+## 8. Stage 2 built: choices taken and live checklist (2026-10-14, branch `per-tile-2`)
+
+Choices the build took without asking (all the safest option; change on request):
+
+* The audible tile is not known (no `audible` in the rects of a multiview): every tile hears the tab's audio (as before the work), and spoken cues go to the tile whose sport is the audible sport, else the first tile.
+* A one-video tab is untouched: its picture signals stay in the stream itself (`tile=None`); a golden test proves equal scores and swaps. Tile records exist only while the tab shows 2+ videos.
+* The goal-hold log lines ("post-goal replay hold tab T ...") stay per tab (the longest tile hold); the hold itself is per tile.
+* The focus uses the scorer's tile scores only when every tile has one; otherwise event + crowd, as before. The score of the audible tile includes the crowd and loudness, so a silent tile needs a cue or goal clearly above it (1.5x).
+* `SportMemory` keys are `"tab:tile"` in a multiview (a restart gives a multiview tile no start guess until the memory of that tile is written).
+* Only a soccer tile can move MAIN by the build-up; the other sports' build-up stays off (as before).
+
+Live checklist (mixed NFL + football multiview on one DAZN tab, another tab as MAIN; the daemon must be restarted once):
+
+1. Start the multiview, press `Ctrl+Shift+Y` if the tab is not listed. In `logs\daemon.log` read `sport ... tab T tile N via ...` (each tile must name its own sport) and `audible tile tab T: tile A -> B (sport X -> Y)` when the sound moves.
+2. Score lines of the tab (`  2: live ... score=0.31 ... tile=1 sport=football tiles=0:0.12,1:0.31`): `tile` and `sport` name the best tile, `tiles=` the score of each. Check the NFL tile never shows a soccer cue and the soccer tile is read with the football weights.
+3. Build-up lines: `buildup would take MAIN tab T tile N (football): ...` only for the soccer tile; none for the NFL tile. `anticipation ... tab T tile N (spoken)` should name the tile that has the sound.
+4. Let a soccer chance or VAR happen on the silent soccer tile while the NFL tile has the sound: `focus tile: tab T -> tile N | [...]` (the `score` of each tile is in the line) once, then nothing for 30 s.
+5. Move the sound by hand: the log line above must appear and `speech heard` must not carry words of the old commentary afterwards.
+6. Single-video tabs: scores and swaps must look as before (no `tile=` text in their score lines).
+7. Offline: `.venv\Scripts\python.exe scripts\backtest.py logs --summary` still runs; goals of a mixed tab are matched with the cues, build-up and sport of their own tile.
