@@ -200,6 +200,19 @@ In `logs/` (not committed): `events.log` (goals, swaps and why, game states, war
 
 Every file that rotates out is first compressed into `logs/archive/<date>/` and kept 90 days (`log_archive_days`, `log_archive_max_mb` in Settings), so nothing is lost. With `dataset_mode = 1` (default) the daemon also writes `logs/dataset/<date>.jsonl` (one row per stream every 2 s: sound, cues, build-up level, score, clock...) and `<date>.events.jsonl` (swaps, goals, cues, what the commentators said): about 8 MB per hour with 4 streams, kept for ever, meant for later learning (format: `docs/dataset-format.md`). None of this is committed; the events file contains commentary text, so do not share it.
 
+### Reviewing swaps
+
+After a game you can judge each swap (good, regret, late, missed chance, other). Your marks are kept in `logs/review/` and win over any automatic label. The default list shows only what needs you: swaps you made a remark on (in `logs/feedback/`), swaps within 30 s of a goal, VAR, penalty or chance cue, and each flip-flop chain (several swaps back and forth between the same two streams) as ONE entry. Plain quiet swaps and "MAIN idle" swaps are left out; `--all` lists them and `--mark` can still mark them by time. Every entry has its log-clock time and the cues around it.
+
+```
+.venv\Scripts\python.exe scripts\review_swaps.py 2026-10-13
+.venv\Scripts\python.exe scripts\review_swaps.py 2026-10-13 --interactive
+.venv\Scripts\python.exe scripts\review_swaps.py 2026-10-13 --mark 21:28:43 late "too late"
+.venv\Scripts\python.exe scripts\review_swaps.py 2026-10-13 --markdown
+```
+
+`--interactive` shows each entry and waits for one key (g r l m o, s skip, q quit). `--markdown` writes a sheet to `logs/review/` that you can read or paste in chat. A mark on a chain applies to every swap in it. For a chance that was missed (not a swap) add `--tab TABID` to `--mark`.
+
 ## Tests
 
 ```powershell

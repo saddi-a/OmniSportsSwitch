@@ -199,3 +199,25 @@ def test_popup_text_with_a_slash_header_locks_through_the_text_path_too():
     for _ in range(2):
         lines += m.observe(1, 0, ["LIVERPOOL / MANCHESTER CITY"], (0, 0), ["61:16"])
     assert len(lines) == 1 and "ocr+text" in lines[0]
+
+
+def test_man_united_broadcast_code_mun_matches_atm_man_but_not_man_city():
+    """Seen live 2026-10-13 (Champions League): feed ATM-MAN, the scorebug reads ATM and MUN."""
+    atm = feed.Team("1068", "ATM", "Atletico Madrid")
+    man = feed.Team("360", "MAN", "Manchester United")
+    snap = dataclasses.replace(games()[0], home=atm, away=man)
+    assert shows_game(["12.32", "ATM", "1 0", "MUN"], snap)
+    for text in ("MANU", "Man United", "Manchester United", "Man Utd"):
+        assert shows_game(["ATM", text], snap)
+    mnc = feed.Team("382", "MNC", "Manchester City")
+    city = dataclasses.replace(games()[0], home=atm, away=mnc)
+    assert not shows_game(["ATM", "MUN"], city)
+    assert not shows_game(["ATM", "MCI"], snap)
+
+
+def test_lille_scorebug_code_lil():
+    ars = feed.Team("359", "ARS", "Arsenal")
+    lill = feed.Team("166", "LILL", "Lille")
+    snap = dataclasses.replace(games()[0], home=ars, away=lill)
+    assert shows_game(["ARS", "LIL"], snap)
+
