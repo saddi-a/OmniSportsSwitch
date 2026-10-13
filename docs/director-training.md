@@ -241,3 +241,17 @@ Per-tile sport (question A) is worked out in `docs/per-tile-sport.md` (Stage 1 t
 6. Hold-out games are fixed, chosen once when 8 or more games exist, and not changed afterwards.
 7. The ship gate adds "misses not higher than today" once the per-sport budgets are set (question G).
 8. `ship --apply` needs an explicit `--target` file; it never guesses the settings file.
+
+## 11. Long-term goal: an autonomous director (user, 2026-10-14)
+
+The user wants the finished system to be "autonomous": after training it should not depend on the hand-written clues (keywords such as post, box, VAR, banner cues) at run time; the clues are for training only.
+
+Today (phase 1, being built): the model's inputs are the existing signals, including the cue weights, so the daemon still needs the cue detection at run time. Training only supplies weights and thresholds.
+
+Plan, in three phases:
+1. **Phase 1, fit the current weights and thresholds** (cues kept as features). Cheap, safe, explainable. Needs about 8 games / 25 events per sport.
+2. **Phase 2, learn from the signals directly.** Inputs: the PANNs audio embedding (already computed in the daemon), a text embedding of the speech (Whisper text + a small text model), simple picture signals. Labels: ESPN commentary tiers (2a strong / 2b weak), goals and VAR, the user's review marks. The keyword cues act as teachers and as the baseline to beat, not as inputs.
+3. **Phase 3, shadow mode, then switch.** The learned model runs next to the rules, logs what it would have done and moves nothing. It replaces the cues only when it matches or beats them on fixed hold-out games and on the user's marks.
+
+Needs and risks: far more games with RECORDED audio (hundreds, not 3; ESPN gives labels but no audio, so audio comes from replays through the daemon or from stored stream audio, which does not exist in bulk yet); harder to explain and debug live; a bad model could swap badly, hence shadow mode first. The surge cue (scoring-bugs-57) is a first step: it fires from the sound itself, with no words, and is recorded in the dataset.
+Decision: keep phase 1 as the current work; phase 2 and 3 are planned, not started.
