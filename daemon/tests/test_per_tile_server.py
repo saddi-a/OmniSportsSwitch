@@ -198,3 +198,42 @@ def test_backtest_matches_cues_buildups_and_sports_on_the_goals_tile():
         assert leads[0].sport == "Football"                            # the goal is on tile 1: that tile's sport, not the tab's last one
         assert leads[0].first_cue is not None and leads[0].first_cue[1] == "var"   # the spoken cues of tile 0 are not this goal's build-up
         assert leads[0].buildup_lead_s is None                         # ...and neither is tile 0's build-up line
+
+
+# ---- T5: the tile focus asks for the wanted tile (the scorer's best tile) ----------------------------------------------------------------
+
+def test_a_cue_on_the_silent_tile_wins_the_sound_once_respecting_the_dwell_and_the_pending_expand():
+    server = mixed(audible=0)
+    now = hear(server, seconds=30) - 0.5
+    assert server._focus_commands(now) == []                               # nothing happens on either tile
+    server.scorer.set_anticipation(2, now, 0.5, strong=True, tile=1)       # a penalty is awarded on the silent soccer tile (no score change, no crowd)
+    commands = server._focus_commands(now)
+    assert commands == [{"type": "focus_tile", "tab_id": 2, "index": 1}]
+    assert server.pending_expand[2][0] == 1
+    assert server._focus_commands(now + 1) == []                           # the expand is pending: ask only once
+    del server.pending_expand[2]
+    assert server._focus_commands(now + 1) == []                           # ...and the 30 s dwell holds afterwards
+
+
+def test_a_tab_without_a_scorer_score_is_judged_the_old_way():
+    server = mixed(audible=0)
+    now = hear(server, seconds=30) - 0.5
+    server.event_at[(2, 1)] = now                                          # the old signal still works: a fresh score change on the silent tile
+    server.scorer.streams[2].last_sample = now - 100                       # ...even when the scorer has no score for the tab (no recent audio)
+    assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 2, "index": 1}]
+
+
+def test_scores_replace_event_and_crowd_only_when_every_tile_has_one():
+    from daemon.multiview import TileFocuser
+    tiles = [{"index": 0, "audible": True, "state": "live", "crowd": 0.2, "score": 0.25}, {"index": 1, "audible": False, "state": "live", "score": 0.9}]
+    assert TileFocuser().decide(1, 100.0, tiles) == 1
+    old_way = [{"index": 0, "audible": True, "state": "live", "crowd": 0.2, "score": 0.25}, {"index": 1, "audible": False, "state": "live", "event": 0.0}]
+    assert TileFocuser().decide(1, 100.0, old_way) is None                 # one tile has no score: the old rule (event + crowd) decides
+
+
+def test_a_multiview_remembers_the_sport_of_each_tile_not_one_for_the_tab():
+    import time
+    server = mixed()
+    now = time.time()
+    assert server.sport_memory.get("2:0", now) == "American football" and server.sport_memory.get("2:1", now) == "Football"
+    assert server.sport_memory.get(2, now) is None

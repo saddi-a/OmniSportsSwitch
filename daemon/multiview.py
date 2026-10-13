@@ -7,6 +7,9 @@ Pure logic: callers pass `now` in seconds. A tile is a dict:
   event   0..1, how fresh a score change on this tile is (1 = just now)
   crowd   0..1 crowd-noise probability, only known for the audible tile
   ad      True while the tile shows the player's ad placeholder
+  score   optional: the tile's own score from the Scorer (`Scorer.tile_scores`: its picture signals read with its own sport, plus the
+          audio for the audible tile). When every tile has one it replaces event + crowd, so a cue, a review or a late close game on a
+          silent tile can also win the sound. It already carries the tile's game state and ads.
 """
 from dataclasses import dataclass, field
 
@@ -32,6 +35,8 @@ class TileFocuser:
         c = self.config
         if tile.get("ad"):
             return -c.ad_penalty
+        if tile.get("score") is not None:   # the scorer's score of this tile (it already carries the state multiplier)
+            return c.floor * STATUS_MULT.get(tile.get("state", "live"), 1.0) + max(tile["score"], 0.0)
         interest = c.floor + c.event_weight * tile.get("event", 0.0) + c.crowd_weight * tile.get("crowd", 0.0)
         return interest * STATUS_MULT.get(tile.get("state", "live"), 1.0)
 
@@ -39,6 +44,8 @@ class TileFocuser:
         """Index of the tile to focus, or None to leave things as they are."""
         if len(tiles) < 2:
             return None
+        if any(t.get("score") is None for t in tiles):   # a tile without a scorer score: all are judged the old way (event + crowd)
+            tiles = [{k: v for k, v in t.items() if k != "score"} for t in tiles]
         focused = next((t for t in tiles if t.get("audible")), None)
         best = max(tiles, key=self.tile_score)
         if now - self._last_change.get(tab_id, float("-inf")) < self.config.min_dwell_s:

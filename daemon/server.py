@@ -827,11 +827,12 @@ class Server:
             mapping = self.feed_map.mapping(tab_id, index)
             feed_sport = sport_from_feed(LEAGUES[mapping.league][0]) if mapping and mapping.league in LEAGUES else None
             # popup choice > hard cue > feed league > tab title (stage C) > league words on screen > remembered sport
+            memory_key = tab_id if tk is None else f"{tab_id}:{index}"   # a multiview remembers the sport of each tile, not one for the tab
             sport, source = choose_sport(popup=self.sports.get(tab_id), hard=detected, feed=feed_sport, title=sport_from_title(self.tab_titles.get(tab_id)) or sport_from_title(self.page_text.get(tab_id)),
-                                         weak=det.weak_sport, memory=self.sport_memory.get(tab_id, now_wall))
+                                         weak=det.weak_sport, memory=self.sport_memory.get(memory_key, now_wall))
             tracker.set_sport(sport)
             if source in ("hard", "feed"):   # only reliable sources are remembered
-                self.sport_memory.remember(tab_id, sport, now_wall)
+                self.sport_memory.remember(memory_key, sport, now_wall)
             self.sport_memory.save()
             if (sport, source) != self.sport_choice_seen.get((tab_id, index)):
                 self.sport_choice_seen[(tab_id, index)] = (sport, source)
@@ -969,6 +970,10 @@ class Server:
                 continue
             if self.scorer.frozen and tab_id == self.scorer.main:
                 continue  # MAIN is locked: leave which tile it shows alone
+            pending = self.pending_expand.get(tab_id)
+            if pending is not None and now < pending[1]:
+                continue   # a tile was asked to expand a moment ago: wait to see where the sound went (`_check_expand`) before asking again
+            scores = self.scorer.tile_scores(tab_id, now)   # the wanted tile: the one the scorer rates highest (None while the tab has no score)
             tiles = []
             for pos, rect in enumerate(info["rects"][:4]):
                 index = rect.get("index", pos)
@@ -981,6 +986,8 @@ class Server:
                 if tile["audible"]:
                     c = self.scorer.components(tab_id, now)
                     tile["crowd"] = c["crowd"] if c else 0.0
+                if scores is not None and index in scores:
+                    tile["score"] = round(scores[index], 3)
                 tiles.append(tile)
             target = self.focuser.decide(tab_id, now, tiles)
             if target is not None:
