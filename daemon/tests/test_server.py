@@ -771,7 +771,7 @@ def test_buildup_crowd_pressure_notes_a_cue_after_two_readings(caplog):
 
 def test_buildup_does_not_leave_a_main_that_just_scored_and_says_so(caplog):
     server = _buildup_server("football", level=2.0)
-    server.scorer.set_event(1, 50.0, 1.0, goal=True)
+    server.scorer.set_event(1, 50.0, 0.0, goal=True)   # goal_at set, event already faded (Main score low)
     with caplog.at_level(logging.INFO):
         assert _check(server, 60.0) is None
     assert server.scorer.main == 1 and "not moved: goal on MAIN 10 s ago" in caplog.text
@@ -828,3 +828,30 @@ def test_buildup_hold_is_not_applied_in_log_only_mode(caplog):
         assert _check(server) is None
     assert "log only" in caplog.text
 
+
+
+def test_buildup_strong_level_with_fresh_spoken_cue_breaks_mains_goal_hold(caplog):
+    server = _buildup_server("football", level=0.60)   # spoken-style cue: _buildup_server notes kind "cue"; add a spoken one
+    server.buildup.note(2, 58.0, 0.20, "spoken:chance")
+    server.scorer.set_event(1, 50.0, 0.0, goal=True)   # goal_at set, event already faded (Main score low)    # MAIN scored 10 s ago: post-goal hold
+    with caplog.at_level(logging.INFO):
+        swap = _check(server)
+    assert swap is not None and server.scorer.main == 2
+
+
+def test_buildup_weaker_level_does_not_break_mains_goal_hold(caplog):
+    server = _buildup_server("football", level=0.25)
+    server.buildup.note(2, 58.0, 0.20, "spoken:chance")
+    server.scorer.set_event(1, 50.0, 0.0, goal=True)   # goal_at set, event already faded (Main score low)
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert server.scorer.main == 1 and "goal on MAIN" in caplog.text
+
+
+def test_buildup_yields_to_a_fresh_goal_on_another_stream(caplog):
+    server = _buildup_server("football", tabs=(1, 2, 3), level=0.60)
+    server.buildup.note(2, 58.0, 0.20, "spoken:chance")
+    server.scorer.set_event(3, 55.0, 1.0, goal=True)    # tab 3 scored 5 s ago: the normal rule will take it
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert server.scorer.main == 1 and "goal on tab 3" in caplog.text

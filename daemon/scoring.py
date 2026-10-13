@@ -572,11 +572,11 @@ class Scorer:
         score, event = (c["score"], c.get("event", 0.0)) if c else (0.0, 0.0)
         return score >= cfg.goal_hold_break or event >= cfg.goal_hold_break_event
 
-    def take_main(self, tab_id: int, now: float, reason: str) -> Swap | None:
+    def take_main(self, tab_id: int, now: float, reason: str, level: float | None = None, cue_age: float | None = None) -> Swap | None:
         """The build-up tracker asks for MAIN (football only, the server checks the sport). Same guards as a normal swap (see
         `take_main_block`: frozen, manual hold unless hold_break_score, min_dwell_s, can_main, ad, break/over, already MAIN);
         returns the swap to carry out or None."""
-        if self.take_main_block(tab_id, now) is not None:
+        if self.take_main_block(tab_id, now, level=level, cue_age=cue_age) is not None:   # the same level / cue age as the caller's check
             return None
         swap = Swap(promote=tab_id, demote=self.main, reason=reason)
         self._candidate = None

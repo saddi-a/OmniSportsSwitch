@@ -217,7 +217,7 @@ def _buildup_part(server, tab_id: int, c: dict | None, now: float) -> dict:
     if tab_id == main:
         part["blocked"] = "already MAIN"
     else:
-        part["blocked"] = server.scorer.take_main_block(tab_id, now)
+        part["blocked"] = server.scorer.take_main_block(tab_id, now, level=level, cue_age=bu.spoken_age(tab_id, now))
         if part["blocked"] is None and part["qualifies"] and cfg.buildup_live > 0:   # MAIN keeps its seat after its own cue / review
             part["blocked"] = bu.main_hold(main, tab_id, now, level, main_level, cfg)
     return part
