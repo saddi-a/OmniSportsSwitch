@@ -373,19 +373,26 @@ class Server:
         main_score = main["score"] if main else 0.0
         w = cfg.weights
         self.buildup.window_s, self.buildup.cooldown_s = cfg.buildup_window_s, cfg.buildup_cooldown_s
+        main_level = 0.0   # MAIN's own build-up level (its cues + surge/crowd with ITS sport's weights): the bar a challenger must beat
+        if main:
+            mw = self.scorer.cfg_for(self.scorer.main).weights
+            main_level = self.buildup.level(self.scorer.main, now, mw.surge * main["surge"] + mw.crowd * main["crowd"] + mw.shout * main["shout"])
         support = w.surge * c["surge"] + w.crowd * c["crowd"] + w.shout * c["shout"]
         if self.buildup.surge_note_due(tab_id, now, c["surge"], cfg.buildup_surge_min):
             self.buildup.note(tab_id, now, cfg.buildup_surge_note, "surge_note")   # measuring only: a sign for the build-up, never set_anticipation
         if self.buildup.crowd_note_due(tab_id, now, c["crowd"], cfg.buildup_crowd_min):
             self.buildup.note(tab_id, now, cfg.buildup_crowd_note, "crowd_note")   # a crowd that keeps building: a sign, never a score
         # the cooldown starts only when the swap really happens (or in log-only mode): a swap a guard stopped may be tried again
-        level = self.buildup.would_take(tab_id, now, support, main_score, cfg.buildup_min, cfg.buildup_gap, start_cooldown=False)
+        level = self.buildup.would_take(tab_id, now, support, main_score, cfg.buildup_min, cfg.buildup_gap, start_cooldown=False, main_level=main_level)
         if level is not None:
             cues = ", ".join(f"{v:.2f}@{age:.0f}s" for age, v in self.buildup.cues(tab_id, now))
             outcome, swap, stopped = "log only", None, False
+            held = self.buildup.main_hold(self.scorer.main, tab_id, now, level, main_level, cfg)   # MAIN keeps its seat after its own cue / review
             if cfg.buildup_live > 0:
                 if not moves_main(self._tab_sport(tab_id)):
                     outcome, stopped = "not moved: sport not detected as football", True
+                elif held is not None:
+                    outcome, stopped = f"not moved: {held}", True
                 else:
                     blocked = self.scorer.take_main_block(tab_id, now)
                     if blocked is not None:

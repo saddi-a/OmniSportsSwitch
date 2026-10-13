@@ -776,3 +776,55 @@ def test_buildup_does_not_leave_a_main_that_just_scored_and_says_so(caplog):
         assert _check(server, 60.0) is None
     assert server.scorer.main == 1 and "not moved: goal on MAIN 10 s ago" in caplog.text
     assert [w for _, w, _ in server.scorer.goal_hold_changes(60.0)] == ["start"]
+
+
+# ---- Main keeps its seat (2026-10-13, Galatasaray-Barcelona 21:28:44): the tracker compares with MAIN's own build-up and honours its hold ----
+def _main_chance_server(challenger=0.34, main_cue=0.25, main_cue_at=43.0):
+    server = _buildup_server("football", level=challenger)
+    server.buildup.note(1, main_cue_at, main_cue, "spoken:chance")   # MAIN's own chance cue, 17 s old at t=60
+    return server
+
+
+def test_buildup_does_not_take_main_that_has_its_own_fresh_chance_cue(caplog):
+    server = _main_chance_server()
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert server.scorer.main == 1
+    assert "not moved: MAIN's own cue 17 s ago" in caplog.text
+
+
+def test_buildup_took_main_before_the_hold_existed_control():
+    server = _main_chance_server()
+    server.scorer.config.buildup_hold_s = 0.0
+    swap = _check(server)
+    assert swap is not None and server.scorer.main == 2
+
+
+def test_buildup_hold_ends_when_main_cue_is_old():
+    server = _main_chance_server(main_cue_at=30.0)   # 30 s old: past buildup_hold_s (25 s)
+    assert _check(server) is not None
+
+
+def test_buildup_challenger_with_its_own_review_cue_takes_main_that_only_has_a_chance():
+    server = _main_chance_server(challenger=0.34)
+    server.buildup.note(2, 59.0, 0.50, "review")   # a VAR check on the challenger
+    swap = _check(server)
+    assert swap is not None and server.scorer.main == 2
+
+
+def test_buildup_main_under_review_holds_even_against_a_challenger_review(caplog):
+    server = _main_chance_server(challenger=0.34)
+    server.buildup.note(1, 40.0, 0.50, "review")    # MAIN is itself under review
+    server.buildup.note(2, 59.0, 0.50, "review")
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert server.scorer.main == 1 and "MAIN under review" in caplog.text
+
+
+def test_buildup_hold_is_not_applied_in_log_only_mode(caplog):
+    server = _main_chance_server()
+    server.scorer.config.buildup_live = 0.0
+    with caplog.at_level(logging.INFO):
+        assert _check(server) is None
+    assert "log only" in caplog.text
+
