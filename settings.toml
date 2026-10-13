@@ -54,6 +54,8 @@ goal_hold_s = 40.0       # build-up tracker: MAIN keeps its place this long afte
 goal_hold_extend_s = 10.0   # ...and longer while a replay sign (replay over the scorebug, hidden scorebug, replay by clock, spoken replay) is seen: until its time + this...
 goal_hold_max_s = 75.0   # ...but never longer than this after the goal
 goal_hold_break = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
+goal_hold_break_level = 0.55   # ...or (build-up tracker) a build-up level this high WITH a spoken cue younger than goal_hold_break_cue_s (0 = off)
+goal_hold_break_cue_s = 15.0
 buildup_crowd_note = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event

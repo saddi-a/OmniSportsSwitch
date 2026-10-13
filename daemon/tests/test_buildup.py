@@ -124,3 +124,14 @@ def test_blocked_log_is_due_once_per_ten_seconds_per_stream():
     assert not b.blocked_log_due(1, 9.0)
     assert b.blocked_log_due(2, 9.0)
     assert b.blocked_log_due(1, 10.0)
+
+
+def test_spoken_age_is_the_age_of_the_youngest_spoken_cue():
+    b = BuildUp(window_s=60.0)
+    b.note(1, 0.0, 0.10, "surge_note")
+    assert b.spoken_age(1, 5.0) is None
+    b.note(1, 2.0, 0.20, "spoken:post area")
+    b.note(1, 0.0, 0.25, "spoken:chance")
+    b.note(1, 4.0, 0.5, "review")
+    assert b.spoken_age(1, 6.0) == pytest.approx(4.0)       # post area at 2.0 (a banner review does not count as spoken)
+    assert b.spoken_age(1, 70.0) is None

@@ -35,7 +35,7 @@ OVERRIDABLE_SCORING = frozenset({
     "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
     "lev_soccer_close", "lev_soccer_blowout",
     "goal_hold_s", "goal_hold_extend_s", "goal_hold_max_s",                          # the hold of the stream that scored: ITS sport
-    "goal_hold_break",                                                               # ...and what breaks it: the challenger's sport
+    "goal_hold_break", "goal_hold_break_level", "goal_hold_break_cue_s",                                                               # ...and what breaks it: the challenger's sport
     "buildup_mode", "buildup_live", "buildup_window_s", "buildup_min", "buildup_cooldown_s", "buildup_surge_min",
     "buildup_surge_note", "buildup_gap", "buildup_crowd_min", "buildup_crowd_note",
 })
@@ -156,6 +156,8 @@ class Config:
     goal_hold_extend_s: float = 10.0   # ...and longer while a replay sign (replay over the scorebug, hidden scorebug, replay by clock, spoken replay) is seen: until its time + this...
     goal_hold_max_s: float = 75.0   # ...but never longer than this after the goal
     goal_hold_break: float = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
+    goal_hold_break_level: float = 0.55   # ...or (build-up tracker) a build-up level this high WITH a spoken cue younger than goal_hold_break_cue_s (0 = off)
+    goal_hold_break_cue_s: float = 15.0
     buildup_crowd_note: float = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
 
     def __post_init__(self):
@@ -512,7 +514,7 @@ class Scorer:
         c = self._candidate
         return {"last_swap_age": age, "candidate": None if c is None else [c[0], c[1], round(now - c[2], 1)]}
 
-    def take_main_block(self, tab_id: int, now: float) -> str | None:
+    def take_main_block(self, tab_id: int, now: float, level: float | None = None, cue_age: float | None = None) -> str | None:
         """Why `tab_id` may not take MAIN by the build-up tracker right now (the guards of a normal swap), or None if it may.
         What the challenger must beat (hold_break_score, goal_hold_break) is the challenger's sport's value."""
         cfg = self.cfg_for(tab_id)
@@ -537,7 +539,9 @@ class Scorer:
                 return "manual hold"
         if self.goal_hold_left(self.main, now) > 0:   # MAIN just had a goal: its replays still run; stay unless a big moment is elsewhere
             c = self.components(tab_id, now)
-            if (c["score"] if c else 0.0) < cfg.goal_hold_break:
+            strong_build_up = (cfg.goal_hold_break_level > 0 and level is not None and level >= cfg.goal_hold_break_level
+                               and cue_age is not None and cue_age < cfg.goal_hold_break_cue_s)   # the tracker's level + a fresh spoken cue
+            if (c["score"] if c else 0.0) < cfg.goal_hold_break and not strong_build_up:
                 ago = now - self.streams[self.main].goal_at
                 return f"goal on MAIN {ago:.0f} s ago" + (", replay still showing" if ago >= cfg.goal_hold_s else "")
         return None

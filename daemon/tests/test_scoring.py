@@ -1274,3 +1274,31 @@ def test_goal_hold_changes_report_start_and_over_once():
     assert s.goal_hold_changes(110.0) == []
     assert s.goal_hold_changes(141.0) == [(1, "over", pytest.approx(41.0))]
     assert s.goal_hold_changes(150.0) == []
+
+
+# --- a strong build-up with a fresh spoken cue breaks MAIN's post-goal hold (ARS 21:35:23 and 21:46:05, 2026-10-13) ---
+
+def _held_main():
+    s = make(goal_hold_s=40.0, goal_hold_break=0.8)
+    s.set_event(1, 100.0, 1.0, goal=True)
+    s.components = lambda tab, now: {"score": 0.3}
+    return s
+
+
+def test_build_up_level_with_a_fresh_spoken_cue_breaks_the_goal_hold():
+    s = _held_main()
+    assert s.take_main_block(2, 110.0) is not None                              # no level given: held, as before
+    assert s.take_main_block(2, 110.0, level=0.56, cue_age=6.3) is None          # ARS 21:35:23: level 0.56, 'post area' 6 s old
+    assert s.take_main_block(2, 110.0, level=0.62, cue_age=14.0) is None        # 21:46:05 style
+    assert s.take_main_block(2, 110.0, level=0.494, cue_age=4.3) is not None     # 21:35:21: level too low
+    assert s.take_main_block(2, 110.0, level=0.60, cue_age=15.0) is not None     # cue too old
+    assert s.take_main_block(2, 110.0, level=0.60, cue_age=None) is not None     # no spoken cue (surge/crowd only)
+
+
+def test_build_up_break_of_the_goal_hold_can_be_switched_off_and_keeps_other_guards():
+    s = _held_main()
+    s.config.goal_hold_break_level = 0.0
+    assert s.take_main_block(2, 110.0, level=0.9, cue_age=1.0) is not None
+    s2 = _held_main()
+    s2.set_on_ad(2, True)
+    assert s2.take_main_block(2, 110.0, level=0.9, cue_age=1.0) == "on an ad"

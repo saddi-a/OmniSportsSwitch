@@ -112,6 +112,11 @@ class BuildUp:
             self._fired_at[tab_id] = now
         return level
 
+    def spoken_age(self, tab_id: int, now: float) -> float | None:
+        """Age in seconds of the youngest SPOKEN cue (kind 'spoken:...') of the stream in the window, else None."""
+        ages = [now - c.at for c in self._cues.get(tab_id, []) if c.kind.startswith("spoken:") and 0 <= now - c.at < self.window_s]
+        return min(ages) if ages else None
+
     def mark_fired(self, tab_id: int, now: float) -> None:
         """Start the cooldown of this stream (see `would_take`)."""
         self._fired_at[tab_id] = now
