@@ -1387,3 +1387,27 @@ def test_goal_hold_does_not_block_handover_from_an_idle_main():
     s.set_on_ad(1, True, now)                          # MAIN shows an ad: any live stream is better
     now = roar(s, 2, now, seconds=3)
     assert s.decide(now) is not None
+
+
+# --- a fresh goal on another stream is not overtaken by the build-up tracker (22:14:05 2026-10-13: BAR goal on GAL, Main went ATM -> ARS) ---
+
+def test_build_up_yields_to_a_fresh_goal_on_another_stream():
+    s = make(goal_yield_s=10.0)
+    s.set_event(3, 100.0, 0.487, goal=True)                  # OCR goal on stream 3 (halved), Main is stream 1
+    assert s.take_main_block(2, 102.0) == "goal on tab 3 2 s ago"
+    assert s.take_main_block(3, 102.0) is None               # the goal stream itself may take Main
+    assert s.take_main_block(2, 110.5) is None               # 10 s later the yield is over
+
+
+def test_goal_yield_can_be_switched_off_and_ignores_plain_events():
+    s = make(goal_yield_s=0.0)
+    s.set_event(3, 100.0, 1.0, goal=True)
+    assert s.take_main_block(2, 101.0) is None
+    s2 = make(goal_yield_s=10.0)
+    s2.set_event(3, 100.0, 1.0)                              # a big play, not a goal
+    assert s2.take_main_block(2, 101.0) is None
+
+
+def test_goal_yield_is_per_sport_overridable():
+    from daemon.scoring import OVERRIDABLE_SCORING
+    assert "goal_yield_s" in OVERRIDABLE_SCORING

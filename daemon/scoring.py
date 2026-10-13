@@ -35,7 +35,7 @@ OVERRIDABLE_SCORING = frozenset({
     "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
     "lev_soccer_close", "lev_soccer_blowout",
     "goal_hold_s", "goal_hold_extend_s", "goal_hold_max_s",                          # the hold of the stream that scored: ITS sport
-    "goal_hold_break", "goal_hold_break_event", "goal_hold_break_level", "goal_hold_break_cue_s",   # ...and what breaks it: the challenger's sport
+    "goal_hold_break", "goal_hold_break_event", "goal_hold_break_level", "goal_hold_break_cue_s", "goal_yield_s",   # ...and what breaks it: the challenger's sport
     "buildup_mode", "buildup_live", "buildup_window_s", "buildup_min", "buildup_cooldown_s", "buildup_surge_min",
     "buildup_surge_note", "buildup_gap", "buildup_crowd_min", "buildup_crowd_note",
     "buildup_hold_s", "buildup_hold_cue_min", "buildup_hold_margin",                 # MAIN keeps its seat after its own cue / review
@@ -160,6 +160,7 @@ class Config:
     goal_hold_break: float = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
     goal_hold_break_level: float = 0.55   # ...or (build-up tracker) a build-up level this high WITH a spoken cue younger than goal_hold_break_cue_s (0 = off)
     goal_hold_break_cue_s: float = 15.0
+    goal_yield_s: float = 10.0   # build-up tracker: no swap to another stream while a goal (score change / goal banner) was seen on a third stream this recently, so the normal rule can take the goal (0 = off)
     goal_hold_break_event: float = 0.5   # ...or a fresh score change / goal banner of its own this strong (a quiet stream that just scored scores ~0.74, below goal_hold_break)
     buildup_hold_s: float = 25.0    # MAIN keeps its place this long after ITS OWN spoken/banner cue (chance, free kick, post area, penalty...; 0 = off): a challenger needs...
     buildup_hold_cue_min: float = 0.15   # ...(a cue counts for the hold when its weight is at least this: surge/crowd/set-piece notes are 0.10, spoken cues 0.20-0.25)...
@@ -549,6 +550,10 @@ class Scorer:
             c = self.components(tab_id, now)
             if (c["score"] if c else 0.0) < cfg.hold_break_score:
                 return "manual hold"
+        if cfg.goal_yield_s > 0:
+            for other, st in self.streams.items():
+                if other != tab_id and other != self.main and 0 <= now - st.goal_at < cfg.goal_yield_s:
+                    return f"goal on tab {other} {now - st.goal_at:.0f} s ago"
         if self.goal_hold_left(self.main, now) > 0:   # MAIN just had a goal: its replays still run; stay unless a big moment is elsewhere
             strong_build_up = (cfg.goal_hold_break_level > 0 and level is not None and level >= cfg.goal_hold_break_level
                                and cue_age is not None and cue_age < cfg.goal_hold_break_cue_s)   # the tracker's level + a fresh spoken cue
