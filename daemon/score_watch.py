@@ -26,6 +26,7 @@ ORDINAL_RE = re.compile(r"^[A-Za-z0-9]?(st|nd|rd|th|sr)$", re.I)   # "4th" and "
 TEAM_PAIR_ITEM_RE = re.compile(r"^([^\W\d_]{2,4})\s+(\d{1,2})\s?[-–]\s?(\d{1,2})(?:\s+[^\W\d_]{2,4})?$")   # a code and the score in one item ("FRA 0-0", "FRA 0-0 BEL")
 CLOCK_AND_TEAM_RE = re.compile(r"^(\d{1,3}\s?[:.,]\s?\d{2})\s+\W?([A-Za-z]{2,4})\W?$")   # "24.47 RMA": the clock and a team code in one item
 CODE_SCORE_RE = re.compile(r"^([A-Za-z]{2,4})\s?[|!Il/\]\[}{)(E]\s?(\d{1,3})$")   # a team code and its score in one item ("PHI| 14")
+CHANNEL_LABEL_RE = re.compile(r"^LIVE\s?\d{1,2}$", re.I)   # "LIVE 3": a channel label; CODE_SCORE_RE would read it as the code LIV and the digit 3
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
@@ -220,6 +221,8 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             split.append(dict(it, text=c.group(2), x0=it["x0"] + width * (it["text"].strip().index(c.group(2)) - 0.5), x1=it["x1"]))
             continue
         cs = CODE_SCORE_RE.match(it["text"].strip())
+        if cs and CHANNEL_LABEL_RE.match(it["text"].strip()):
+            cs = None   # "LIVE 3" is the channel label, not "LIV" + "3"
         if cs:   # "PHI| 14": the code and the digits become two items, cut at the separator
             char = (it["x1"] - it["x0"]) / len(it["text"].strip())
             split.append(dict(it, text=cs.group(1), x1=it["x0"] + char * len(cs.group(1))))
