@@ -221,6 +221,12 @@ LAYOUT = [
         ("scoring.goal_hold_break_level", "Goal hold: build-up level that breaks it (0 = off)", "Build-up tracker: a challenger whose build-up level is at least this AND that has a spoken cue (chance, free kick, post area...) younger than the next value takes Main during the post-goal replay hold."),
         ("scoring.goal_hold_break_cue_s", "Goal hold: how fresh the spoken cue must be (s)", "See the value above."),
         ("scoring.goal_hold_break_event", "Goal hold: own goal that breaks it", "A challenger with a fresh score change or goal banner of its own at least this strong (1 = just now) takes Main during the hold even if its score is below the value above."),
+        ("scoring.buildup_hold_s", "Main keeps its seat after its own cue (s, 0 = off)", "Football: for this long after a spoken or banner cue on Main (chance, free kick, post area, penalty...), a challenger needs a build-up level `buildup_hold_margin` above Main's own build-up level to take Main."),
+        ("scoring.buildup_hold_cue_min", "Main's seat: smallest cue that counts", "Cues lighter than this (loudness, crowd and set-piece notes, 0.10) do not hold Main; spoken chances and free kicks (0.20 to 0.25) do."),
+        ("scoring.buildup_hold_margin", "Main's seat: margin a challenger needs", "How far above Main's own build-up level a challenger must be while Main's own cue is fresh."),
+        ("scoring.buildup_review_hold_s", "Main stays during a review (s, 0 = off)", "A review cue on Main (VAR check, penalty awarded, weight at least `buildup_review_min`) holds Main this long (at most the build-up window), so the decision can be seen."),
+        ("scoring.buildup_review_min", "Review hold: smallest cue weight", "A cue at least this heavy on Main counts as a review for the longer hold."),
+        ("scoring.buildup_review_margin", "Review hold: margin a challenger needs", "How far above Main's own build-up level a challenger must be while Main is under review."),
         ("scoring.buildup_crowd_note", "Build-up: value of a crowd sign", "The value of that note, at most once per cooldown per stream."),
     ]),
     ("Manual control", [

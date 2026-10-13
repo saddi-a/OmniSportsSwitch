@@ -99,12 +99,12 @@ class BuildUp:
         return True
 
     def would_take(self, tab_id: int, now: float, support: float, main_score: float, min_level: float, min_gap: float,
-                   start_cooldown: bool = True) -> float | None:
-        """The level when the stream reaches `min_level` and is `min_gap` above MAIN's score (and was not reported within `cooldown_s`),
-        else None. Reporting it starts the cooldown, unless `start_cooldown` is False: then the caller calls `mark_fired` itself once the
+                   start_cooldown: bool = True, main_level: float = 0.0) -> float | None:
+        """The level when the stream reaches `min_level` and is `min_gap` above MAIN's score or MAIN's own build-up level `main_level`,
+        whichever is higher (and was not reported within `cooldown_s`), else None. Reporting it starts the cooldown, unless `start_cooldown` is False: then the caller calls `mark_fired` itself once the
         swap really happened, so a swap that a guard stopped (dwell, hold, ad...) can be tried again on the next reading."""
         level = self.level(tab_id, now, support)
-        if level < min_level or level - main_score < min_gap:
+        if level < min_level or level - max(main_score, main_level) < min_gap:
             return None
         if now - self._fired_at.get(tab_id, float("-inf")) < self.cooldown_s:
             return None
@@ -116,6 +116,35 @@ class BuildUp:
         """Age in seconds of the youngest SPOKEN cue (kind 'spoken:...') of the stream in the window, else None."""
         ages = [now - c.at for c in self._cues.get(tab_id, []) if c.kind.startswith("spoken:") and 0 <= now - c.at < self.window_s]
         return min(ages) if ages else None
+    def newest_cue(self, tab_id: int, now: float, min_value: float, max_age: float) -> tuple[float, float] | None:
+        """(age, weight before fading) of the youngest cue of the stream that weighs at least `min_value` and is younger than `max_age`
+        (and than the window), else None."""
+        best = None
+        for c in self._cues.get(tab_id, []):
+            age = now - c.at
+            if 0 <= age < min(max_age, self.window_s) and c.value >= min_value and (best is None or age < best[0]):
+                best = (age, c.value)
+        return best
+
+    def main_hold(self, main_tab: int | None, tab_id: int, now: float, level: float, main_level: float, cfg) -> str | None:
+        """Why MAIN keeps its seat against the challenger `tab_id` with build-up `level` (None = it does not). `main_level` is MAIN's own
+        build-up level. (1) A review cue on MAIN (weight >= cfg.buildup_review_min, younger than cfg.buildup_review_hold_s): the challenger
+        needs cfg.buildup_review_margin above main_level. (2) Any cue on MAIN of weight >= cfg.buildup_hold_cue_min younger than
+        cfg.buildup_hold_s: it needs cfg.buildup_hold_margin above - unless the challenger has a review cue of its own that young (a VAR
+        check on the challenger beats a chance on MAIN). The challenger's goal is not handled here (the normal swap rule takes it)."""
+        if main_tab is None:
+            return None
+        if cfg.buildup_review_hold_s > 0:
+            r = self.newest_cue(main_tab, now, cfg.buildup_review_min, cfg.buildup_review_hold_s)
+            if r is not None and level < main_level + cfg.buildup_review_margin:
+                return f"MAIN under review (cue {r[0]:.0f} s ago): level {level:.2f} < {main_level + cfg.buildup_review_margin:.2f}"
+        if cfg.buildup_hold_s > 0:
+            c = self.newest_cue(main_tab, now, cfg.buildup_hold_cue_min, cfg.buildup_hold_s)
+            if c is not None and level < main_level + cfg.buildup_hold_margin:
+                if self.newest_cue(tab_id, now, cfg.buildup_review_min, cfg.buildup_hold_s) is not None:
+                    return None
+                return f"MAIN's own cue {c[0]:.0f} s ago: level {level:.2f} < {main_level + cfg.buildup_hold_margin:.2f}"
+        return None
 
     def mark_fired(self, tab_id: int, now: float) -> None:
         """Start the cooldown of this stream (see `would_take`)."""
