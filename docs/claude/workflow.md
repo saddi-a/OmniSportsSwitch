@@ -25,6 +25,12 @@ Every agent re-reads docs and code before it starts, so a new agent per small ta
 - **Parallel only when independent** (different files); never two agents on the same file.
 - Prefer ONE read-only agent for all the facts a decision needs over several probes.
 
+## Context economy (user, 2026-10-13: 83% of the week's usage was at over 150k context, 32% in sessions active 8+ hours)
+- A long session is expensive even when cached: every reply re-reads the whole context. Keep state in FILES (PLAN.md section 0, memory, docs), not in the chat, so a session can end at any time.
+- Switching to a new task = start a fresh session (`/clear`); in the middle of a task past about 150k context = `/compact`. Before ending a long session: write the hand-over (PLAN.md section 0 top paragraph: state, what is live, open decisions, next steps) and commit/push `develop`.
+- Do not leave a session open for hours with background loops or waits; end it and restart with the start prompt in PLAN.md.
+- Keep replies short; read files with an offset/limit instead of whole; do not paste long logs into the chat.
+
 ## After changes
 - Daemon or settings changes need a daemon restart: `scripts\stop_all.ps1`, then `scripts\start_all.ps1` (`-NoEdge` keeps Edge; `stop_all.ps1 -Edge` also closes it). The user pre-approves restarts when testing or debugging needs them.
 - Extension changes need the user to press "Reload extension" in the popup and re-track each tab.
