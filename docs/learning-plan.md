@@ -7,7 +7,7 @@ This repo is public: only derived numbers, code and tiny synthetic fixtures may 
 ## 1. Goal and non-goals
 
 Goal: learn, offline and per sport (football/soccer and American football first; basketball is parked), the weights and thresholds of the existing cues so that MAIN
-moves BEFORE a goal (big chance, save, VAR, penalty awarded, red zone) with few false swaps. The cues stay as features. The result is a handful of
+moves BEFORE a goal (big chance, save, VAR, penalty awarded, red zone) with few regret swaps (a swap to a less interesting stream). The cues stay as features. The result is a handful of
 plain numbers shipped as per-sport settings overrides (`[scoring.football]` style), editable and explainable.
 
 Non-goals:
@@ -26,16 +26,41 @@ All computed by `daemon/backtest.py`-style code (read-only), per sport, on games
   MAIN are reported separately (they need no swap).
 - **Coverage**: of events NOT already in MAIN, the share with a swap at least 12 s ahead. Today (backtest, all logs, **[checked]**): football
   build-up tracker ahead of 5 of 11 goals (median 17 s); swap rule 0 of 11; American football 0 of 20 for both.
-- **False swaps per 10 min**: swaps (or "would take MAIN" firings) in live play with no tier-1/2 event on that stream in the next 60 s, divided by
-  watched minutes. Today (from PLAN.md section 0, one replay session, **[checked in the notes, not re-run]**): 4.4 firings per 10 min against
-  1.7 before; the user saw no false alarm by eye.
-- **Precision of a swap**: swaps followed by a tier-1/2 event within 60 s, over all swaps.
-- Secondary: thrash (swap back within 30 s), and time in MAIN that is a break or a replay.
+- **Regret swap (replaces "false swaps per 10 min", user decision 2026-10-13).** The user does not mind a swap between two streams of similar
+  interest, even if nothing special follows. A BAD swap is one where the new Main turns out LESS interesting than the stream it replaced.
+  Definition, per swap at time `t` (old Main `O`, new Main `N`), window `W` = 30 s (parameter `regret_window_s`, user decision; American football may need a longer one later), after the picture-lag shift
+  of section 4:
+  - `tier(X)` = the highest event tier (1 best, 2, 3/none) that stream X has in `[t, t+W]`, from the labels of section 3 (structured events,
+    commentary, automatic) and OVERRIDDEN by the user's review mark when they disagree.
+  - **Regret** if `tier(O)` is strictly higher than `tier(N)` (for example a tier-1 event on `O` and none on `N`), counted once per swap.
+    Ties (both quiet, or both with an event of the same tier) are not regret by default; a quiet tie becomes regret only if the user marks it so in the review (T3).
+  - **Flip-flop regret**: a swap back to the previous Main within `flipflop_s` = 30 s (a starting flag; the user says it depends on the context)
+    counts as regret for the first swap only when the context agrees (the stream just left had the higher-tier event in the window). Every such
+    flip-flop is ALSO put in the review list (T3) for the user to judge.
+  - Optional weight: regret is weighted by the tier gap (tier 1 vs none = 2, tier 2 vs none or 1 vs 2 = 1) so a missed goal weighs more.
+  - **Regret rate** = regret swaps per 10 watched live minutes, and **regret share** = regret swaps / all swaps. Both per sport.
+  Swaps of source `user` are excluded (the user chose); swaps while `O` is in a break or on an ad are excluded (leaving is right).
+- **Miss** (separate metric, kept as before): a tier-1/2 event on a stream that is NOT Main while Main's `tier` in `[t-10 s, t+W]` is lower, and no
+  swap to that stream happened at least 12 s ahead. Reported as misses per 10 min and per event. This is the other side of regret: regret is a
+  wrong swap, a miss is a swap not made. Events with Main already on them are not misses.
+- **Lead** of a goal stays the main upside metric (above). Precision of a swap is dropped (replaced by regret share).
+- Secondary: time in MAIN that is a break or a replay; swaps per 10 min (reported for information, not budgeted).
 
-What counts as "better": at the SAME false-swap rate as today, coverage up by a clear margin, or at the same coverage fewer false swaps. With
-~15-20 games per sport expect wide error bars; report the leave-one-game-out spread, not one number, and call a change "better" only if it wins in
-a majority of held-out games. The trade-off (lead vs false alarms) is the user's call, see Decision 1. Proposal: a budget of at most 3 false swaps
-per 10 min (football) and then maximise coverage at lead >= 12 s.
+What counts as "better": lead and coverage up (or equal) with regret rate not above the sport's budget and misses not up. Compare current rules
+and learned numbers on the same held-out games. With ~15-20 games per sport expect wide error bars; report the leave-one-game-out spread and call a
+change "better" only if it wins in a majority of held-out games. Budget: a REGRET-RATE budget per sport, set by the user AFTER we measure the
+current rules (no placeholder numbers; see Decision 1 and question G). Until then, report the measured rate only.
+
+What the dataset must hold for the regret and miss metrics (checked against `docs/dataset-format.md`, 2026-10-13):
+- Provided already: a `swap` event with `promote`, `demote`, `source`, `reason` and both sides' components (`promote_c`, `demote_c`); a row for EVERY
+  stream every ~2 s, so the next 30 s (and more) of both `O` and `N` exist even after `O` leaves Main (rows carry `is_main`, `role`, `state`, `ad`, `replay`,
+  `game_id`, `clock`, `home`/`away`); `bu.qualifies`, `bu.blocked` and `swap_pending`, which show why a miss was not swapped.
+- NOT recorded, so derived offline: the tier labels of events on each stream (they come from the feed by `game_id`, from the commentary, from
+  `score_change`/`speech_cue`/`banner_cue` events and from the user's marks); the picture-lag shift per game; whether `O` was in a break at the
+  swap (use the `state`/`ad` of its row at `t`).
+- Missing or weak: rows with `game_id` null (no feed mapping) have only OCR score changes and spoken/banner cues as labels, so regret cannot be
+  fully judged there; the review tool (T3) must let the user mark those. A swap's `t` and `mono` are the decision time, not the time the windows
+  actually moved (a small delay, **[unverified]**). No field marks "a swap was suppressed because it would not have been regret": not needed.
 
 ## 3. Event taxonomy per sport
 
@@ -140,7 +165,7 @@ Each stage ends with a short report to the user and a go/no-go.
    starting weights or a regulariser toward them. Leave-one-game-out. Decides: which features matter, which thresholds. Stop if the model is not
    clearly better than the current rules on held-out games, or the weights are unstable between folds.
 4. **Shadow comparison on unseen games.** Run the learned numbers in the backtest beside the current rules on the held-out games (metrics of
-   section 2), then live in log-only mode (shadow) for a few real evenings. Decides: ship or not. Stop if false swaps rise at equal coverage.
+   section 2), then live in log-only mode (shadow) for a few real evenings. Decides: ship or not. Stop if regret rate rises at equal coverage.
 5. **Ship as per-sport overrides.** Plain numbers in `settings.toml` under the per-sport sections (needs the override mechanism being built on 2026-10-13),
    a test keeping defaults equal to `settings.toml`, a note in `PLAN.md`, and one-line revert values. Decides: nothing more; revert is a settings change.
 
@@ -168,18 +193,18 @@ Basketball tasks are parked. Order is by dependency, not by date.
 |---|---|---|---|---|---|---|
 | T0 | Recorder (`logs/dataset/`) + log archive (`logs/archive/`) | in progress (another agent, tonight) | `server.py` score tick, `BuildUp`, `cues`, `GameTracker` | non-rotating per-session files in the section 4 shape, archive of rotated logs; both gitignored | schema tests; no text fields in the dataset; cost per tick measured; off switch | given |
 | T1 | ESPN summary probe (one finished soccer game, one NFL game) | in progress (separate agent) | public JSON | field list (commentary, key events, play types) written into this file; no raw dump committed | what exists and what is missing stated; derived facts only | given |
-| T2 | Dataset builder from the T0 output, the older logs and the feed files | next | T0, T1, `feed.py` events | `daemon/dataset_build.py`, `scripts/build_dataset.py`; labels per section 4 with `label_quality`; split by game | label counts per game printed; a test enforces the split by game; dry run on tonight's games and the 3-day logs (numbers not used to change settings) | no |
-| T3 | Swap review tool: automatic good/false/late labels from the dataset plus the user's marks (user wins on disagreement) | after T2 | `events.log` swaps, dataset, feed events | one command lists a session's swaps with automatic verdicts; the user's marks stored in `logs/dataset/review/` | verdict rules unit-tested on fixtures; the user's mark overrides; session list fits on one screen | UI/design choice |
+| T2 | Dataset builder from the T0 output, the older logs and the feed files | DONE 2026-10-13 (`daemon/dataset_builder.py`, `scripts/build_dataset.py`; older logs not rebuilt) | T0, T1, `feed.py` events | `daemon/dataset_build.py`, `scripts/build_dataset.py`; labels per section 4 with `label_quality`; split by game | label counts per game printed; a test enforces the split by game; dry run on tonight's games and the 3-day logs (numbers not used to change settings) | no |
+| T3 (DONE 2026-10-13: `daemon/swap_review.py`, `scripts/review_swaps.py`, marks in `logs/review/<date>.jsonl`; the automatic verdicts come with the dataset builder) | Swap review tool: automatic good/false/late labels from the dataset plus the user's marks (user wins on disagreement) | after T2 | `events.log` swaps, dataset, feed events | one command lists a session's swaps with automatic verdicts; the user's marks stored in `logs/dataset/review/` | verdict rules unit-tested on fixtures; the user's mark overrides; session list fits on one screen | UI/design choice |
 | T4 | Historical feed mode: fetch a finished game by id and replay its events on the session clock | after T1 | T1 result, `feed.py`, `feed_gate.py` | `daemon/feed_history.py` + a script; tests with a small synthetic fixture | same FeedEvent list as live; rewind and goal-hold logic not tripped by a replay session; polite rate limit | yes (touches feed code) |
 | T5 | Priors study (offline, measuring only) | after T1 and T4 | game-id list, fetcher | `scripts/priors.py`; a table of base rates in this file | reproducible from ids; tiny fixture test; numbers only in the repo | game list and request volume |
 | T6 | Fit and evaluate (logistic regression, leave-one-game-out, per sport) | when the section 6 stage 2 gate passes (about 40 independent events per sport) | T2, T5 | `scripts/fit_weights.py` report with section 2 metrics | same metrics as `scripts/backtest.py` for the current rules on the same games | no |
-| T7 | Shadow comparison on held-out games and live evenings | after T6 | T6 numbers | report: lead, coverage, false swaps per 10 min vs the per-sport budget | decision table for the user | ship decision |
+| T7 | Shadow comparison on held-out games and live evenings | after T6 | T6 numbers | report: lead, coverage, regret rate, regret share and misses vs the per-sport regret budget | decision table for the user | ship decision |
 | T8 | Ship as per-sport overrides | after T7 go | T7 | `[scoring.<sport>]` / `[weights.<sport>]` sections in `settings.toml`, tests, `PLAN.md` | settings tests pass; revert values documented | yes |
 
 ## 9. Decisions (2026-10-13) and new open questions
 
 Decisions by the user:
-1. False-swap budget: a separate budget PER SPORT; the user sets the numbers later. Proposed defaults to start from: football 3 per 10 min, American football 4 per 10 min (more stoppages and plays), measured with the section 2 definitions.
+1. Swap quality: the user does NOT mind false alarms as such; a swap between streams of similar interest is fine. A BAD swap is a REGRET swap (the new Main is less interesting than the one it replaced), defined in section 2 with a relative window, flip-flops counted as regret, and MISSES as a separate metric. A separate regret-rate budget per sport; the user sets the numbers after we measure the current rules (no placeholders).
 2. Event tiers: the table in section 3 is accepted as a starting point ("v1, to be tuned"); expect changes after the probe and the first data.
 3. ESPN summary probe: approved, a separate agent is running it. Any source of information is welcome and other sources can come later; the scraping/copyright caveats and the public-repo rules (section 7) stay.
 4. Swap review: BOTH automatic labels and the user's marks; where they disagree the user's mark is the final reference.
@@ -195,6 +220,13 @@ New open questions:
 A. Mixed-sport multiview tabs: (1) shared values when tiles disagree (recommended: simple, safe); (2) use the sport of the tile with sound; (3) per-tile sport (a bigger change). Recommendation: (1).
 B. Training on live games with no replay start: (1) estimate the lag per game from the clock match as in section 4 (recommended); (2) use only games where the user marks the kickoff time; (3) accept more label jitter. Recommendation: (1), and (2) when cheap.
 C. Mixing replay and live rows when fitting: (1) pool them with a `session_type` flag and check the fit on live-only held-out games (recommended); (2) fit on replays only, test on live; (3) live only (slow). Recommendation: (1).
-D. Tonight's 3 Champions League games are football only: (1) keep them as the first football dataset and dry-run the builder on them (recommended); (2) hold them as an untouched test set; they are too few for a test set alone. Recommendation: (1).
-E. If the probe finds no soccer commentary: (1) fit football on goals, cards and penalties only and treat chances as cue-only (recommended); (2) add a manual source later for a few games; (3) wait. Recommendation: (1).
-F. Per-sport budget numbers: the defaults in Decision 1 are guesses from one replay session; the user should confirm or replace them after the first measured false-swap rate per sport.
+D. DECIDED: tonight's 3 Champions League games are the first football dataset and dry-run the dataset builder; they join the training pool later.
+E. DECIDED: where a game lacks usable shot/save/corner commentary, fit on the structured events (goals, cards, penalties) AND add other label sources for chances (any source that passes the section 7 rules; the user's marks win).
+F. REPLACED by the regret definition (user decision): the false-swap placeholders (3 and 4 per 10 min) are removed.
+G. DECIDED: regret budget per sport. Measure today's rules first on recorded games, then the user chooses per sport. Working rule meanwhile: no worse than today's rate.
+H. DECIDED: comparison window W = 30 s (a parameter; American football may need a longer one later).
+I. DECIDED: a quiet tie (no event on either stream in the window) is NOT regret by default; it becomes regret only if the user marks it so in the review (T3).
+J. DECIDED: flip-flop window 30 s as a starting flag; it counts as regret only when the context agrees (the stream just left had the higher-tier event) and is also listed in the review for the user to judge.
+K. DECIDED: regret weight by the tier gap.
+
+Per-tile sport (question A) is worked out in `docs/per-tile-sport.md` (Stage 1 then Stage 2: popup sport per tile; an unknown-sport tile is treated as football; freer tile focus off Main; stricter build-up threshold for silent tiles; instant sound switch on a build-up). Follow that file for the multiview limitation.

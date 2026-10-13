@@ -1,0 +1,176 @@
+# FOOTBALL (soccer): top-5 leagues + other clubs of the uefa.champions / uefa.europa lists.
+# Team-name table, one file per sport (daemon/team_tables/football.txt, nfl.txt, cfb.txt; a new sport = a new file).
+# Loader and rules: daemon/team_names.py (read its docstring). Line format:
+#   ESPN abbreviation | ESPN displayName | alias, alias, doubtful?, ...      ('x?' = doubtful, never used)
+# [ambiguous <group>] lines: CODE | club; club   = a CANDIDATE token: it can mean any of these clubs (clubs are matched by
+# the start of their displayName) and never locks a game alone. 2-letter ESPN codes and aliases are candidates too.
+
+[eng.1]
+BOU | AFC Bournemouth | BOURNEMOUTH, AFCB, THE CHERRIES?
+ARS | Arsenal | ARSENAL FC, GUNNERS?
+AVL | Aston Villa | VILLA, AVFC
+BRE | Brentford | BRF, BRENTFORD FC
+BHA | Brighton & Hove Albion | BRIGHTON, BRIGHTON & HOVE, BHAFC, BRI?
+CHE | Chelsea | CHELSEA FC
+COV | Coventry City | COVENTRY
+CRY | Crystal Palace | C PALACE, PALACE, CPFC, CRYSTAL PALACE FC
+EVE | Everton | EFC, EVERTON FC
+FUL | Fulham | FULHAM FC, FFC?
+HUL | Hull City | HULL, HCFC?
+IPS | Ipswich Town | IPSWICH, ITFC?
+LEE | Leeds United | LEEDS, LUFC, LEEDS UTD
+LIV | Liverpool | LFC, LIVERPOOL FC
+MNC | Manchester City | MAN CITY, MCI, MCFC
+MAN | Manchester United | MAN UNITED, MANU, MAN U, MAN UTD, MANCHESTER UTD, MUFC
+NEW | Newcastle United | NEWCASTLE, NUFC, NEWCASTLE UTD, NEWC
+NFO | Nottingham Forest | NOTTM FOREST, NOTTINGHAM, NFFC, FOREST?
+SUN | Sunderland | SAFC
+TOT | Tottenham Hotspur | SPURS, TOTTENHAM, THFC
+
+[esp.1]
+ALA | Alavés | DEPORTIVO ALAVES, ALAV?
+ATH | Athletic Club | ATHLETIC, ATHLETIC BILBAO, BILBAO
+ATM | Atlético Madrid | ATLETICO, ATLETICO DE MADRID, ATLETI, AT MADRID, AT. MADRID?
+BAR | Barcelona | BARCA, FC BARCELONA, BARCELONE, FC BARCELONE?
+CEL | Celta Vigo | CELTA, CELTA DE VIGO, RC CELTA
+DEP | Deportivo | DEPOR, DEPORTIVO LA CORUNA, DEPORTIVO DE LA CORUNA
+ELC | Elche
+ESP | Espanyol | ESPANYOL BARCELONA, RCDE?
+GET | Getafe | GETAFE CF
+LEV | Levante
+MCF | Málaga | MALAGA CF
+OSA | Osasuna | CA OSASUNA
+RAC | Racing Santander | RACING, RACING DE SANTANDER, SANTANDER?
+RAY | Rayo Vallecano | RAYO, VALLECANO
+BET | Real Betis | BETIS, REAL BETIS BALOMPIE
+RMA | Real Madrid | REAL MADRID CF, RMD?
+RSO | Real Sociedad | SOCIEDAD, RSOC?, LA REAL?
+SEV | Sevilla | SEVILLE, SFC?, FC SEVILLE?
+VAL | Valencia | VALENCE, VCF
+VIL | Villarreal | VILLAREAL, VILLARREAL CF, SOUS-MARIN JAUNE?
+
+[ita.1]
+MIL | AC Milan | ACM?, MLN?
+ROMA | AS Roma | ROME, ASR?
+ATA | Atalanta | ATALANTA BC, BERGAME
+BOL | Bologna | BOLOGNE, BFC?
+CAG | Cagliari
+COMO | Como | COME, COMO 1907
+FIO | Fiorentina | FIOR?, VIOLA?
+FRO | Frosinone
+GEN | Genoa | GENES, GENOA CFC
+INT | Internazionale | INTER MILAN, INTER, INTER DE MILAN, INTER MILANO?
+JUV | Juventus | JUVE, JUVENTUS FC, LA JUVE?
+LAZ | Lazio | SS LAZIO
+LEC | Lecce
+MON | Monza
+NAP | Napoli | NAPLES, SSC NAPOLI
+PAR | Parma | PARME, PARMA CALCIO
+SAS | Sassuolo
+TOR | Torino
+UDI | Udinese | UDINESE CALCIO
+VEN | Venezia | VENISE, VENICE
+
+[ger.1]
+FCU | 1. FC Union Berlin | UNION BERLIN, 1 FC UNION BERLIN
+B04 | Bayer Leverkusen | LEVERKUSEN, BAYER, BAYER 04
+MUN | Bayern Munich | BAYERN, BAYERN MUNCHEN, FC BAYERN, BAY, BAYERN MUENCHEN, MUNICH?
+DOR | Borussia Dortmund | DORTMUND, BVB, BVB 09
+BMG | Borussia Mönchengladbach | GLADBACH, MGLADBACH, MONCHENGLADBACH, BORUSSIA MG, MOENCHENGLADBACH
+SGE | Eintracht Frankfurt | FRANKFURT, EINTRACHT, FRANCFORT
+FCA | FC Augsburg | AUGSBURG, AUGSBOURG
+KOE | FC Cologne | COLOGNE, KOELN, KOLN, FC KOELN, FC KOLN, 1 FC KOLN
+HSV | Hamburg SV | HAMBURG, HAMBURGER SV, HAMBOURG
+M05 | Mainz | MAINZ 05, FSV MAINZ, MAYENCE
+RBL | RB Leipzig | LEIPZIG
+SCF | SC Freiburg | FREIBURG, FRIBOURG
+SCP | SC Paderborn 07 | PADERBORN, PADERBORN 07
+ELV | SV Elversberg | ELVERSBERG, SVE?
+S04 | Schalke 04 | SCHALKE, FC SCHALKE
+TSG | TSG Hoffenheim | HOFFENHEIM, TSG 1899 HOFFENHEIM
+VFB | VfB Stuttgart | STUTTGART
+SVW | Werder Bremen | BREMEN, WERDER, BREME
+
+[fra.1]
+AUX | AJ Auxerre | AUXERRE, AJA
+MON | AS Monaco | MONACO, ASM?, MCO?
+ANG | Angers | SCO, ANGERS SCO
+BRE | Brest | SB29, STADE BRESTOIS
+HAC | Le Havre AC | LE HAVRE, HAVRE
+MNS | Le Mans | LEMANS, LE MANS FC
+RCL | Lens | RC LENS
+LILL | Lille | LIL, LOSC, LOSC LILLE
+LOR | Lorient | FC LORIENT
+LYON | Lyon | OL, LYO, OLYMPIQUE LYONNAIS, LYONNAIS, OLYMPIQUE LYON
+OLM | Marseille | OM, MAR, OLYMPIQUE DE MARSEILLE, OLYMPIQUE MARSEILLE, MARS?
+NICE | Nice | OGC NICE, OGCN
+PAR | Paris FC | PFC?
+PSG | Paris Saint-Germain | PARIS SG, PARIS SAINT GERMAIN
+REN | Stade Rennais | RENNES, SRFC, STADE RENNAIS FC
+STR | Strasbourg | RCSA, RC STRASBOURG
+TOU | Toulouse | TFC, TOULOUSE FC
+TRY | Troyes | ESTAC
+
+[uefa]
+AEK | AEK Athens
+BODO | Bodo/Glimt | BODO GLIMT, GLIMT
+BRU | Club Brugge | BRUGGE, BRUGES, CLUB BRUGES, CLUB BRUGGE KV
+FCP | FC Porto | PORTO
+FEN | Fenerbahce | FENER, FENERBAHCE SK
+FEY | Feyenoord Rotterdam | FEYENOORD
+GAL | Galatasaray | GALA, GALATASARAY SK
+LAS | LASK Linz
+PSV | PSV Eindhoven | EINDHOVEN
+SAB | Sabah FK | SABAH
+SHK | Shakhtar Donetsk | SHAKHTAR, SHAKTAR?
+SLP | Slavia Prague | SLAVIA, SLAVIA PRAHA
+SLB | Slovan Bratislava | S BRATISLAVA
+SCP | Sporting CP | SPORTING, SPORTING LISBON, SPORTING LISBONNE, SPORTING CLUBE DE PORTUGAL
+VIK | Viking FK
+AZ | AZ Alkmaar | ALKMAAR
+AND | Anderlecht | RSCA, RSC ANDERLECHT
+ARA | Ararat-Armenia
+SLB | Benfica | SL BENFICA, BEN?
+BES | Besiktas | BJK, BESIKTAS JK
+CEL | Celtic | CELTIC FC, THE CELTIC?
+DZG | Dinamo Zagreb | ZAGREB, GNK DINAMO ZAGREB
+FER | Ferencvaros | FTC, FERENCVAROSI TC
+HBE | Hapoel Be'er
+JAG | Jagiellonia Bialystok | JAGIELLONIA
+LECH | Lech Poznan
+LEV | Levski Sofia
+LSK | Lillestrom
+NEC | NEC Nijmegen
+NKC | NK Celje
+OFI | OFI Crete
+OLY | Olympiacos | OLYMPIAKOS, OLYMPIACOS FC
+OMON | Omonia Nicosia | OMONIA
+SLZ | RB Salzburg | SALZBURG, RBS, RED BULL SALZBURG
+STG | SK Sturm Graz | STURM GRAZ, STURM
+SPP | Sparta Prague | SPARTA, SPARTA PRAHA
+TOR | Torreense
+USG | Union St.-Gilloise | UNION SG, UNION SAINT-GILLOISE, UNION ST GILLOISE, UNION SAINT GILLOISE
+PLZ | Viktoria Plzen | PLZEN
+
+[ambiguous soccer]
+ATH | Athletic Club; Atletico Madrid
+BORUSSIA | Borussia Dortmund; Borussia Monchengladbach
+BRE | Brentford; Brest; Werder Bremen
+CEL | Celta Vigo; Celtic
+CFC | Chelsea; Genoa
+CITY | Manchester City; Coventry City; Hull City
+DINAMO | Dinamo Zagreb; Dynamo Kyiv
+FCB | Barcelona; Bayern Munich; FC Basel (FCB is on many scorebugs)
+LEV | Levante; Bayer Leverkusen; Levski Sofia
+MADRID | Real Madrid; Atlético Madrid
+MILAN | AC Milan; Internazionale
+MON | Monaco; Monza
+MUN | Manchester United; Bayern Munich
+PAR | Parma; Paris FC; Paris Saint-Germain
+PARIS | Paris Saint-Germain; Paris FC
+REAL | Real Madrid; Real Betis; Real Sociedad
+SAINT | Paris Saint-Germain; Union St.-Gilloise
+SCP | Sporting CP; SC Paderborn 07
+TOR | Torino; Torreense
+UNION | 1. FC Union Berlin; Union St.-Gilloise
+UNITED | Manchester United; Newcastle United; Leeds United

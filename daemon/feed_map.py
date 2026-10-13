@@ -13,7 +13,7 @@ import functools
 import re
 import unicodedata
 
-from daemon import feed
+from daemon import feed, team_names as names_table
 
 WINDOW = 10            # readings (with at least one candidate) remembered per tile
 MIN_HITS = 3           # readings in the window that must show the game's two teams
@@ -23,8 +23,9 @@ SLACK_S = 90.0         # soccer: the score at the stream clock may come from the
 AHEAD_S = 120.0        # a stream cannot be ahead of the feed's clock by more than this
 NAME_PREFIXES = {"AS", "AC", "FC", "SS", "US", "SSC", "ACF", "CF", "RC", "SC", "AFC", "BSC", "FK", "SV", "VFB", "VFL", "TSG", "RB"}
 
-# Folded team name (or abbreviation) -> other ways broadcasters write it. The table grows from the logs; a name that is
-# missing only means "unmapped", which is safe.
+# Folded team name (or abbreviation) -> other ways broadcasters write it. These hand-written aliases are the OVERRIDE layer: they
+# always apply and are never reduced. `daemon/team_names.py` (the table for the top-5 leagues, UEFA clubs, NFL and FBS) fills the gaps
+# on top of them. A name that is missing only means "unmapped", which is safe.
 ALIASES = {
     "ROMA": ("ROME",), "COMO": ("COME", "COMO 1907"),
     "PARIS SAINT-GERMAIN": ("PSG", "PARIS SG", "PARIS"), "PARIS SAINT GERMAIN": ("PSG", "PARIS SG", "PARIS"),
@@ -32,7 +33,7 @@ ALIASES = {
     "AC MILAN": ("MILAN",), "NAPOLI": ("NAPLES",), "JUVENTUS": ("JUVE",), "TORINO": ("TURIN",),
     "BAYERN MUNICH": ("BAYERN", "BAYERN MUNCHEN", "BAYERN MUNICH"), "BORUSSIA DORTMUND": ("DORTMUND", "BVB"),
     "ATLETICO MADRID": ("ATLETICO", "ATLETICO DE MADRID", "ATM"), "REAL MADRID": ("MADRID",),
-    "BARCELONA": ("BARCA", "BARÇA", "FC BARCELONA", "BARCELONE"), "MANCHESTER UNITED": ("MAN UNITED", "MAN UTD", "MANCHESTER UTD"),
+    "BARCELONA": ("BARCA", "BARÇA", "FC BARCELONA", "BARCELONE"), "MANCHESTER UNITED": ("MAN UNITED", "MAN UTD", "MANCHESTER UTD", "MUN", "MANU", "MAN U"), "MAN": ("MUN", "MANU"), "LILL": ("LIL", "LILLE"),
     "MANCHESTER CITY": ("MAN CITY", "MCI"), "MNC": ("MCI",), "MUN": ("MAN",), "TOTTENHAM HOTSPUR": ("TOTTENHAM", "SPURS"), "LYON": ("OL", "OLYMPIQUE LYONNAIS", "LYONNAIS"),
     "MARSEILLE": ("OM", "OLYMPIQUE DE MARSEILLE", "OLYMPIQUE MARSEILLE"), "MONACO": ("AS MONACO",),
 }
@@ -54,7 +55,10 @@ def team_names(team: feed.Team) -> tuple:
         names.add(" ".join(words[:-1]))
     for name in list(names):
         names.update(fold(a) for a in ALIASES.get(name, ()))
-    return tuple(sorted(n for n in names if len(n) >= 3 and n != "?"))
+    names.update(names_table.aliases_for(team.name))     # the table fills the gaps
+    candidates = set(names_table.candidates_for(team.name))
+    names.update(candidates)       # ambiguous / 2-letter codes: only candidates (see `shows_game`), the only names under 3 characters
+    return tuple(sorted(n for n in names if (len(n) >= 3 or n in candidates) and n != "?"))
 
 
 @functools.lru_cache(maxsize=2048)
@@ -62,14 +66,25 @@ def _pattern(name: str):
     return re.compile(r"(?<![A-Z0-9])" + re.escape(name) + r"(?![A-Z0-9])")
 
 
-def shows_team(texts: list[str], team: feed.Team) -> bool:
+def _hits(texts: list[str], team: feed.Team) -> set:
+    """The names of the team found in the texts. Names of 2 characters (candidate codes) must be written in upper case."""
     folded = [fold(t) for t in texts]
-    return any(_pattern(n).search(t) for n in team_names(team) for t in folded)
+    found = set()
+    for n in team_names(team):
+        if any(_pattern(n).search(t) for t in (texts if len(n) < 3 else folded)):
+            found.add(n)
+    return found
+
+
+def shows_team(texts: list[str], team: feed.Team) -> bool:
+    return bool(_hits(texts, team))
 
 
 def shows_game(texts: list[str], snap: feed.Snapshot) -> bool:
-    """Both teams are in the texts of one reading."""
-    return shows_team(texts, snap.home) and shows_team(texts, snap.away)
+    """Both teams are in the texts of one reading. A candidate code (REAL, MSU, OM...) may stand for either team, but one token
+    never stands for both: the other team needs a different name or code."""
+    home, away = _hits(texts, snap.home), _hits(texts, snap.away)
+    return any(h != a for h in home for a in away)
 
 
 def parse_clock_s(clocks: list[str]) -> float | None:
