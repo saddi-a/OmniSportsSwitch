@@ -21,6 +21,31 @@ SILENT_BASELINE = 0.008   # a baseline below this is silence (a tab still loadin
 SOUND_LEVEL = 0.02        # a sample at least this loud is real sound
 STATUS_MULT = {"live": 1.0, "break": 0.25, "over": 0.0}  # how much a stream counts in each game state
 
+# Per-sport overrides (settings.toml `[scoring.football]`, `[weights."american football"]`...): see `Config.for_sport`.
+SPORT_KEYS = ("football", "american football", "basketball")   # same keys as the [sports.*] sections; anything else is "generic"
+# The `scoring` values a sport may override: only those read where the stream's sport is known (per stream, or the challenger's).
+# Everything else (server-wide intervals, models, feed, window_s/baseline_s, warmup/stale, ad detection, dwell, manual holds, event_s,
+# the field goal / extra point rules of the score watcher, the game-state rules of the tracker) stays shared. Every `weights` value
+# can be overridden. An override of any other key is ignored with a warning (daemon/settings.py).
+OVERRIDABLE_SCORING = frozenset({
+    "min_score", "threshold", "min_gap", "confirm_s", "hold_break_score",          # a challenger against MAIN: the CHALLENGER's sport
+    "surge_cap", "anticipation_s", "cue_alone_cap", "cue_support", "cue_leverage_gain", "leverage_weight", "replay_dampen",
+    "big_play_strength", "goal_banner_strength", "cue_zone_near_yd", "cue_zone_far_yd",
+    "speech_cue_factor", "speech_cue_cooldown_s",
+    "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
+    "lev_soccer_close", "lev_soccer_blowout",
+    "goal_hold_s", "goal_hold_extend_s", "goal_hold_max_s",                          # the hold of the stream that scored: ITS sport
+    "goal_hold_break",                                                               # ...and what breaks it: the challenger's sport
+    "buildup_mode", "buildup_live", "buildup_window_s", "buildup_min", "buildup_cooldown_s", "buildup_surge_min",
+    "buildup_surge_note", "buildup_gap", "buildup_crowd_min", "buildup_crowd_note",
+})
+
+
+def sport_key(sport) -> str:
+    """The key of a sport for the overrides: lowercase, spaces collapsed; one of SPORT_KEYS, else "generic" (unknown / None / other)."""
+    key = " ".join(str(sport or "").lower().split())
+    return key if key in SPORT_KEYS else "generic"
+
 
 @dataclass
 class Weights:
@@ -45,6 +70,7 @@ class Weights:
 
 @dataclass
 class Config:
+    """Every tunable. Shared values are the fields; a sport may override some of them (`for_sport`)."""
     weights: Weights = field(default_factory=Weights)
     threshold: float = 0.40   # challenger must beat main by this fraction...
     min_gap: float = 0.15     # ...and by at least this much in absolute score
@@ -107,6 +133,9 @@ class Config:
     speech_cue_factor: float = 1.0       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
     feed_mode: float = 0.0          # outside game data (ESPN): 0 = local only (nothing starts), 1 = record only (measuring, changes no score); needs a restart
+    dataset_mode: float = 1.0       # 1 = record one row per stream every 2 s (and the events) to logs/dataset/<date>.jsonl for later learning, 0 = off; read live
+    log_archive_days: float = 90.0  # rotated log files are copied (gzip) to logs/archive/<date>/ and kept this many days (0 = forever)
+    log_archive_max_mb: float = 50000.0   # ...and the archive never grows beyond this many MB (the oldest files go first; 0 = no cap)
     feed_poll_s: float = 5.0        # a league with a live game is asked this often (never less than 5 s: the feed's own cache time)
     feed_idle_poll_s: float = 120.0 # a league with nothing live or starting soon is asked this often
     feed_summary_s: float = 10.0    # American football: the plays of each live game (up to 6) are fetched this often; 0 = off
@@ -128,6 +157,33 @@ class Config:
     goal_hold_max_s: float = 75.0   # ...but never longer than this after the goal
     goal_hold_break: float = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
     buildup_crowd_note: float = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
+
+    def __post_init__(self):
+        # Per-sport overrides {sport key: {name: value}}, filled from settings.toml. Plain attributes, not fields: the shared values
+        # (the fields) and the defaults test stay as they were.
+        self.sport_scoring: dict[str, dict[str, float]] = {}
+        self.sport_weights: dict[str, dict[str, float]] = {}
+
+    def for_sport(self, sport):
+        """The values to use for a stream of this sport: its overrides where it has any, the shared values everywhere else. The result
+        is a live VIEW (nothing is copied): a shared value changed later, e.g. in the popup, reaches a sport that does not override it at
+        once, and an override stays when the shared value changes. No sport / unknown / "generic" / no override: `self`. Read through the
+        view when you use a value (`cfg = config.for_sport(sport)`), never keep a value."""
+        key = sport_key(sport)
+        scoring, weights = self.sport_scoring.get(key), self.sport_weights.get(key)
+        return _SportView(self, scoring or {}, weights or {}) if scoring or weights else self
+
+
+class _SportView:
+    """`Config` as one sport sees it (see `Config.for_sport`): attribute reads give the override or else the live shared value."""
+    def __init__(self, base, overrides: dict, weight_overrides: dict | None = None):
+        self._base, self._overrides = base, overrides
+        if weight_overrides is not None:   # a view of a Config: `.weights` is the same kind of view of its Weights
+            self.weights = _SportView(base.weights, weight_overrides) if weight_overrides else base.weights
+
+    def __getattr__(self, name):   # only called for names that are not set in __init__
+        overrides = self.__dict__["_overrides"]
+        return overrides[name] if name in overrides else getattr(self.__dict__["_base"], name)
 
 
 @dataclass
@@ -179,6 +235,11 @@ class Scorer:
         self._hold_over_since: float | None = None   # since when the held game has looked over
         self._candidate: tuple[int, int, float] | None = None  # (replaced, challenger, since when it has qualified)
         self._previous_main: int | None = None  # MAIN before a tab registered as MAIN: comes back if that tab leaves
+        self.sport_of = None   # callable tab id -> sport name (the server sets it): picks the per-sport overrides of a stream
+
+    def cfg_for(self, tab_id: int | None):
+        """The settings as the sport of this stream sees them (`Config.for_sport`); the shared ones when the sport is not known."""
+        return self.config.for_sport(self.sport_of(tab_id) if self.sport_of is not None and tab_id is not None else None)
 
     def register(self, tab_id: int, weight: float = 1.0, is_main: bool = False) -> None:
         self.streams.setdefault(tab_id, _Stream()).weight = weight
@@ -252,8 +313,9 @@ class Scorer:
         stream = self.streams.get(tab_id)
         if stream is None:
             return
-        value = self.config.weights.cue_minor if value is None else value
-        fading = stream.anticipation_value * max(0.0, 1.0 - (now - stream.anticipation_at) / self.config.anticipation_s)
+        cfg = self.cfg_for(tab_id)
+        value = cfg.weights.cue_minor if value is None else value
+        fading = stream.anticipation_value * max(0.0, 1.0 - (now - stream.anticipation_at) / cfg.anticipation_s)
         if value >= fading:
             stream.anticipation_at, stream.anticipation_value, stream.anticipation_strong = now, value, strong
 
@@ -273,7 +335,7 @@ class Scorer:
         """Seconds the post-goal replay hold of this stream still runs (0 = none). It starts at the goal (`set_event(goal=True)`), lasts
         `goal_hold_s` at the least, and each replay sign seen during it moves the end to (its time + `goal_hold_extend_s`), never later than
         `goal_hold_max_s` after the goal."""
-        stream, cfg = self.streams.get(tab_id), self.config
+        stream, cfg = self.streams.get(tab_id), self.cfg_for(tab_id)   # the hold belongs to the stream that scored: its sport
         if stream is None or cfg.goal_hold_s <= 0 or stream.goal_at == float("-inf"):
             return 0.0
         end = stream.goal_at + cfg.goal_hold_s
@@ -320,7 +382,7 @@ class Scorer:
     def components(self, tab_id: int, now: float, warmup: bool = True) -> dict | None:
         """The signals and final score of a stream, or None if it has no recent audio or is still warming up
         (`warmup=False` also reports a stream that is still warming up: only for ad / break handovers)."""
-        cfg = self.config
+        cfg = self.cfg_for(tab_id)
         stream = self.streams.get(tab_id)
         if stream is None:
             return None
@@ -417,6 +479,8 @@ class Scorer:
         if best_c is None:
             self._candidate = None
             return None
+        # A challenger is judged by ITS sport's thresholds (the sport that wants MAIN); MAIN's score is compared as it is.
+        cfg = self.cfg_for(best_id)
         if target is None and self.hold_left(now) > 0 and best_c["score"] < cfg.hold_break_score:
             self._candidate = None
             return None   # the user put this stream on MAIN: only something really exciting takes it away
@@ -441,9 +505,17 @@ class Scorer:
         self._last_swap = now
         return swap
 
+    def swap_context(self, now: float) -> dict:
+        """Read only, for the learning data: seconds since the last swap (None = none yet) and the challenger waiting for confirmation as
+        [replaced tab, challenger tab, seconds it has qualified] (None = nobody)."""
+        age = None if self._last_swap == float("-inf") else round(now - self._last_swap, 1)
+        c = self._candidate
+        return {"last_swap_age": age, "candidate": None if c is None else [c[0], c[1], round(now - c[2], 1)]}
+
     def take_main_block(self, tab_id: int, now: float) -> str | None:
-        """Why `tab_id` may not take MAIN by the build-up tracker right now (the guards of a normal swap), or None if it may."""
-        cfg = self.config
+        """Why `tab_id` may not take MAIN by the build-up tracker right now (the guards of a normal swap), or None if it may.
+        What the challenger must beat (hold_break_score, goal_hold_break) is the challenger's sport's value."""
+        cfg = self.cfg_for(tab_id)
         stream = self.streams.get(tab_id)
         if stream is None or self.main not in self.streams:
             return "unknown stream"

@@ -173,6 +173,19 @@ If a shortcut does nothing, check `edge://extensions/shortcuts`.
 - Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running). Changed values are shown in bold, the arrow button puts one back to its default, and "Reset all" restores everything. The values are kept in `settings.local.json` (not committed), layered on top of the defaults in `settings.toml`.
 - Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed windows per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
 
+### Per-sport settings (settings.toml only)
+
+By default every sport uses the same weights and thresholds. To tune one sport without touching the others, add a table for it in `settings.toml` and list ONLY the values that differ:
+
+```toml
+[scoring.football]            # football = soccer; the others are "american football" and basketball
+buildup_min = 0.40            # build-up level to take Main, for football only
+[weights."american football"] # a sport name with a space needs quotes
+cue_chance = 0.30
+```
+
+Any other or unknown sport uses the shared values. Only values that make sense per stream can be overridden (all `[weights]`, and of `[scoring]` the swap margins, cue, leverage, goal hold and build-up values; the list is `OVERRIDABLE_SCORING` in `daemon/scoring.py`); an override of anything else, or a typo, is ignored with a warning in `logs\events.log`. The popup keeps showing and editing the shared values; a shared value changed there still reaches every sport that does not override it, and "Reset all" does not touch the overrides in the file. Needs a daemon restart.
+
 ## How a swap is decided
 
 Several times a second each stream gets a score: crowd noise, loudness above its own normal, a fresh score change, a favourite team's bonus, closeness and time left, minus commentary and music. A stream on an ad scores below zero. A challenger takes Main when it beats the stream there by 40% (and by a minimum gap), has a score high enough that loudness alone cannot do it, has qualified for two seconds, has been watched for 20 seconds, and the last swap is at least 20 seconds old. When Main shows an ad, a break or a finished game, any live stream without an ad takes over (not one that was on an ad in the last 30 seconds, unless Main's ad is certain, for example the player's ad placeholder; this stops Main hopping between streams that are all on commercials). Only Main is audible. The numbers that decide swaps are settings in the popup, with an explanation; a few constants of the scoreboard reader (for example how much taller than the team names a score digit must be) are in the code.
@@ -184,6 +197,8 @@ In football (soccer) the daemon also tries to move a stream to Main *before* a g
 ## Logs
 
 In `logs/` (not committed): `events.log` (goals, swaps and why, game states, warnings), `daemon.log` (everything, including the OCR text of each video area and `speech heard` lines with what the commentators said), `boxes.log` (sizes and positions of OCR items, for tuning).
+
+Every file that rotates out is first compressed into `logs/archive/<date>/` and kept 90 days (`log_archive_days`, `log_archive_max_mb` in Settings), so nothing is lost. With `dataset_mode = 1` (default) the daemon also writes `logs/dataset/<date>.jsonl` (one row per stream every 2 s: sound, cues, build-up level, score, clock...) and `<date>.events.jsonl` (swaps, goals, cues, what the commentators said): about 8 MB per hour with 4 streams, kept for ever, meant for later learning (format: `docs/dataset-format.md`). None of this is committed; the events file contains commentary text, so do not share it.
 
 ## Tests
 

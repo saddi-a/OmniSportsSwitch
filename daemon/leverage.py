@@ -26,6 +26,7 @@ def _scale(sport: str, cfg) -> tuple[float, float] | None:
 
 
 def leverage(sport: str | None, score: tuple[int, int] | None, period: int | None, minute: float | None, cfg) -> float:
+    cfg = cfg.for_sport(sport)   # the closeness limits as this sport sees them (per-sport overrides in settings.toml)
     scale = _scale((sport or "").strip().lower(), cfg)
     if scale is None or score is None:
         return 0.0

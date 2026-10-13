@@ -32,7 +32,8 @@ from daemon.favourites import match_multiplier, match_slots
 from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
 from daemon.feed_map import FeedMapper, parse_clock_s
-from daemon.logsetup import LOG_DIR
+from daemon.logsetup import LOG_DIR, archive_rotated, prune_archive
+from daemon.recorder import DatasetRecorder, snapshot_rows
 from daemon.sport_choice import choose_sport, sport_from_feed
 from daemon.sport_detect import sport_from_title
 from daemon.sport_memory import SportMemory
@@ -51,6 +52,7 @@ from daemon.scoring import SHOUT_CLASSES, Scorer, Swap
 HOST, PORT = "127.0.0.1", 8765
 DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 2.0
+MAINTENANCE_INTERVAL_S = 3600.0   # the log archive is completed and pruned this often (and once at the start)
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
 GAP_RETRY_S = 1.5          # the gap pass (strip between two team codes) looks again this often on a tile where it found no score
@@ -80,13 +82,15 @@ def leveling_gain(baseline: float | None, target: float, max_gain: float) -> flo
 
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None,
-                 speech=None, semantic=None, sport_memory_path=None):
+                 speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None):
         self.scorer = scorer or Scorer()
+        self.scorer.sport_of = self._tab_sport   # per-sport settings overrides: the scorer asks which sport a stream is
         self.speech = speech                    # SpeechListener or None: the commentary listener (measuring only)
         self.semantic = semantic                # SemanticMatcher or None: how close the commentary is to big-moment phrases (measuring only)
         self.speech_buffers: dict[int, np.ndarray] = {}   # tab id -> last speech_window_s seconds of audio
         self.speech_cue_at: dict[tuple[int, str], float] = {}  # (tab, cue) -> when it was last logged
         self.settings = settings  # daemon.settings.Settings; the popup edits it live
+        self.recorder = recorder  # DatasetRecorder or None: rows and events for later learning (scoring.dataset_mode; tests pass None)
         self.feed: FeedSession | None = None   # outside game data (measuring only); started by run() when feed_mode > 0
         self.feed_map = FeedMapper()   # which feed game each tab/tile shows (measuring only)
         self.feed_gate = FeedGate()   # shadow clock gate: 'would fire' lines (measuring only)
@@ -249,6 +253,7 @@ class Server:
                 swap = self.scorer.force_main(tab_id, now)
                 if swap is not None:
                     log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
+                    self._rec_swap(swap, "user", now)
                     if not await self._perform_swap(swap, restore_main=True):
                         self.scorer.release_hold()
                         error = "this stream cannot go to Main (slot rules or windows not set)"
@@ -296,6 +301,40 @@ class Server:
             self.ui_clients.discard(ws)
             log.info("extension disconnected")
 
+    def _rec_event(self, kind: str, tab_id: int | None = None, tile: int | None = None, **fields) -> None:
+        """One line in the dataset's event file (swap, score change, cue, ...). Never raises, never waits."""
+        if self.recorder is None or not self.recorder.enabled():
+            return
+        try:
+            event = {"v": 1, "t": round(time.time(), 3), "mono": round(time.monotonic(), 3), "kind": kind, "tab": tab_id, "tile": tile,
+                     "sport": self._tab_sport(tab_id) if tab_id is not None else None, "main": self.scorer.main}
+            event.update(fields)
+            self.recorder.add_event(event)
+        except Exception as e:
+            log.warning("dataset event %s failed: %s: %s", kind, type(e).__name__, e)
+
+    def _rec_swap(self, swap: Swap, source: str, now: float) -> None:
+        """The swap just decided: who, why, and the score of both sides at that moment."""
+        if self.recorder is None or not self.recorder.enabled():
+            return
+        try:
+            def side(tab_id):
+                c = self.scorer.components(tab_id, now, warmup=False)
+                return None if c is None else {k: round(c[k], 3) for k in ("score", "surge", "crowd", "speech", "music", "shout", "event", "cue")}
+            self._rec_event("swap", swap.promote, source=source, promote=swap.promote, demote=swap.demote, reason=swap.reason,
+                            promote_c=side(swap.promote), demote_c=side(swap.demote))
+        except Exception as e:
+            log.warning("dataset swap record failed: %s: %s", type(e).__name__, e)
+
+    def _record_rows(self, now: float) -> None:
+        if self.recorder is None or not self.recorder.enabled():
+            return
+        try:
+            for row in snapshot_rows(self, now):
+                self.recorder.add_row(row)
+        except Exception as e:   # the recorder must never hurt the daemon
+            log.warning("dataset rows failed: %s: %s", type(e).__name__, e)
+
     def _log_scores(self, now: float) -> Swap | None:
         """Log the scores; returns the swap the build-up tracker made on the way (football), if any."""
         taken = None
@@ -321,12 +360,13 @@ class Server:
             if self.goal_watch.surge(tab_id, c["surge"], now):
                 log.info("goal phrase + surge would fire tab %s (measuring only)", tab_id)
             taken = taken or self._check_buildup(tab_id, c, now)
+        self._record_rows(now)
         return taken
 
     def _check_buildup(self, tab_id: int, c: dict, now: float) -> Swap | None:
         """Measuring only, soccer only (each sport has its own clues and needs its own calibration): log when the cues of a stream added
         together, plus its loudness and crowd, would have been enough to take MAIN. Compare these lines with the goals: scripts/backtest.py."""
-        cfg = self.scorer.config
+        cfg = self.scorer.cfg_for(tab_id)   # the build-up values of THIS stream's sport (shared unless overridden in settings.toml)
         if cfg.buildup_mode <= 0 or tab_id == self.scorer.main or not is_soccer(self._tab_sport(tab_id)):
             return None
         main = self.scorer.components(self.scorer.main, now) if self.scorer.main is not None else None
@@ -335,9 +375,9 @@ class Server:
         self.buildup.window_s, self.buildup.cooldown_s = cfg.buildup_window_s, cfg.buildup_cooldown_s
         support = w.surge * c["surge"] + w.crowd * c["crowd"] + w.shout * c["shout"]
         if self.buildup.surge_note_due(tab_id, now, c["surge"], cfg.buildup_surge_min):
-            self.buildup.note(tab_id, now, cfg.buildup_surge_note)   # measuring only: a sign for the build-up, never set_anticipation
+            self.buildup.note(tab_id, now, cfg.buildup_surge_note, "surge_note")   # measuring only: a sign for the build-up, never set_anticipation
         if self.buildup.crowd_note_due(tab_id, now, c["crowd"], cfg.buildup_crowd_min):
-            self.buildup.note(tab_id, now, cfg.buildup_crowd_note)   # a crowd that keeps building: a sign, never a score
+            self.buildup.note(tab_id, now, cfg.buildup_crowd_note, "crowd_note")   # a crowd that keeps building: a sign, never a score
         # the cooldown starts only when the swap really happens (or in log-only mode): a swap a guard stopped may be tried again
         level = self.buildup.would_take(tab_id, now, support, main_score, cfg.buildup_min, cfg.buildup_gap, start_cooldown=False)
         if level is not None:
@@ -361,6 +401,8 @@ class Server:
                 self.buildup.mark_fired(tab_id, now)
             log.info("buildup would take MAIN tab %s: level %.2f (cues %s; surge %.2f crowd %.2f) vs main %.2f (%s)",
                      tab_id, level, cues, c["surge"], c["crowd"], main_score, outcome)
+            self._rec_event("buildup", tab_id, level=round(level, 3), main_score=round(main_score, 3), surge=round(c["surge"], 3),
+                            crowd=round(c["crowd"], 3), outcome=outcome, moved=swap is not None)
             return swap
         return None
 
@@ -408,6 +450,7 @@ class Server:
                 if weight > 0:
                     self.scorer.set_event(f.tab, now, f.strength * weight, goal=True)
                     self.fed[(f.tab, f.tile)] = now
+                    self._rec_event("feed_goal", f.tab, f.tile, goal_kind=f.kind, strength=f.strength)
             for key in [k for k, (_, at) in self.unconfirmed.items() if now - at > self.scorer.config.feed_confirm_s]:
                 del self.unconfirmed[key]
             for line in self.feed_gate.messages:
@@ -453,6 +496,7 @@ class Server:
                         self.speech_cue_at[(tab_id, "semantic " + tier)] = now
                         log.info("semantic %s tab %s: high=%.2f mid=%.2f low=%.2f best='%s' piece='%s'", tier, tab_id, match["high"],
                                  match["mid"], match["low"], match["phrase"], match["piece"])
+                tcfg = self.scorer.cfg_for(tab_id)   # cue weights and factor of this stream's sport
                 cues = find_speech_cues(text, self._tab_sport(tab_id))
                 self.cue_speech.window_s = cfg.cue_speech_window_s
                 self.cue_speech.record(tab_id, cues, text, self._tab_sport(tab_id), now)
@@ -462,18 +506,19 @@ class Server:
                 if "replay" in cues:
                     self.scorer.note_replay(tab_id, now)   # the commentator says replay: extends a post-goal hold
                 for cue in cues:
-                    if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= cfg.speech_cue_cooldown_s:
+                    if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= tcfg.speech_cue_cooldown_s:
                         self.speech_cue_at[(tab_id, cue)] = now
                         log.info("speech cue %s tab %s: %s", cue, tab_id, text)
-                        weight = speech_cue_weight(cue, self._tab_sport(tab_id), cfg.weights, cfg.speech_cue_factor)
+                        self._rec_event("speech_cue", tab_id, cue=cue, text=text, language=language)
+                        weight = speech_cue_weight(cue, self._tab_sport(tab_id), tcfg.weights, tcfg.speech_cue_factor)
                         if weight is not None:   # a commentator calling a dangerous moment boosts the stream like the banner would, at a discount
                             log.info("anticipation %s tab %s (spoken) weight %.2f", cue, tab_id, weight)
-                            self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, self._tab_sport(tab_id), cfg.weights))
-                            self.buildup.note(tab_id, now, weight)
-                        note = tracker_note_weight(cue, self._tab_sport(tab_id), cfg.weights, cfg.speech_cue_factor)
+                            self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, self._tab_sport(tab_id), tcfg.weights))
+                            self.buildup.note(tab_id, now, weight, "spoken:" + cue)
+                        note = tracker_note_weight(cue, self._tab_sport(tab_id), tcfg.weights, tcfg.speech_cue_factor)
                         if note is not None:   # a set piece is a build-up sign for the tracker only: no score, no anticipation
                             log.info("buildup note %s tab %s weight %.2f", cue, tab_id, note)
-                            self.buildup.note(tab_id, now, note)
+                            self.buildup.note(tab_id, now, note, "note:" + cue)
 
     def _feed_text(self, tab_id: int) -> str:
         """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says."""
@@ -612,27 +657,31 @@ class Server:
                 self.replay_signal[(tab_id, index, "clock")] = tracker.clock_replay_note[0] == "start"
             if self.replay_signal.get((tab_id, index, "bug")) or self.replay_signal.get((tab_id, index, "clock")):
                 self.scorer.note_replay(tab_id, now)   # extends a post-goal hold
+            tile_cfg = self.scorer.config.for_sport(tracker.sport)   # this tile's sport: shared values unless overridden in settings.toml
             for cue in tracker.anticipation:
                 banner = tracker.anticipation_text.get(cue, cue)
-                zone = end_zone_factor(tracker.end_zone_yards, tracker.down, tracker.goal_to_go, self.scorer.config)   # None when the distance is unknown
-                weight = cue_weight(cue, banner, self.cue_speech.tier(tab_id, now), tracker.sport or None, self.scorer.config.weights, zone=zone)
+                zone = end_zone_factor(tracker.end_zone_yards, tracker.down, tracker.goal_to_go, tile_cfg)   # None when the distance is unknown
+                weight = cue_weight(cue, banner, self.cue_speech.tier(tab_id, now), tracker.sport or None, tile_cfg.weights, zone=zone)
                 log.info("anticipation %s tab %s tile %s weight %.2f", cue, tab_id, index, weight)
-                self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, tracker.sport or None, self.scorer.config.weights))
-                self.buildup.note(tab_id, now, weight)
+                self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, tracker.sport or None, tile_cfg.weights))
+                self.buildup.note(tab_id, now, weight, cue)
+                self._rec_event("banner_cue", tab_id, index, cue=cue, banner=banner, weight=round(weight, 3))
             ads.setdefault(tab_id, []).append(tracker.on_ad)
             if tracker.big_play:
-                strength = self.scorer.config.big_play_strength
+                strength = tile_cfg.big_play_strength
                 self.event_at[(tab_id, index)] = max(self.event_at.get((tab_id, index), float("-inf")),
                                                      now - (1.0 - strength) * self.scorer.config.event_s)
                 self.scorer.set_event(tab_id, now, strength)
                 log.info("big play tab %s tile %s: %s", tab_id, index, tracker.big_play)
+                self._rec_event("big_play", tab_id, index, text=str(tracker.big_play), strength=strength)
             if tracker.goal_banner:   # a GOAL banner (soccer): an early event, a real score change takes it to full strength
-                strength = self.scorer.config.goal_banner_strength
+                strength = tile_cfg.goal_banner_strength
                 if strength > 0:
                     self.event_at[(tab_id, index)] = max(self.event_at.get((tab_id, index), float("-inf")),
                                                          now - (1.0 - strength) * self.scorer.config.event_s)
                     self.scorer.set_event(tab_id, now, strength, goal=True)
                 log.info("goal banner tab %s tile %s: %s", tab_id, index, tracker.goal_banner)
+                self._rec_event("goal_banner", tab_id, index, text=str(tracker.goal_banner), strength=strength)
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
                 self.fav_seen[(tab_id, index)] = (seen, now)
@@ -672,6 +721,7 @@ class Server:
                 self.event_at[(tab_id, index)] = now - (1.0 - held[0]) * self.scorer.config.event_s
                 self.scorer.set_event(tab_id, now, held[0], goal=True)
                 log.info("score change tab %s tile %s counted late: it was read %.0f s ago while the game looked like a break", tab_id, index, now - held[1])
+                self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=held[0], note="counted late")
             elif changed:
                 self.held_change.pop((tab_id, index), None)
                 change = self.feed_gate.real_change(tab_id, index, now)
@@ -684,10 +734,12 @@ class Server:
                     strength *= factor
                 if change.counted and self.scorer.config.feed_event_weight > 0:   # the feed already counted this goal
                     log.info("score change tab %s tile %s counted by the feed already: %s", tab_id, index, r["texts"][:8])
+                    self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=strength, note="counted by the feed already")
                 else:
                     self.event_at[(tab_id, index)] = now - (1.0 - strength) * self.scorer.config.event_s
                     self.scorer.set_event(tab_id, now, strength, goal=True)
                     log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
+                    self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=strength, verdict=change.verdict)
         for tab_id, states in per_tab.items():
             self._update_favourite(tab_id, now)
             self.scorer.set_on_ad(tab_id, all(ads.get(tab_id, [False])), now)   # the whole tab is on an ad
@@ -696,6 +748,7 @@ class Server:
             stream = self.scorer.streams.get(tab_id)
             if stream is not None and stream.auto_state != state:
                 log.info("game state tab %s: %s -> %s", tab_id, stream.auto_state, state)
+                self._rec_event("game_state", tab_id, old=stream.auto_state, new=state)
             self.scorer.set_auto_state(tab_id, state)
             tiles = []   # closeness and time left of the best game in this tab
             for (t, index), watcher in self.watchers.items():
@@ -839,12 +892,24 @@ class Server:
                 await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
+                self._rec_swap(swap, "buildup" if swap is taken else "decide", now)
                 await self._perform_swap(swap, restore_main=not self.scorer.frozen)
+
+    async def _maintenance_loop(self) -> None:
+        """Completes and prunes the log archive (see logsetup) in a worker thread; once at the start, then every MAINTENANCE_INTERVAL_S."""
+        while True:
+            try:
+                cfg = self.scorer.config
+                await asyncio.to_thread(archive_rotated, LOG_DIR)
+                await asyncio.to_thread(prune_archive, LOG_DIR, cfg.log_archive_days, cfg.log_archive_max_mb)
+            except Exception as e:   # housekeeping must never hurt the daemon
+                log.warning("log maintenance failed: %s: %s", type(e).__name__, e)
+            await asyncio.sleep(MAINTENANCE_INTERVAL_S)
 
     async def run(self, host: str = HOST, port: int = PORT) -> None:
         async with serve(self._client, host, port):
             log.info("listening on ws://%s:%d", host, port)
-            loops = [self._decide_loop()]
+            loops = [self._decide_loop(), self._maintenance_loop()]
             if self.classifier is not None:
                 loops.append(self._classify_loop())
             if self.screen_reader is not None:
@@ -887,8 +952,12 @@ if __name__ == "__main__":
             log.info("semantic matcher ready (cpu)")
         except Exception as error:
             log.warning("semantic matcher not available (%s: %s); continuing without it", type(error).__name__, error)
+    recorder = DatasetRecorder(LOG_DIR / "dataset", mode=lambda: settings.scoring.dataset_mode)
+    import atexit
+    atexit.register(recorder.close)
     try:
         asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
-                           focuser=TileFocuser(settings.focus), settings=settings, speech=speech, semantic=semantic).run())
+                           focuser=TileFocuser(settings.focus), settings=settings, speech=speech, semantic=semantic,
+                           recorder=recorder).run())
     except KeyboardInterrupt:
         pass

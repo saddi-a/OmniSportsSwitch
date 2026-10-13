@@ -26,6 +26,7 @@ def moves_main(sport: str | None) -> bool:
 class _Cue:
     at: float
     value: float
+    kind: str = "cue"   # what made it (for the learning data): a banner cue name, "spoken:<cue>", "note:<cue>", "surge_note", "crowd_note"
 
 
 class BuildUp:
@@ -38,10 +39,10 @@ class BuildUp:
         self._crowd_noted_at: dict[int, float] = {}
         self._blocked_logged_at: dict[int, float] = {}
 
-    def note(self, tab_id: int, now: float, value: float) -> None:
-        """A cue of this weight (before leverage) was seen on the stream."""
+    def note(self, tab_id: int, now: float, value: float, kind: str = "cue") -> None:
+        """A cue of this weight (before leverage) was seen on the stream. `kind` only labels it in the learning data."""
         if value > 0:
-            self._cues.setdefault(tab_id, []).append(_Cue(now, value))
+            self._cues.setdefault(tab_id, []).append(_Cue(now, value, kind))
 
     def remove(self, tab_id: int) -> None:
         self._cues.pop(tab_id, None)
@@ -56,6 +57,19 @@ class BuildUp:
         kept = [c for c in self._cues.get(tab_id, []) if 0 <= now - c.at < self.window_s]
         self._cues[tab_id] = kept
         return [(now - c.at, c.value * (1.0 - (now - c.at) / self.window_s)) for c in kept]
+
+    def cue_details(self, tab_id: int, now: float) -> list[tuple[float, float, str]]:
+        """Like `cues`, with the kind of each cue: (age, faded value, kind)."""
+        kept = [c for c in self._cues.get(tab_id, []) if 0 <= now - c.at < self.window_s]
+        self._cues[tab_id] = kept
+        return [(now - c.at, c.value * (1.0 - (now - c.at) / self.window_s), c.kind) for c in kept]
+
+    def state(self, tab_id: int, now: float) -> dict:
+        """Guard state for the learning data (read only): seconds of cooldown left after a build-up swap / surge note / crowd note, and the
+        consecutive loud-crowd readings so far."""
+        left = lambda at: round(max(0.0, self.cooldown_s - (now - at)), 1) if at != float("-inf") else 0.0
+        return {"cooldown_left": left(self._fired_at.get(tab_id, float("-inf"))), "surge_note_left": left(self._surge_noted_at.get(tab_id, float("-inf"))),
+                "crowd_note_left": left(self._crowd_noted_at.get(tab_id, float("-inf"))), "crowd_run": self._crowd_run.get(tab_id, 0)}
 
     def level(self, tab_id: int, now: float, support: float) -> float:
         """The faded sum of the cues of the window plus `support` (the stream's surge / crowd part of its score). Support alone is no

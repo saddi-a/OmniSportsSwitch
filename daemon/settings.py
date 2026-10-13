@@ -16,7 +16,7 @@ import tomllib
 
 from daemon import game_state
 from daemon.multiview import FocusConfig
-from daemon.scoring import Config
+from daemon.scoring import OVERRIDABLE_SCORING, SPORT_KEYS, Config, Weights
 
 SETTINGS_PATH = pathlib.Path(__file__).resolve().parent.parent / "settings.toml"
 log = logging.getLogger("daemon")
@@ -61,8 +61,12 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
         log.warning("settings: %s could not be read (%s); using defaults", path.name, e)
         return
 
-    _apply(scoring, data.get("scoring", {}), "scoring")
-    _apply(scoring.weights, data.get("weights", {}), "weights")
+    scoring_data, weights_data = data.get("scoring", {}), data.get("weights", {})
+    _apply(scoring, {k: v for k, v in scoring_data.items() if not isinstance(v, dict)}, "scoring")        # a table is a sport's overrides
+    _apply(scoring.weights, {k: v for k, v in weights_data.items() if not isinstance(v, dict)}, "weights")
+    _read_sport_overrides(scoring.sport_scoring, scoring_data, "scoring", {f.name for f in dataclasses.fields(Config)} - {"weights"},
+                          OVERRIDABLE_SCORING)
+    _read_sport_overrides(scoring.sport_weights, weights_data, "weights", {f.name for f in dataclasses.fields(Weights)}, None)
     _apply(focus, data.get("multiview", {}), "multiview")
 
     for name, values in data.get("sports", {}).items():
@@ -89,6 +93,31 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
     known_unknown = set(data) - {"scoring", "weights", "multiview", "sports", "banners"}
     for section in known_unknown:
         log.warning("settings: unknown section [%s] ignored", section)
+
+
+def _read_sport_overrides(store: dict, section_data: dict, section: str, names: set, allowed: frozenset | None) -> None:
+    """Per-sport overrides: `[scoring.football]`, `[weights."american football"]`... list only the values that differ from the shared
+    ones. `store` becomes {sport: {name: value}}. Same rules as the shared values (a number), plus: the sport must be football,
+    american football or basketball ("generic" means the shared values), and the name must be one a sport may override
+    (`scoring.OVERRIDABLE_SCORING`; every weight). Mistakes are ignored with a warning. They are read from the file only, never by the
+    popup, and `reset_all` leaves them alone."""
+    store.clear()
+    for table, values in section_data.items():
+        if not isinstance(values, dict):
+            continue
+        key = " ".join(str(table).lower().split())
+        if key not in SPORT_KEYS:
+            log.warning("settings: unknown sport [%s.%s] ignored (use football, american football or basketball; generic uses the shared values)", section, table)
+            continue
+        for name, value in values.items():
+            if name not in names:
+                log.warning("settings: unknown key [%s.%s] %s ignored", section, table, name)
+            elif allowed is not None and name not in allowed:
+                log.warning("settings: [%s.%s] %s cannot differ per sport (it is shared by all sports), ignored", section, table, name)
+            elif isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                log.warning("settings: [%s.%s] %s must be a number, ignored", section, table, name)
+            else:
+                store.setdefault(key, {})[name] = float(value)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -164,6 +193,11 @@ LAYOUT = [
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
         ("scoring.ad_penalty", "Ad penalty", "An ad in the picture scores minus this (music-only ads: half of it)."),
+    ]),
+    ("Logs and learning data", [
+        ("scoring.dataset_mode", "Record learning data (1 = on, 0 = off)", "1 = one row per stream every 2 s plus the events (swaps, goals, cues) are written to logs/dataset/ (local only, never committed) for later learning. 0 = nothing is written. Takes effect at once."),
+        ("scoring.log_archive_days", "Keep archived logs (days, 0 = forever)", "Rotated log files are compressed into logs/archive/ and kept this many days. The learning data in logs/dataset/ is never deleted."),
+        ("scoring.log_archive_max_mb", "Archive size cap (MB, 0 = no cap)", "If the archive grows beyond this, the oldest archived files are deleted first (even if younger than the days above)."),
     ]),
     ("Outside game data (measuring only)", [
         ("scoring.feed_mode", "Game data mode (0 = off, 1 = record)", "0 = local only: nothing is asked from the internet. 1 = record only: ESPN's public scoreboards are read and written to logs/feed, nothing else changes. Needs a daemon restart."),
