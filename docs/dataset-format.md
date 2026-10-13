@@ -122,8 +122,9 @@ the script at another `logs/`. Code: `daemon/espn_history.py` (fetch, parse), `d
   40.3 m of 68 m wide). No position: the wording ('from the centre of the box', 'very close range'; 'outside the box' = outside); neither: tier 3.
 * Alignment (`place_commentary`): `clock` = the game clock `time.value` against the rows' on-screen clock (not for first-half stoppage, ambiguous with the second
   half; refused when it disagrees with the wallclock estimate by > 120 s); `wc-lag` = the wallclock plus the game's `lag_wc_s` (median of picture time minus
-  commentary wallclock over the resolved feed goals paired with a commentary goal; in `games.jsonl` with `lag_wc_jitter_s`, `lag_wc_n`). The wallclock is when the
-  ESPN operator entered the event (a few seconds of noise). Unplaceable events are dropped and counted (`commentary_report`), they block no row.
+  commentary wallclock over the clock placements, at least 3, else over the resolved feed goals paired with a commentary goal; in `games.jsonl` with `lag_wc_jitter_s`,
+  `lag_wc_n`, `lag_wc_src`). Measured on 3 games, `wallclock - time.value` is constant within a period (spread <= 2 s): the wallclock follows the match clock, it is not the
+  operator's entry time. Unplaceable events are dropped and counted (`commentary_report`), they block no row.
 * No double count: a commentary event of the same game and family (goal, red card, penalty, yellow card) as a feed event is the same moment (one-to-one nearest raw
   time, feed 60 s before to 900 s after the commentary entry); the feed event stays (`also_commentary`; a non-goal feed event placed only by the weak lag takes the
   commentary picture time, `align_refined`). Other commentary events are added with `src` 'commentary' in `events.jsonl` (misses are counted apart in the summary).

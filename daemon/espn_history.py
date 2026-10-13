@@ -11,7 +11,8 @@ Sources
   * summary (`site.api.espn.com/.../summary?event=<id>`): `commentary` list. Complete for a finished game. Each play appears twice (a text line
     and the play itself, same `play.id`): one event per play id. Entries without a `play` (line-ups, notes) are not events. `play.wallclock`
     (UTC) is on about 95 % of entries; a missing one is estimated from the nearest entry of the same period with one (`wallclock_est`).
-    WALLCLOCK NOISE: it is stamped when ESPN's operator enters the event (a few seconds, sometimes more), not when it happened.
+    WALLCLOCK: measured on 3 finished games, `wallclock - time.value` is constant within a period (spread <= 2 s over 9-18 events per
+    period), so the wallclock follows the match clock and is not the operator's entry time; it is still ESPN's own time base, not the picture's.
     `time.value` (seconds of game time) is used for the game clock: in stoppage time it keeps counting while `play.clock` freezes.
   * core plays (`sports.core.api.espn.com/v2/sports/soccer/leagues/<league>/events/<id>/competitions/<id>/plays?limit=300&page=N`, about 5 pages
     of about 1350 plays, passes dominate). Used (a) to add details to commentary events by play id (`shot_info`, `target_zone`) and (b) for

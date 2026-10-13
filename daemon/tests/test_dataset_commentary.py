@@ -64,6 +64,23 @@ def test_wallclock_plus_lag_places_events_when_the_screen_clock_is_missing():
     assert save["align"] == "wc-lag" and abs(save["t"] - (T0 + 100)) < 1
 
 
+def test_lag_comes_from_the_clock_placements_and_places_events_the_screen_clock_cannot():
+    # the wallclock runs 20 s after the picture; three events inside the on-screen clock range fix that, one far outside it (clock 1500) uses it
+    coms = [com("save", 70, 650.0), com("save", 120, 700.0), com("corner", 170, 750.0), com("save", 920, 1500.0)]
+    r = build(coms)
+    by_clock = {round(e["t"] - T0): e["align"] for e in r["events"] if e["src"] == "commentary"}
+    assert by_clock == {50: "clock", 100: "clock", 150: "clock", 900: "wc-lag"}
+    g = next(x for x in r["games"] if x["game"] == "gA")
+    assert g["lag_wc_s"] == -20.0 and g["lag_wc_src"] == "clock-events" and g["lag_wc_n"] == 3
+
+
+def test_a_clock_placement_far_from_the_wallclock_estimate_is_refused():
+    coms = [com("save", 70, 650.0), com("save", 120, 700.0), com("corner", 170, 750.0), com("save", 920, 800.0)]   # the last: wallclock says T0+900, clock T0+200
+    r = build(coms)
+    assert r["commentary_report"]["clock-refused"] == 1
+    assert sorted(round(e["t"] - T0) for e in r["events"] if e["src"] == "commentary") == [50, 100, 150, 900]
+
+
 def test_no_clock_and_no_goal_leaves_the_commentary_event_unplaced_and_blocks_nothing():
     r = build([com("save", 130, 700.0)], clocks=False)
     assert r["commentary_events"] == [] and r["commentary_report"]["unplaced"] == 1

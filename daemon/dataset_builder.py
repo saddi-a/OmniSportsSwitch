@@ -24,8 +24,9 @@ Alignment of a feed event to the picture, in this order (each result records its
   `place_commentary` and added NEXT to the feed events (`src` 'commentary'): their picture time is, in order, `clock` (the commentary game
   clock `time.value` against the rows' on-screen clock; not for first-half stoppage, which is ambiguous with the second half, and refused if it
   disagrees with the wallclock estimate by more than `commentary_clock_check_s`), then `wc-lag` (the commentary WALLCLOCK plus the game's
-  `lag_wc_s` = median of picture time minus commentary wallclock over the feed goals already resolved and paired with a commentary goal;
-  the wallclock is stamped when the operator enters the event, so it carries a few seconds of noise). Otherwise the event is dropped
+  `lag_wc_s` = median of picture time minus commentary wallclock over the clock placements themselves (at least 3), else over the feed goals
+  already resolved and paired with a commentary goal; measured on 3 games the wallclock minus the game clock is constant within a period,
+  spread <= 2 s, so it is NOT the operator's entry time and carries little noise). Otherwise the event is dropped
   (counted, it blocks no row). A commentary event of the same game and family (goal, red card, penalty, yellow card) as a feed event is the
   SAME moment: one-to-one nearest match on raw time (the feed publishes after the operator enters it, up to minutes for cards); the feed
   event stays (no double count) and, when it was placed only by the weak `lag`, takes the commentary picture time.
@@ -368,16 +369,24 @@ def place_commentary(com: list[dict], fev: list[dict], rows: list[dict], games: 
     for g, evs in by_game.items():
         info = games.setdefault(g, {"lag_s": None, "lag_jitter_s": None, "lag_n": 0, "lag_src": None})
         feeds = [e for e in fev if e["game"] == g]
-        goals = [(f, c) for f, c in _pair_nearest([f for f in feeds if f["goal"] and f.get("align") in ("clock", "score") and f.get("pt") is not None],
-                                                   [c for c in evs if c["family"] == "goal"], p)]
-        lags = [f["pt"] - c["t"] for f, c in goals]
-        lag_wc = statistics.median(lags) if lags else None
-        info.update(lag_wc_s=lag_wc, lag_wc_jitter_s=_mad(lags) if len(lags) > 1 else None, lag_wc_n=len(lags))
         samples = clock_samples(by_game_rows.get(g, []))
-        for e in evs:
-            clock_hit = None
+        hits = {}
+        for i, e in enumerate(evs):
             if samples and e.get("clock_s") is not None and not (e.get("period") == 1 and e["clock_s"] > 2700.0):
-                clock_hit = picture_time_from_clock(samples, float(e["clock_s"]), p)
+                hit = picture_time_from_clock(samples, float(e["clock_s"]), p)
+                if hit:
+                    hits[i] = hit
+        # picture time minus commentary wallclock: first from the clock placements themselves (the wallclock follows the match clock, constant within a
+        # period; their median is robust to a wrong one), else from the feed goals already resolved and paired with a commentary goal
+        lags, lag_src = [hits[i][0] - evs[i]["t"] for i in hits], "clock-events"
+        if len(lags) < 3:
+            pairs = _pair_nearest([f for f in feeds if f["goal"] and f.get("align") in ("clock", "score") and f.get("pt") is not None],
+                                  [c for c in evs if c["family"] == "goal"], p)
+            lags, lag_src = [f["pt"] - c["t"] for f, c in pairs], "goals"
+        lag_wc = statistics.median(lags) if lags else None
+        info.update(lag_wc_s=lag_wc, lag_wc_jitter_s=_mad(lags) if len(lags) > 1 else None, lag_wc_n=len(lags), lag_wc_src=lag_src if lags else None)
+        for i, e in enumerate(evs):
+            clock_hit = hits.get(i)
             wc_pt = e["t"] + lag_wc if lag_wc is not None else None
             if clock_hit and (wc_pt is None or abs(clock_hit[0] - wc_pt) <= p.commentary_clock_check_s):
                 e["pt"], e["align"], e["pt_jitter"] = clock_hit[0], "clock", clock_hit[1]
