@@ -31,7 +31,7 @@ _RED_CARD_RE = re.compile(r"red card|carton rouge|sent off|sending off|dismissed
 
 
 SPEECH_SCORING = {"free kick": "free_kick", "chance": "chance", "post": "chance", "penalty": "chance", "goal": "chance",
-                  "penalty awarded": "penalty_awarded"}   # spoken cues that feed the score (soccer)
+                  "penalty awarded": "penalty_awarded", "post area": "mid"}   # spoken cues that feed the score (soccer)
 
 
 def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> float | None:
@@ -42,6 +42,8 @@ def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> fl
         return None
     if kind == "penalty_awarded":   # a penalty given is the strongest build-up sign in football: as much as a review of a possible goal
         return weights.cue_review_top * factor
+    if kind == "mid":   # a cross is coming to the near/far post: between a corner and a chance
+        return weights.cue_review_mid * factor
     return (weights.cue_free_kick if kind == "free_kick" else weights.cue_chance) * factor
 
 

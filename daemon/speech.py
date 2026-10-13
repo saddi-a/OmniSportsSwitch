@@ -44,11 +44,18 @@ CUES = {
              r"prend les devants", r"ouvre la marque", r"double la mise", r"inscrit son \d+\s?(e|è|ème|eme|er)? but", r"revient au score", r"met le deuxi[eè]me",
              r"porte le score [àa]", r"what a goal", r"\bhe scores\b", r"\btakes the lead\b(?! pass)", r"\bdoubles (the|their) lead\b", r"\bpull(s|ed)? one back\b",
              r"\bgo{3,}l\b", r"\bgolazo\b", r"\bgo{2,}l[oa]\b"],   # plain "goal" is too common (first and goal)
-    "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b", r"\bpoteaux?\b", r"\bla barre\b", r"\btransversale\b"],
+    # the ball hits the woodwork. "premier/second poteau" is a position (a cross, marking): its own cue below. "sous la barre" is a goal already scored.
+    "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b",
+             r"(?<!premier )(?<!second )(?<!seconde )(?<!deuxième )(?<!deuxieme )(?<!1er )(?<!1ère )(?<!2e )(?<!2ème )\bpoteaux?\b(?! (sortant|rentrant))",
+             r"(?<!sous )\bla barre\b", r"\btransversale\b"],
+    # near/far post: a cross or a delivery is coming to that spot (about 35 of 41 `post` hits on 2924 football transcripts, 2026-10-13); a medium cue
+    "post area": [r"\b(premier|second|seconde|deuxième|deuxieme|1er|1ère|2e|2ème)\s+poteaux?\b", r"\bpoteaux?\s+(sortant|rentrant)\b", r"\b(near|far|back) post\b"],
     "chance": [r"what a (big )?chance", r"big chance", r"so close", r"just wide", r"just over", r"just past", r"(great|what a|brilliant) save",
                r"quelle occasion", r"(belle|grosse) occasion", r"juste à côté", r"juste au-dessus", r"(quel|bel) arrêt", r"(belle|superbe) parade",
                # a shot and a save (heard 2026-10-12: "prépare sa frappe, c'est capté en deux temps" matched nothing)
-               r"c'est capté", r"capté en deux temps", r"\brepouss(e|é|ée|ent)\b", r"\bdétourne\b", r"arrêt du gardien", r"le gardien (repousse|capte|détourne|s'interpose|boxe)",
+               # a catch or a clearance alone is routine (a keeper takes a cross, a defender clears): only after a shot word in the same clause
+               # (4 of 5 "c'est capté" and most of 13 "repoussé" in 2924 transcripts were not shots, 2026-10-13)
+               r"capté en deux temps", r"\b(frappe|tir|reprise|volée)\b[^.!?;:\n]{0,40}\b(capté|repouss(e|é|ée|ées|és|ent))\b", r"\bdétourne\b", r"arrêt du gardien", r"le gardien (repousse|capte|détourne|s'interpose|boxe)",
                r"frappe (cadrée|puissante|lourde)", r"tir cadré", r"saved by", r"denied by", r"shot on target",
                # "tries his luck / has a go" (heard 2026-10-12 one second before a goal: "va tenter sa chance !"); bare "shoots" is left out
                r"\bten(te|ter|tent|tera)\s+(sa|leur)\s+chance\b", r"\btries (his|her|their) luck\b", r"\bhas a go\b", r"\btakes a shot\b",
@@ -82,6 +89,7 @@ CUE_SPORTS = {
     "foul": None,                               # soccer, basketball, American football all have fouls (cues.py: mid tier)
     "goal": frozenset({_SOCCER}),               # goal calls ("he scores", "takes the lead") are soccer-scored only
     "post": frozenset({_SOCCER}),               # "the post" / "la barre" in basketball is a position or a bar
+    "post area": frozenset({_SOCCER}),          # near/far post: a cross is coming
     "chance": frozenset({_SOCCER}),
     "free throw": frozenset({_BASKETBALL}),
     "timeout": None,                            # every sport with timeouts
@@ -91,7 +99,7 @@ _COMPILED = {cue: [re.compile(p, re.IGNORECASE) for p in patterns] for cue, patt
 
 # Recap / negation filter for the soccer cues that feed scoring ("il n'y a pas de faute", "un penalty obtenu", "ce qui amène ce penalty" are not
 # a build-up). Applied per MATCH, on soccer streams only; review, replay, var and the American football cues are never filtered.
-FILTERED_CUES = frozenset({"penalty", "penalty awarded", "foul", "offside", "chance", "post", "goal", "free kick", "card", "corner"})
+FILTERED_CUES = frozenset({"penalty", "penalty awarded", "foul", "offside", "chance", "post", "post area", "goal", "free kick", "card", "corner"})
 _BEFORE_WORDS, _BEFORE_CHARS = 4, 30      # only the last few words of the same clause BEFORE the match count (text after the match never does)
 _AFTER_CHARS = 28
 # words just before a cue that make it a negation, a hypothetical or a recap (French and English)

@@ -283,3 +283,14 @@ def test_tracker_note_weight_corner_only_in_football():
 def test_corner_never_feeds_the_score():
     from daemon.cues import speech_cue_weight
     assert speech_cue_weight("corner", "football", Weights(), 0.7) is None
+
+
+def test_post_area_is_a_medium_cue_that_feeds_the_score_in_football():
+    from daemon.cues import speech_cue_weight, tracker_note_weight
+    w = Weights()
+    assert speech_cue_weight("post area", "football", w, 1.0) == pytest.approx(w.cue_review_mid)
+    assert speech_cue_weight("post area", "football", w, 0.7) == pytest.approx(w.cue_review_mid * 0.7)
+    assert w.cue_minor < w.cue_review_mid < w.cue_chance      # between a corner and a chance
+    assert speech_cue_weight("post area", "american football", w, 1.0) is None
+    assert speech_cue_weight("post area", "football", w, 0) is None
+    assert tracker_note_weight("post area", "football", w, 1.0) is None
