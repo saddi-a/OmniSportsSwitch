@@ -1171,3 +1171,49 @@ def test_a_scorebug_with_other_team_codes_is_not_this_game_even_if_its_clock_fit
         assert g.update(t + 3 * i, [c, "SLA", "0", "0", "LEN"], [c]) == "break", i
     c = _clk(48 * 60)    # the real game's scorebug again (same codes), clock plausible
     assert g.update(t + 60, [c, "ATM", "2", "0", "MUN"], [c]) == "live"
+
+
+# ---- ATM-MUN 2026-10-13 22:35:45 (daemon.log): the reading ['75:21', '89:53', '89:95'] (the first is the game clock, the others are read
+# from an advertising board) made 90 min the 'last real clock', so the real clock (76:47 ...) was an odd one and the tracker said break
+# for 2 minutes while the game ran; a goal at 22:38:58 was ignored ('the game is break'). ----
+
+def _atm_feed(g, start_s, clock_s, seconds, extra=None):
+    t = 0.0
+    while t < seconds:
+        s = clock_s + t
+        c = f"{int(s) // 60}:{int(s) % 60:02d}"
+        clocks = [c] + (extra if extra and t == 0 else [])
+        g.update(start_s + t, [c, "ATM", "1 0", "MUN", "#LIVE 3"], clocks)
+        t += 3
+    return start_s + seconds
+
+
+def test_extra_clock_like_items_in_one_reading_do_not_become_the_last_real_clock():
+    g = GameTracker("football")
+    t = _atm_feed(g, 0.0, 75 * 60, 18)
+    t = _atm_feed(g, t, 75 * 60 + 21, 3, extra=["89:53", "89:95"])         # the poisoned reading
+    assert g._real_clock[0] < 76 * 60
+    t = _atm_feed(g, t, 75 * 60 + 24, 60)
+    assert g.state == "live"
+
+
+def test_the_scorebug_hidden_for_90_s_and_back_with_a_running_clock_is_live_again():
+    g = GameTracker("football")
+    t = _atm_feed(g, 0.0, 74 * 60, 15)
+    t = _atm_feed(g, t, 74 * 60 + 15, 3, extra=["89:53", "89:95"])
+    for i in range(30):                                                      # scorebug hidden: 90 s
+        g.update(t + 3 * i, ["#LIVE 3"], [])
+    t += 90
+    state = None
+    for i in range(10):
+        s = 77 * 60 + 7 + 3 * i
+        c = f"{s // 60}:{s % 60:02d}"
+        state = g.update(t + 3 * i, [c, "ATM", "1 0", "MUN", "#LIVE 3"], [c])
+    assert state == "live"
+
+
+def test_an_impossible_seconds_value_is_not_a_clock():
+    g = GameTracker("football")
+    _atm_feed(g, 0.0, 75 * 60, 9)
+    g.update(10.0, ["75:30", "ATM", "1 0", "MUN"], ["75:30", "89:95"])
+    assert g._real_clock[0] == 75 * 60 + 30
