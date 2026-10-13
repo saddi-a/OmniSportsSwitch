@@ -262,11 +262,11 @@ Stage 2 (per-tile slots):
 
 ## 5. Work split into agent-sized tasks
 
-* T1 (S) Tile sport source of truth. Add `Server.tile_sport` / `tile_sports(tab)`; use it for `ScoreWatcher`, `tab_leverage`,
+* T1 (S) DONE 2026-10-13 (branch `per-tile-1`). Tile sport source of truth. Add `Server.tile_sport` / `tile_sports(tab)`; use it for `ScoreWatcher`, `tab_leverage`,
   recorder and `_tab_sport`'s fallback; add `sport_choice_seen`/`replay_signal` etc. to `_expand_swap`. Acceptance: tests 1, 6 pass;
   the full suite passes (815 + new, one expected UCF failure); no behaviour change for tabs whose hard detection already gave the
   sport; PLAN section 0 notes the one intended change.
-* T2 (S) Audible-tile sport and switch reset (Design C core). `Server.audible_sport(tab)`, `Scorer.sport_of` and `_speech_loop`
+* T2 (S) DONE 2026-10-13 (branch `per-tile-1`). Audible-tile sport and switch reset (Design C core). `Server.audible_sport(tab)`, `Scorer.sport_of` and `_speech_loop`
   use it; on an audible change clear `speech_buffers`, `buffers`, mark `tags` stale. Acceptance: tests 2, 3, 4, 5 pass; golden
   single-tile sequence identical; a log line "audible tile tab T: tile A -> B (sport X -> Y)" at each change.
   Stage 1 ends here (T1 + T2); deliverable live.

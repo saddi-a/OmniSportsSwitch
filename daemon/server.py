@@ -135,6 +135,7 @@ class Server:
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
         self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
         self.tags: dict[int, np.ndarray] = {}     # tab id -> latest classifier probabilities
+        self.audible_seen: dict[int, tuple[int, str | None]] = {}   # multiview tab id -> (tile that has the sound, its sport) at the last report
 
     def handle_message(self, msg: dict) -> None:
         kind = msg.get("type")
@@ -168,7 +169,9 @@ class Server:
             self.buffers.pop(msg["tab_id"], None)
             self.speech_buffers.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
-            for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen):
+            self.audible_seen.pop(msg["tab_id"], None)
+            for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen,
+                          self.sport_choice_seen, self.held_change, self.fed):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
@@ -200,6 +203,7 @@ class Server:
             if isinstance(msg.get("info"), dict):
                 self._page_info(tab_id, msg["info"])
             self._check_expand(tab_id, info)
+            self._note_audible(tab_id, info)
         elif kind == "set_weight":
             self.scorer.set_weight(msg["tab_id"], float(msg["weight"]))
         elif kind == "freeze":
@@ -564,10 +568,68 @@ class Server:
             log.info("page info tab %s: title=%r media=%r texts=%r", tab_id, str(info.get("title") or "")[:80], media, (info.get("texts") or [])[:12])
             self.feed_map.set_text(tab_id, self._feed_text(tab_id))
 
-    def _tab_sport(self, tab_id: int) -> str | None:
-        """The sport of a tab, lowercase: the popup choice, else the first one detected on any of its tiles."""
-        sport = self.sports.get(tab_id) or next((s for (t, _), s in self.sport_seen.items() if t == tab_id and s), None)
+    def tile_sport(self, tab_id: int, index: int) -> str | None:
+        """THE sport of one tile, lowercase: the popup choice of its tab, else the best one the daemon knows for this tile (the full
+        `choose_sport` order, stored by `_update_game_states`), else the plain scorebug detection. None when nothing is known."""
+        sport = self.sports.get(tab_id)
+        if not sport:
+            choice = self.sport_choice_seen.get((tab_id, index))
+            sport = (choice[0] if choice else None) or self.sport_seen.get((tab_id, index))
         return sport.lower() if sport else None
+
+    def _audible_index(self, tab_id: int) -> int | None:
+        """The tile that has the sound: the only tile of a one-video tab, else the first one the extension reports as audible."""
+        rects = (self.rects.get(tab_id) or {}).get("rects") or []
+        if len(rects) == 1:
+            return rects[0].get("index", 0)
+        return next((r.get("index", pos) for pos, r in enumerate(rects) if r.get("audible")), None)
+
+    def audible_sport(self, tab_id: int) -> str | None:
+        """The sport of a tab as the audio and the scorer must read it, lowercase: the popup choice, else the sport of the tile that has the
+        sound. In a multiview (2+ videos) an audible tile of unknown sport counts as football. With no audible tile known (or one video of
+        unknown sport) the first sport known on any tile of the tab, as before."""
+        sport = self.sports.get(tab_id)
+        if sport:
+            return sport.lower()
+        index = self._audible_index(tab_id)
+        if index is not None:
+            sport = self.tile_sport(tab_id, index)
+            if sport:
+                return sport
+            if len((self.rects.get(tab_id) or {}).get("rects") or []) >= 2:
+                return "football"
+        for store in (self.sport_choice_seen, self.sport_seen):
+            for (t, i), value in store.items():
+                found = value[0] if isinstance(value, tuple) else value
+                if t == tab_id and found:
+                    return found.lower()
+        return None
+
+    def _tab_sport(self, tab_id: int) -> str | None:
+        """The sport of a tab, lowercase (what the Scorer, the speech loop and the build-up tracker use): that of the audible tile."""
+        return self.audible_sport(tab_id)
+
+    def _note_audible(self, tab_id: int, info: dict) -> None:
+        """Multiview: when the sound moves to another tile, drop the audio of the old one (it is another commentary, another crowd) and say so."""
+        rects = info.get("rects") or []
+        if len(rects) < 2:
+            self.audible_seen.pop(tab_id, None)
+            return
+        index = self._audible_index(tab_id)
+        if index is None:
+            return
+        sport = self.audible_sport(tab_id)
+        old = self.audible_seen.get(tab_id)
+        self.audible_seen[tab_id] = (index, sport)
+        if old is None or old[0] == index:
+            return
+        log.info("audible tile tab %s: tile %s -> %s (sport %s -> %s)", tab_id, old[0], index, old[1] or "unknown", sport or "unknown")
+        self.speech_buffers.pop(tab_id, None)
+        self.buffers.pop(tab_id, None)
+        self.tags.pop(tab_id, None)
+        stream = self.scorer.streams.get(tab_id)
+        if stream is not None:
+            stream.tags_at = float("-inf")   # the crowd / speech / music tags belong to the old tile: stale until the next classification
 
     def _ocr_pass(self, jobs: list[tuple[int, int, dict]]) -> dict:
         """Runs in a worker thread: screenshot each video area and read its text."""
@@ -717,7 +779,7 @@ class Server:
                 self.rule_seen[(tab_id, index)] = (rule, now)
             watcher = self.watchers.setdefault((tab_id, index), ScoreWatcher(self.scorer.config))
             changed = watcher.update(r["texts"], r["clocks"], now, r.get("items"), replay=tracker.replay,
-                                     sport=self.sports.get(tab_id) or self.sport_seen.get((tab_id, index)))
+                                     sport=self.tile_sport(tab_id, index))
             for line in self.feed_map.observe(tab_id, index, r["texts"], watcher.score, r["clocks"]):
                 log.info("%s", line)
             mapped = self.feed_map.mapping(tab_id, index)
@@ -782,8 +844,7 @@ class Server:
                 if t != tab_id:
                     continue
                 tracker = self.trackers.get((t, index))
-                sport = self.sports.get(t) or self.sport_seen.get((t, index))
-                tiles.append((sport, watcher.score, tracker.period if tracker else None,
+                tiles.append((self.tile_sport(t, index), watcher.score, tracker.period if tracker else None,
                               tracker.clock_minute if tracker else None))
             self.scorer.set_leverage(tab_id, tab_leverage(tiles, self.scorer.config))
 
@@ -844,13 +905,24 @@ class Server:
         main = areas[0][1]
         if target == main:
             return
-        for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen):
+        for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen, self.sport_choice_seen,
+                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen):
             a, b = (tab_id, target), (tab_id, main)
             moved_a, moved_b = store.pop(a, None), store.pop(b, None)
             if moved_b is not None:
                 store[a] = moved_b
             if moved_a is not None:
                 store[b] = moved_a
+        for kind in ("bug", "clock"):   # replay_signal keys carry a third part
+            a, b = (tab_id, target, kind), (tab_id, main, kind)
+            moved_a, moved_b = self.replay_signal.pop(a, None), self.replay_signal.pop(b, None)
+            if moved_b is not None:
+                self.replay_signal[a] = moved_b
+            if moved_a is not None:
+                self.replay_signal[b] = moved_a
+        seen = self.audible_seen.get(tab_id)
+        if seen is not None and seen[0] in (target, main):   # the stream that had the sound moved with its record
+            self.audible_seen[tab_id] = (main if seen[0] == target else target, seen[1])
 
     async def _broadcast(self, obj: dict) -> None:
         text = json.dumps(obj)

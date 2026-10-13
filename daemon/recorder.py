@@ -170,7 +170,7 @@ def _tile_rows(server, tab_id: int, now: float) -> list[dict]:
         clocks = (server.ocr.get(key) or {}).get("clocks") or []
         tiles.append({
             "i": index,
-            "sport": (choice[0] if choice else None) or (tracker.sport if tracker and tracker.sport else None),
+            "sport": (choice[0] if choice else None) or server.tile_sport(tab_id, index),
             "sport_src": choice[1] if choice else None,
             "state": tracker.state if tracker else None,
             "ad": bool(tracker.on_ad) if tracker else None,
