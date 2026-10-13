@@ -103,3 +103,4 @@ writes only into `--out` (default `logs/dataset_built/`, gitignored): `rows.json
   count "swap made >= 12 s ahead and within 30 s before the goal" (`status` ahead) is a second line. Event `status`: main, ahead, covered, miss-late, miss-after, miss,
   user-main, unjudged, no-rows. User-marked missed chances (`src` "user") are tier-2 events and can be misses.
 * Split: `split_by_game` (`--holdout`), never by row.
+* `rows.jsonl` also carries `event`, `cue_part`, `cue_fade` (added 2026-10-13 for `director_training`, which fits the weights on the score components; older files read them as 0). `build()` returns a `context` (tab events, cues, lags) so another swap sequence can be judged with the same code (`director_training/evaluate.py`).

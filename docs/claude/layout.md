@@ -6,6 +6,7 @@
 - `extension/` Edge Manifest V3 extension, plain JS, no build step (`extension/CLAUDE.md`).
 - `launcher/` tray launcher (`launcher.py`), built into `dist/OmniSportsSwitch.exe` by `scripts/build_launcher.ps1` (build tools in `requirements-build.txt`); it starts this project's `.venv` daemon and the test Edge profile.
 - `scripts/` PowerShell: `setup.ps1` (one-time install: venv, CUDA PyTorch, packages, models, tests), `start_all.ps1 -NoEdge`, `stop_all.ps1 -Edge`, `start_daemon.ps1`, `start_test_edge.ps1`, `build_launcher.ps1`. Python: `backtest.py`, `replay_logs.py`, `review_swaps.py` (swap review), `build_dataset.py`, `feed_compare.py`, `analyze_audio_lead.py`, `capture_samples.py` (screenshots to `samples/`). The offline tools are read-only on `logs/`.
+- `director_training/` OFFLINE package (never imported by the daemon; test-enforced) for Director Training: `runs.py` run folders + experiment log, `features.py`, `fit.py`, `evaluate.py` (shadow replay), `ship.py`, `cli.py`; command `scripts/director_training.py` (`build fit evaluate ship status`); runs in `logs/director_training/`. Details: `director_training/README.md`. Tests in `director_training/tests/`.
 - `docs/` `learning-plan.md`, `dataset-format.md`, `per-tile-sport.md`, `api-plan.md`; `docs/claude/` the detail files for this guide.
 
 ## Not tracked
