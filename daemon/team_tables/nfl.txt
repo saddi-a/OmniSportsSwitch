@@ -1,0 +1,45 @@
+# NFL.
+# Team-name table, one file per sport (daemon/team_tables/football.txt, nfl.txt, cfb.txt; a new sport = a new file).
+# Loader and rules: daemon/team_names.py (read its docstring). Line format:
+#   ESPN abbreviation | ESPN displayName | alias, alias, doubtful?, ...      ('x?' = doubtful, never used)
+# [ambiguous <group>] lines: CODE | club; club   = a CANDIDATE token: it can mean any of these clubs (clubs are matched by
+# the start of their displayName) and never locks a game alone. 2-letter ESPN codes and aliases are candidates too.
+
+[nfl]
+ARI | Arizona Cardinals | CARDINALS, ARIZONA, ARZ, CARDS
+ATL | Atlanta Falcons | FALCONS, ATLANTA
+BAL | Baltimore Ravens | RAVENS, BALTIMORE, BALT?
+BUF | Buffalo Bills | BILLS, BUFFALO
+CAR | Carolina Panthers | PANTHERS, CAROLINA
+CHI | Chicago Bears | BEARS, CHICAGO
+CIN | Cincinnati Bengals | BENGALS, CINCINNATI
+CLE | Cleveland Browns | BROWNS, CLEVELAND
+DAL | Dallas Cowboys | COWBOYS, DALLAS
+DEN | Denver Broncos | BRONCOS, DENVER
+DET | Detroit Lions | LIONS, DETROIT
+GB | Green Bay Packers | PACKERS, GREEN BAY, GBP?, GNB?
+HOU | Houston Texans | TEXANS, HOUSTON
+IND | Indianapolis Colts | COLTS, INDIANAPOLIS, INDY?
+JAX | Jacksonville Jaguars | JAGUARS, JACKSONVILLE, JAC, JAGS
+KC | Kansas City Chiefs | CHIEFS, KANSAS CITY, KAN?, KCC?
+LV | Las Vegas Raiders | RAIDERS, LAS VEGAS, LVR, VEGAS
+LAC | Los Angeles Chargers | CHARGERS, LA CHARGERS
+LAR | Los Angeles Rams | RAMS, LA RAMS
+MIA | Miami Dolphins | DOLPHINS, MIAMI, FINS?
+MIN | Minnesota Vikings | VIKINGS, MINNESOTA
+NE | New England Patriots | PATRIOTS, NEW ENGLAND, PATS, NWE?
+NO | New Orleans Saints | SAINTS, NEW ORLEANS, NOR?
+NYG | New York Giants | GIANTS, NY GIANTS, N.Y. GIANTS
+NYJ | New York Jets | JETS, NY JETS, N.Y. JETS
+PHI | Philadelphia Eagles | EAGLES, PHILADELPHIA, PHILLY
+PIT | Pittsburgh Steelers | STEELERS, PITTSBURGH
+SF | San Francisco 49ers | 49ERS, SAN FRANCISCO, NINERS, SFO?
+SEA | Seattle Seahawks | SEAHAWKS, SEATTLE
+TB | Tampa Bay Buccaneers | BUCCANEERS, TAMPA BAY, BUCS, TAM?
+TEN | Tennessee Titans | TITANS, TENNESSEE
+WSH | Washington Commanders | COMMANDERS, WASHINGTON, WAS
+
+[ambiguous nfl]
+LA | Los Angeles Chargers; Los Angeles Rams
+LOS ANGELES | Los Angeles Chargers; Los Angeles Rams
+NEW YORK | New York Giants; New York Jets
