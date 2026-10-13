@@ -38,6 +38,8 @@ OVERRIDABLE_SCORING = frozenset({
     "goal_hold_break",                                                               # ...and what breaks it: the challenger's sport
     "buildup_mode", "buildup_live", "buildup_window_s", "buildup_min", "buildup_cooldown_s", "buildup_surge_min",
     "buildup_surge_note", "buildup_gap", "buildup_crowd_min", "buildup_crowd_note",
+    "buildup_hold_s", "buildup_hold_cue_min", "buildup_hold_margin",                 # MAIN keeps its seat after its own cue / review
+    "buildup_review_hold_s", "buildup_review_min", "buildup_review_margin",
 })
 
 
@@ -156,6 +158,12 @@ class Config:
     goal_hold_extend_s: float = 10.0   # ...and longer while a replay sign (replay over the scorebug, hidden scorebug, replay by clock, spoken replay) is seen: until its time + this...
     goal_hold_max_s: float = 75.0   # ...but never longer than this after the goal
     goal_hold_break: float = 0.8    # a challenger scoring at least this (a goal or a very big moment) still takes MAIN during the hold
+    buildup_hold_s: float = 25.0    # MAIN keeps its place this long after ITS OWN spoken/banner cue (chance, free kick, post area, penalty...; 0 = off): a challenger needs...
+    buildup_hold_cue_min: float = 0.15   # ...(a cue counts for the hold when its weight is at least this: surge/crowd/set-piece notes are 0.10, spoken cues 0.20-0.25)...
+    buildup_hold_margin: float = 0.20    # ...a build-up level this far above MAIN's own build-up level (instead of buildup_gap)
+    buildup_review_hold_s: float = 60.0  # a review (VAR check, penalty awarded: a cue of weight >= buildup_review_min) on MAIN holds it this long (never longer than buildup_window_s; 0 = off)...
+    buildup_review_min: float = 0.40     # ...(see above)
+    buildup_review_margin: float = 0.35  # ...and the challenger needs this much above MAIN's build-up level (a goal on the challenger is the normal swap rule, not held)
     buildup_crowd_note: float = 0.10   # ...notes a pseudo-cue of this value into the tracker, at most once per buildup_cooldown_s (never a score)
 
     def __post_init__(self):

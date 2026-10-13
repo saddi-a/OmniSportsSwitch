@@ -124,3 +124,74 @@ def test_blocked_log_is_due_once_per_ten_seconds_per_stream():
     assert not b.blocked_log_due(1, 9.0)
     assert b.blocked_log_due(2, 9.0)
     assert b.blocked_log_due(1, 10.0)
+
+
+# ---- Main keeps its seat (2026-10-13): Main's own fresh cue / review holds it against a challenger ----
+from daemon.scoring import Config
+
+
+def _cfg(**kw):
+    return Config(**kw)
+
+
+def test_would_take_compares_with_the_larger_of_main_score_and_main_level():
+    b = BuildUp(window_s=60.0)
+    b.note(1, 0.0, 0.30)
+    assert b.would_take(1, 0.0, 0.10, main_score=0.09, min_level=0.32, min_gap=0.10, start_cooldown=False) == pytest.approx(0.40)
+    # Main's own build-up level 0.35 is the bar, not its plain score 0.09
+    assert b.would_take(1, 0.0, 0.10, main_score=0.09, min_level=0.32, min_gap=0.10, start_cooldown=False, main_level=0.35) is None
+    assert b.would_take(1, 0.0, 0.10, main_score=0.09, min_level=0.32, min_gap=0.10, start_cooldown=False, main_level=0.25) == pytest.approx(0.40)
+
+
+def test_main_hold_after_main_own_spoken_cue():
+    b = BuildUp(window_s=60.0)
+    b.note(1, 0.0, 0.25, "spoken:chance")           # Main's chance cue
+    cfg = _cfg()
+    # 17 s later a challenger with 0.397 vs Main's level 0.26: gap 0.137 is not enough while the cue is fresh
+    assert b.main_hold(1, 2, 17.0, 0.397, 0.26, cfg) is not None
+    assert "17" in b.main_hold(1, 2, 17.0, 0.397, 0.26, cfg)
+    # a clearly higher level takes it
+    assert b.main_hold(1, 2, 17.0, 0.50, 0.26, cfg) is None
+    # after the hold (25 s) the cue no longer protects
+    assert b.main_hold(1, 2, 26.0, 0.397, 0.26, cfg) is None
+
+
+def test_main_hold_ignores_small_notes_and_can_be_switched_off():
+    b = BuildUp(window_s=60.0)
+    b.note(1, 0.0, 0.10, "surge_note")
+    b.note(1, 0.0, 0.10, "note:corner")
+    assert b.main_hold(1, 2, 5.0, 0.36, 0.12, _cfg()) is None     # only minor notes: no hold
+    b.note(1, 0.0, 0.25, "spoken:chance")
+    assert b.main_hold(1, 2, 5.0, 0.36, 0.2, _cfg(buildup_hold_s=0.0)) is None
+
+
+def test_main_hold_review_holds_longer_with_a_higher_margin():
+    b = BuildUp(window_s=60.0)
+    b.note(1, 0.0, 0.50, "review")                  # VAR check on Main
+    cfg = _cfg()
+    assert b.main_hold(1, 2, 28.0, 0.35, 0.29, cfg) is not None     # 28 s: cue hold (25 s) is over, the review hold is not
+    assert "review" in b.main_hold(1, 2, 28.0, 0.35, 0.29, cfg)
+    assert b.main_hold(1, 2, 28.0, 0.60, 0.29, cfg) is not None     # +0.31 is still below the review margin 0.35
+    assert b.main_hold(1, 2, 28.0, 0.70, 0.29, cfg) is None
+    assert b.main_hold(1, 2, 61.0, 0.35, 0.05, cfg) is None         # review hold over (60 s = the window)
+
+
+def test_challenger_with_its_own_fresh_review_cue_takes_a_main_with_only_a_chance():
+    b = BuildUp(window_s=60.0)
+    b.note(1, 0.0, 0.25, "spoken:chance")           # Main: chance 9 s ago
+    b.note(2, 1.0, 0.50, "review")                  # challenger: VAR check
+    assert b.main_hold(1, 2, 9.0, 0.44, 0.32, _cfg()) is None
+    # ...but not a Main that is itself under review
+    b.note(1, 5.0, 0.50, "review")
+    assert b.main_hold(1, 2, 9.0, 0.44, 0.32, _cfg()) is not None
+
+
+def test_main_hold_without_cues_is_none():
+    assert BuildUp().main_hold(1, 2, 10.0, 0.4, 0.0, _cfg()) is None
+    assert BuildUp().main_hold(None, 2, 10.0, 0.4, 0.0, _cfg()) is None
+
+
+def test_hold_settings_are_per_sport_overridable_and_in_the_layout():
+    from daemon.scoring import OVERRIDABLE_SCORING
+    for k in ("buildup_hold_s", "buildup_hold_cue_min", "buildup_hold_margin", "buildup_review_hold_s", "buildup_review_min", "buildup_review_margin"):
+        assert k in OVERRIDABLE_SCORING

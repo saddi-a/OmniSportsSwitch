@@ -218,6 +218,12 @@ LAYOUT = [
         ("scoring.goal_hold_extend_s", "Goal hold: extend after a replay sign (s)", "Each replay sign seen during the hold (replay over the scorebug, hidden scorebug, replay by clock, the commentator saying replay) keeps the hold until its time plus this."),
         ("scoring.goal_hold_max_s", "Goal hold: longest (s)", "The hold never lasts longer than this after the goal."),
         ("scoring.goal_hold_break", "Goal hold: score that breaks it", "A challenger scoring at least this (a goal or a very big moment) still takes Main during the hold."),
+        ("scoring.buildup_hold_s", "Main keeps its seat after its own cue (s, 0 = off)", "Football: for this long after a spoken or banner cue on Main (chance, free kick, post area, penalty...), a challenger needs a build-up level `buildup_hold_margin` above Main's own build-up level to take Main."),
+        ("scoring.buildup_hold_cue_min", "Main's seat: smallest cue that counts", "Cues lighter than this (loudness, crowd and set-piece notes, 0.10) do not hold Main; spoken chances and free kicks (0.20 to 0.25) do."),
+        ("scoring.buildup_hold_margin", "Main's seat: margin a challenger needs", "How far above Main's own build-up level a challenger must be while Main's own cue is fresh."),
+        ("scoring.buildup_review_hold_s", "Main stays during a review (s, 0 = off)", "A review cue on Main (VAR check, penalty awarded, weight at least `buildup_review_min`) holds Main this long (at most the build-up window), so the decision can be seen."),
+        ("scoring.buildup_review_min", "Review hold: smallest cue weight", "A cue at least this heavy on Main counts as a review for the longer hold."),
+        ("scoring.buildup_review_margin", "Review hold: margin a challenger needs", "How far above Main's own build-up level a challenger must be while Main is under review."),
         ("scoring.buildup_crowd_note", "Build-up: value of a crowd sign", "The value of that note, at most once per cooldown per stream."),
     ]),
     ("Manual control", [
