@@ -103,3 +103,30 @@ writes only into `--out` (default `logs/dataset_built/`, gitignored): `rows.json
   count "swap made >= 12 s ahead and within 30 s before the goal" (`status` ahead) is a second line. Event `status`: main, ahead, covered, miss-late, miss-after, miss,
   user-main, unjudged, no-rows. User-marked missed chances (`src` "user") are tier-2 events and can be misses.
 * Split: `split_by_game` (`--holdout`), never by row.
+
+### ESPN commentary labels (tier 2 for football)
+
+`scripts/build_dataset.py --fetch-history` fetches and caches the FINISHED soccer games the days' rows watched (sequential, >= 2 s apart, the daemon's
+User-Agent; a cached game is never refetched; a game whose summary is not post/FULL_TIME is skipped and printed). The raw JSON lives only in
+`logs/feed/history/<league>/<event>/` (gitignored). Without the flag the cache is read when present (`--no-commentary` ignores it); `--logs DIR` points
+the script at another `logs/`. Code: `daemon/espn_history.py` (fetch, parse), `dataset_builder.place_commentary` (alignment, merge).
+
+* Sources: the summary `commentary` list (each play is listed twice: one event per `play.id`; `time.value` = game seconds, `play.wallclock` = UTC, estimated from
+  the nearest entry when missing) and the core `plays` endpoint (details by play id: `shotInfo`, `targetZone`; plus the `Free Kick` plays, which the commentary lacks).
+* Tier v1 (`kind` -> tier): 1 = goal / own goal / penalty goal, red card, penalty AWARDED (no type in ESPN: the foul entry whose text starts `Penalty `, the twin
+  `Penalty conceded by` is dropped); 2 = shot on target and save (text 'saved'), shot off target / blocked only from the penalty area, hit woodwork, handball
+  (only when the offender is in his own box: unverified), VAR outcome (`var goal`, `var no goal`, `var decision` from the text; `goal overturned` = type 175),
+  corner, free kick (taker x >= 75); 3 = foul, offside, yellow card, substitution, shots from outside the box, far free kicks (parsed, NOT loaded into the
+  builder: no label would change and `next_event_kind` would fill with fouls). No 'big chance' and no 'VAR check started' exists in the data.
+* Position rule: `fieldPositionX/Y` (0..100) are in the acting team's attacking direction; the penalty area is x >= 84 and 20 <= y <= 80 (16.5 m of 105 m deep,
+  40.3 m of 68 m wide). No position: the wording ('from the centre of the box', 'very close range'; 'outside the box' = outside); neither: tier 3.
+* Alignment (`place_commentary`): `clock` = the game clock `time.value` against the rows' on-screen clock (not for first-half stoppage, ambiguous with the second
+  half; refused when it disagrees with the wallclock estimate by > 120 s); `wc-lag` = the wallclock plus the game's `lag_wc_s` (median of picture time minus
+  commentary wallclock over the resolved feed goals paired with a commentary goal; in `games.jsonl` with `lag_wc_jitter_s`, `lag_wc_n`). The wallclock is when the
+  ESPN operator entered the event (a few seconds of noise). Unplaceable events are dropped and counted (`commentary_report`), they block no row.
+* No double count: a commentary event of the same game and family (goal, red card, penalty, yellow card) as a feed event is the same moment (one-to-one nearest raw
+  time, feed 60 s before to 900 s after the commentary entry); the feed event stays (`also_commentary`; a non-goal feed event placed only by the weak lag takes the
+  commentary picture time, `align_refined`). Other commentary events are added with `src` 'commentary' in `events.jsonl` (misses are counted apart in the summary).
+* Rows get `y_t12_60` with the commentary and `y_t12_60_feed` without. Cues stay circular and out of the verdict: commentary is outside evidence, a spoken cue is not.
+* Limits: tier-2 shots/corners are many per game (about 30), so misses and regrets with them are far more frequent than with the feed alone; the tier-2 definition
+  (every corner, every on-target shot) is a v1 choice to tune. The text of the operator's sentences is never written to the outputs.

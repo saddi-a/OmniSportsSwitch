@@ -20,6 +20,15 @@ Alignment of a feed event to the picture, in this order (each result records its
   3. `lag`    (weak): the feed time plus the game's median lag (picture time minus feed time of the GOALS resolved by 1 and 2: a goal's feed
      time is when the feed first knew it; a card is published minutes late, tonight up to 340 s, so cards do not enter the lag), when at
      least one goal of that game was resolved. One sample is flagged weak in `label_quality` (`feed-weak`).
+  COMMENTARY events (ESPN finished-game commentary and plays, `daemon/espn_history.py`, read from the cache; tier 1 and 2 only) are placed by
+  `place_commentary` and added NEXT to the feed events (`src` 'commentary'): their picture time is, in order, `clock` (the commentary game
+  clock `time.value` against the rows' on-screen clock; not for first-half stoppage, which is ambiguous with the second half, and refused if it
+  disagrees with the wallclock estimate by more than `commentary_clock_check_s`), then `wc-lag` (the commentary WALLCLOCK plus the game's
+  `lag_wc_s` = median of picture time minus commentary wallclock over the feed goals already resolved and paired with a commentary goal;
+  the wallclock is stamped when the operator enters the event, so it carries a few seconds of noise). Otherwise the event is dropped
+  (counted, it blocks no row). A commentary event of the same game and family (goal, red card, penalty, yellow card) as a feed event is the
+  SAME moment: one-to-one nearest match on raw time (the feed publishes after the operator enters it, up to minutes for cards); the feed
+  event stays (no double count) and, when it was placed only by the weak `lag`, takes the commentary picture time.
   An event that none of this can place is UNRESOLVED. It is never guessed: every row of that game whose next 60 s could hold it (feed time
   - 150 s .. + 400 s, the range of the lag: the picture may be up to `unresolved_before_s` 400 s ahead of the feed, as seen on 2026-10-13, or 150 s behind it) is marked `aligned` false and gets NO labels. A row of a game with no
   resolved lag is still labelled when no event of the game is near it in feed time (`align_src` `no-event-nearby`).
@@ -77,6 +86,9 @@ class Params:
     wide_margin_s: float = 45.0        # a swap in a game with an unknown or weak lag is judged on [t - this, t + W + this]
     cue_confirm_s: float = 30.0        # a cue this close to a user-marked missed chance (same tab) is confirmed
     left_main_s: float = 30.0          # an event within this after Main left the stream is also reported as "left just before"
+    commentary_clock_check_s: float = 120.0   # a commentary clock placement further than this from the wallclock+lag estimate is refused
+    commentary_pair_before_s: float = 60.0    # a feed event this long BEFORE its commentary entry still pairs with it
+    commentary_pair_after_s: float = 900.0    # the feed publishes after the operator enters an event, up to this long (cards)
 
 
 # Typical picture lag (picture time minus feed time, s) when no goal of the sport was measured in the data: tonight (2026-10-13, football,
@@ -308,6 +320,90 @@ def align_events(events: list[dict], rows: list[dict], changes: list[dict], p: P
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Commentary events (ESPN finished-game commentary / plays, from the cache of daemon.espn_history)
+# ---------------------------------------------------------------------------------------------------------------
+FEED_FAMILY = {"goal": "goal", "penalty goal": "goal", "own goal": "goal", "red card": "red card", "penalty": "penalty", "yellow card": "yellow card"}
+
+
+def commentary_to_events(commentary: list[dict], watched) -> list[dict]:
+    """The normalised events of daemon.espn_history (tier 1 and 2, with a wallclock) of the WATCHED games as builder events (not yet placed)."""
+    out = []
+    for c in commentary or []:
+        if str(c.get("game_id")) not in watched or c.get("tier") not in (1, 2) or c.get("wallclock_epoch") is None:
+            continue
+        out.append({"game": str(c["game_id"]), "league": c.get("league"), "sport": "football", "kind": c["kind"], "tier": c["tier"],
+                    "goal": c.get("family") == "goal", "t": c["wallclock_epoch"], "clock_s": c.get("game_seconds"), "team": c.get("team") or "",
+                    "src": "commentary", "family": c.get("family"), "period": c.get("period"), "pt": None, "align": None, "pt_jitter": None})
+    return out
+
+
+def _pair_nearest(feeds: list[dict], coms: list[dict], p: Params) -> list[tuple]:
+    """One-to-one pairs (feed event, commentary event), nearest raw time first; the feed time may be `commentary_pair_before_s` before to
+    `commentary_pair_after_s` after the commentary wallclock."""
+    cand = sorted(((abs(f["t"] - c["t"]), i, j) for i, f in enumerate(feeds) for j, c in enumerate(coms)
+                   if -p.commentary_pair_before_s <= f["t"] - c["t"] <= p.commentary_pair_after_s), key=lambda x: x[0])
+    used_f, used_c, out = set(), set(), []
+    for _, i, j in cand:
+        if i not in used_f and j not in used_c:
+            used_f.add(i)
+            used_c.add(j)
+            out.append((feeds[i], coms[j]))
+    return out
+
+
+def place_commentary(com: list[dict], fev: list[dict], rows: list[dict], games: dict, p: Params = Params()) -> tuple:
+    """Places the commentary events (from `commentary_to_events`) in stream time and merges them with the feed events `fev` (already aligned by
+    `align_events`). Returns (commentary events to ADD, report). Sets `pt`, `align` ('clock' or 'wc-lag') on them; adds `lag_wc_s`,
+    `lag_wc_jitter_s`, `lag_wc_n` to `games[game]`; a feed event placed only by the weak lag takes the picture time of its commentary twin
+    (`align_refined` true). Report: counts of placed per method, unplaced, merged, clock placements refused."""
+    report = collections.Counter()
+    by_game_rows: dict = collections.defaultdict(list)
+    for r in rows:
+        if r.get("game_id"):
+            by_game_rows[r["game_id"]].append(r)
+    by_game: dict = collections.defaultdict(list)
+    for e in com:
+        by_game[e["game"]].append(e)
+    keep = []
+    for g, evs in by_game.items():
+        info = games.setdefault(g, {"lag_s": None, "lag_jitter_s": None, "lag_n": 0, "lag_src": None})
+        feeds = [e for e in fev if e["game"] == g]
+        goals = [(f, c) for f, c in _pair_nearest([f for f in feeds if f["goal"] and f.get("align") in ("clock", "score") and f.get("pt") is not None],
+                                                   [c for c in evs if c["family"] == "goal"], p)]
+        lags = [f["pt"] - c["t"] for f, c in goals]
+        lag_wc = statistics.median(lags) if lags else None
+        info.update(lag_wc_s=lag_wc, lag_wc_jitter_s=_mad(lags) if len(lags) > 1 else None, lag_wc_n=len(lags))
+        samples = clock_samples(by_game_rows.get(g, []))
+        for e in evs:
+            clock_hit = None
+            if samples and e.get("clock_s") is not None and not (e.get("period") == 1 and e["clock_s"] > 2700.0):
+                clock_hit = picture_time_from_clock(samples, float(e["clock_s"]), p)
+            wc_pt = e["t"] + lag_wc if lag_wc is not None else None
+            if clock_hit and (wc_pt is None or abs(clock_hit[0] - wc_pt) <= p.commentary_clock_check_s):
+                e["pt"], e["align"], e["pt_jitter"] = clock_hit[0], "clock", clock_hit[1]
+            elif wc_pt is not None:
+                e["pt"], e["align"], e["pt_jitter"] = wc_pt, "wc-lag", info["lag_wc_jitter_s"]
+                if clock_hit:
+                    report["clock-refused"] += 1
+            if e["pt"] is None:
+                report["unplaced"] += 1
+            else:
+                report["placed " + e["align"]] += 1
+        placed = [e for e in evs if e["pt"] is not None]
+        merged: set = set()
+        for fam in {e["family"] for e in placed if e["family"]}:
+            fs = [f for f in feeds if FEED_FAMILY.get(f["kind"]) == fam and f.get("pt") is not None]
+            for f, c in _pair_nearest(fs, [c for c in placed if c["family"] == fam], p):
+                merged.add(id(c))
+                f["also_commentary"] = True
+                if f.get("align") == "lag" and not f["goal"]:
+                    f["pt"], f["align"], f["pt_jitter"], f["align_refined"] = c["pt"], c["align"], c["pt_jitter"], True
+        report["merged"] += len(merged)
+        keep.extend(e for e in placed if id(e) not in merged)
+    return keep, dict(report)
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Row labels
 # ---------------------------------------------------------------------------------------------------------------
 def cue_events(events: list[dict], sports: dict, tab_game: dict | None = None) -> list[dict]:
@@ -336,7 +432,7 @@ def label_rows(rows: list[dict], events: list[dict], games: dict, cues: list[dic
     snaps = {}                       # the feed's snapshot times per game come in through `games`
     for r in rows:
         r["sport_used"] = r.get("sport") or sports.get(r["tab"])
-        for k in ("aligned", "y_goal_30", "y_t12_60", "y_t1_60", "next_event_kind", "secs_to_next_event", "label_quality", "label_jitter_s",
+        for k in ("aligned", "y_goal_30", "y_t12_60", "y_t12_60_feed", "y_t1_60", "next_event_kind", "secs_to_next_event", "label_quality", "label_jitter_s",
                   "label_weight", "cue_t12_60", "lag_s"):
             r[k] = None
         r["aligned"] = False
@@ -363,6 +459,7 @@ def label_rows(rows: list[dict], events: list[dict], games: dict, cues: list[dic
         ahead = [(e["pt"] - r["t"], e) for e in evs if e["pt"] is not None and 0 < e["pt"] - r["t"]]
         r["y_goal_30"] = int(any(e["goal"] and d <= p.goal_horizon_s for d, e in ahead))
         r["y_t12_60"] = int(any(e["tier"] <= 2 and d <= p.t12_horizon_s for d, e in ahead))
+        r["y_t12_60_feed"] = int(any(e["tier"] <= 2 and d <= p.t12_horizon_s and e.get("src", "feed") == "feed" for d, e in ahead))   # without the commentary
         r["y_t1_60"] = int(any(e["tier"] == 1 and d <= p.t12_horizon_s for d, e in ahead))
         nxt = min(ahead, key=lambda x: x[0], default=None)
         if nxt and nxt[0] <= 600:
@@ -450,7 +547,7 @@ def tab_events(events: list[dict], rows: list[dict], assumed: dict | None = None
             pt, align = e["t"] + assumed.get(e["sport"], 0.0), "assumed"
         for tab in tabs.get(e["game"], ()):
             out[tab].append({"tab": tab, "game": e["game"], "pt": pt, "tier": e["tier"], "kind": e["kind"], "goal": e["goal"],
-                             "align": align, "src": "feed", "sport": e["sport"], "ocr_check_s": e.get("ocr_check_s")})
+                             "align": align, "src": e.get("src", "feed"), "sport": e["sport"], "ocr_check_s": e.get("ocr_check_s")})
     for v in out.values():
         v.sort(key=lambda x: x["pt"])
     return out
@@ -705,6 +802,9 @@ def summarise(rows: list[dict], swaps: list[dict], event_rows: list[dict], minut
             "live_main_minutes": mins, "regret_per_10min": (len(regrets) / mins * 10.0) if mins else None,
             "regret_share": (len(regrets) / len(judged)) if judged else None,
             "tier12_events": len([e for e in ev if e["status"] != "no-rows"]), "misses": len(misses),
+            "tier12_commentary": len([e for e in ev if e.get("src") == "commentary" and e["status"] != "no-rows"]),
+            "misses_commentary": len([e for e in misses if e.get("src") == "commentary"]),
+            "y_t12_60_feed": sum(1 for r in rs if r.get("y_t12_60_feed")),
             "miss_per_10min": (len(misses) / mins * 10.0) if mins else None, "event_status": dict(collections.Counter(e["status"] for e in ev)),
             "goal_leads": leads, "mean_lead_s": statistics.mean(leads) if leads else None,
             "goals_ahead_12s": sum(1 for x in leads if x >= 12.0),
@@ -735,6 +835,9 @@ def format_summary(summary: dict) -> str:
         lines.append(f"        of which a tier-1 event on the stream left: {s['regrets_goal_left']}; [column: regrets if ALL cues counted, unconfirmed: {s['regrets_with_cues']}]")
         lines.append(f"    MISS (tier-1/2 events, {s['tier12_events']}): {s['misses']} ({f(s['miss_per_10min'], '.2f')} per 10 min); of which Main had left that stream <= 30 s before: {s['misses_left_just_before']}; "
                      f"user-marked missed chances {s['user_event_marks']} ({s['user_event_marks_missed']} counted as misses); status {s['event_status']}")
+        if s["tier12_commentary"] or s["misses_commentary"]:
+            lines.append(f"        of the tier-1/2 events {s['tier12_commentary']} come from the ESPN commentary, of the misses {s['misses_commentary']}; "
+                         f"y_t12_60 positives without the commentary {s['y_t12_60_feed']}")
     return "\n".join(lines) if lines else "No rows."
 
 
@@ -742,8 +845,9 @@ def format_summary(summary: dict) -> str:
 # Build and write
 # ---------------------------------------------------------------------------------------------------------------
 def build(rows: list[dict], events_file: list[dict], feed_rows: list[dict], p: Params = Params(), holdout=(), maps=(), label_to_game=None, marks: dict | None = None,
-          event_marks=()) -> dict:
-    """The whole pipeline on in-memory data. Returns {rows, swaps, events, games, summary}."""
+          event_marks=(), commentary=None) -> dict:
+    """The whole pipeline on in-memory data. Returns {rows, swaps, events, games, summary}. `commentary` = the normalised events of
+    daemon.espn_history (any games; the watched ones are used), added next to the feed events (see the module docstring)."""
     rows = [r for r in rows if "tab" in r and "t" in r]
     assign_games(rows, maps, label_to_game)
     sports = tab_sports(rows)
@@ -753,6 +857,9 @@ def build(rows: list[dict], events_file: list[dict], feed_rows: list[dict], p: P
     changes = [e for e in events_file if e.get("kind") == "score_change"]
     games = align_events(fev, rows, changes, p)
     add_coverage(games, feed_rows, rows, p)
+    cev, creport = place_commentary(commentary_to_events(commentary, watched), fev, rows, games, p) if commentary else ([], {})
+    feed_only = fev
+    fev = sorted(fev + cev, key=lambda e: e["t"])
     cues = cue_events(events_file, sports)
     label_rows(rows, fev, games, cues, sports, p)
     split_by_game(rows, holdout)
@@ -772,7 +879,8 @@ def build(rows: list[dict], events_file: list[dict], feed_rows: list[dict], p: P
     minutes = watched_live_minutes(rows, sports, p)
     summary = summarise(rows, swaps, event_rows, minutes)
     game_rows = [{"game": g, **{k: v for k, v in i.items() if k != "covered"}} for g, i in sorted(games.items())]
-    return {"rows": rows, "swaps": swaps, "events": event_rows, "games": game_rows, "summary": summary, "feed_events": fev, "assumed_lags": lags, "confirmed_cues": n_confirmed}
+    return {"rows": rows, "swaps": swaps, "events": event_rows, "games": game_rows, "summary": summary, "feed_events": feed_only, "commentary_events": cev, "commentary_report": creport, "assumed_lags": lags,
+            "confirmed_cues": n_confirmed}
 
 
 def slim_row(r: dict) -> dict:
@@ -781,7 +889,7 @@ def slim_row(r: dict) -> dict:
     bu = r.get("bu") or {}
     out.update(bu_level=bu.get("level"), bu_cues_sum=bu.get("cues_sum"), bu_qualifies=bu.get("qualifies"), bu_blocked=bu.get("blocked"))
     for k in ("game_key", "split", "sport_used", "game_src", "aligned", "align_src", "lag_s", "label_jitter_s", "label_quality", "label_weight",
-              "y_goal_30", "y_t12_60", "y_t1_60", "cue_t12_60", "next_event_kind", "secs_to_next_event"):
+              "y_goal_30", "y_t12_60", "y_t12_60_feed", "y_t1_60", "cue_t12_60", "next_event_kind", "secs_to_next_event"):
         out[k] = r.get(k)
     return out
 
@@ -824,6 +932,22 @@ def load_maps(events_log, feed_rows: list[dict]):
         labels = {f"{r['league']} {r.get('home')}-{r.get('away')}": r["game"] for r in feed_rows if r.get("league") and r.get("game")}
         return backtest.parse_mappings(lines), labels
     return [], {}
+
+
+def game_leagues(feed_rows: list[dict]) -> dict:
+    """game id -> league key, from the feed's snapshots and events."""
+    return {r["game"]: r["league"] for r in feed_rows if r.get("game") and r.get("league")}
+
+
+def load_commentary(cache_dir, leagues: dict, watched=None) -> list[dict]:
+    """The tier 1 and 2 events of every CACHED soccer game of `leagues` (game -> league) that is in `watched` (all when None); read-only, no network."""
+    from daemon import espn_history, feed
+    out = []
+    for game, league in sorted(leagues.items()):
+        if (watched is not None and game not in watched) or league not in feed.LEAGUES or feed.LEAGUES[league][0] != "soccer":
+            continue
+        out.extend(espn_history.game_events(cache_dir, league, game))
+    return out
 
 
 def load_marks(logs_dir, days: list[str]) -> dict:
