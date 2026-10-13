@@ -75,3 +75,31 @@ Common: `v`, `t`, `mono`, `kind`, `tab`, `tile` (null when not about a tile), `s
 | `feed_goal` | `goal_kind`, `strength` (a feed goal released by the shadow gate) |
 
 Reading it: `for line in open(path, encoding="utf-8"): row = json.loads(line)`.
+
+## Dataset builder
+
+`.venv/Scripts/python.exe scripts/build_dataset.py [YYYY-MM-DD ...] [--out logs\dataset_built] [--summary] [--holdout GAMEID,...]` (code `daemon/dataset_builder.py`).
+Offline; reads `logs/dataset`, `logs/feed`, `logs/review` (the user's swap marks, which override the automatic verdict) and `logs/events.log`;
+writes only into `--out` (default `logs/dataset_built/`, gitignored): `rows.jsonl` (JSON lines, because fields are null or nested and may be added; no text),
+`swaps.jsonl`, `events.jsonl` (tier-1/2 feed events with their miss/lead status), `games.jsonl` (picture lag per game).
+
+* Game of a row: its `game_id`, else its tile's, else a `feed map` interval, else the tab's only game of the day (`game_src`). Never guessed otherwise.
+* Picture time of a feed event, in order: football clock (rows with an on-screen "MM:SS" within 90 s of the event's match clock give `row.t + (c - clock)`;
+  median, refused if the spread is over 6 s or fewer than 3 rows), then the OCR score change of a mapped tab minus 12 s (goals), then the feed time plus the game's
+  median lag (weak). Lag = picture time minus feed time, from goals only (a card is published minutes late). No clock and no score change: the event is
+  UNRESOLVED and every row whose next 60 s it could fall in (feed time -150 s .. +400 s) is `aligned` false with no labels.
+* Labels (stream time): `y_goal_30`, `y_t12_60`, `y_t1_60`, `next_event_kind`, `secs_to_next_event`, `label_quality` (`feed`, `feed-weak`), `label_weight` 0.5
+  near the 30 s edge, `cue_t12_60` (from speech/banner cues; circular, kept apart). Tiers v1 are in `FEED_TIER`/`CUE_TIER`.
+* Swaps: regret / ok / tie / excluded (user swap, old Main on an ad or break) / unjudged (no game or no feed) / flip-flop-candidate, window 30 s, weight = tier gap;
+  quiet ties and flip-flops have `review` true. A swap whose game lag is unknown (an event could not be placed) or weak (placed only by the median lag) is NOT dropped:
+  it is judged on the unresolved events placed at feed time + the sport's median measured lag (else `DEFAULT_LAG_S`) over a wider window (+-45 s), and carries
+  `lag: "assumed"` (else `"measured"`), `window_s`, `lag_assumed_s`. The summary counts `judged_exact` and `judged_wide` (and the regrets of each) separately.
+* Cues (speech/banner) are evidence ONLY when the user confirmed them: a missed-chance mark (`kind` "event", id `evt-HH:MM:SS-<tab>`) is itself a tier-2 event of that
+  tab and confirms the cues of that tab within 30 s; a mark on a swap confirms the cues of its two tabs in [t-30, t+60]. Everything else stays out of the verdict;
+  `verdict_with_cues` / `regrets_with_cues` (all cues, unconfirmed) is a separate labelled column.
+* A goal on a stream Main left <= 30 s before it is BOTH a regret (of that swap) and a miss (event row has `left_main_s`); the summary reports regrets and misses on
+  separate lines plus "misses where Main had left <= 30 s before".
+* Leads: `lead_last_s` = event time minus the LAST swap to that stream whatever its age (system swaps only; the summary gives mean/median/min per sport); the strict
+  count "swap made >= 12 s ahead and within 30 s before the goal" (`status` ahead) is a second line. Event `status`: main, ahead, covered, miss-late, miss-after, miss,
+  user-main, unjudged, no-rows. User-marked missed chances (`src` "user") are tier-2 events and can be misses.
+* Split: `split_by_game` (`--holdout`), never by row.

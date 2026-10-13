@@ -1,0 +1,182 @@
+# College football, FBS.
+# Team-name table, one file per sport (daemon/team_tables/football.txt, nfl.txt, cfb.txt; a new sport = a new file).
+# Loader and rules: daemon/team_names.py (read its docstring). Line format:
+#   ESPN abbreviation | ESPN displayName | alias, alias, doubtful?, ...      ('x?' = doubtful, never used)
+# [ambiguous <group>] lines: CODE | club; club   = a CANDIDATE token: it can mean any of these clubs (clubs are matched by
+# the start of their displayName) and never locks a game alone. 2-letter ESPN codes and aliases are candidates too.
+
+[college-football]
+AF | Air Force Falcons | AIR FORCE, AFA
+AKR | Akron Zips | AKRON
+ALA | Alabama Crimson Tide | BAMA, CRIMSON TIDE
+APP | App State Mountaineers | APP STATE
+ASU | Arizona State Sun Devils | ARIZONA ST, ARIZONA STATE, ARIZ ST, SUN DEVILS
+ARIZ | Arizona Wildcats
+ARK | Arkansas Razorbacks | RAZORBACKS, HOGS?
+ARST | Arkansas State Red Wolves | ARKANSAS ST, ARKANSAS STATE
+ARMY | Army Black Knights
+AUB | Auburn Tigers | AUBURN, WAR EAGLE?
+BYU | BYU Cougars
+BALL | Ball State Cardinals | BALL STATE
+BAY | Baylor Bears | BAYLOR
+BOIS | Boise State Broncos | BOISE ST, BOISE STATE, BSU
+BC | Boston College Eagles | BOSTON COLLEGE, B.C.
+BGSU | Bowling Green Falcons | BOWLING GREEN
+BUF | Buffalo Bulls | BUFFALO
+CAL | California Golden Bears | CALIFORNIA
+CMU | Central Michigan Chippewas | C MICHIGAN, CENTRAL MICHIGAN
+CLT | Charlotte 49ers | CHARLOTTE
+CIN | Cincinnati Bearcats | CINCINNATI, UC?
+CLEM | Clemson Tigers | CLEMSON
+CCU | Coastal Carolina Chanticleers | COASTAL, COASTAL CAROLINA
+COLO | Colorado Buffaloes
+CSU | Colorado State Rams | COLORADO ST, COLORADO STATE
+DEL | Delaware Blue Hens | DELAWARE
+DUKE | Duke Blue Devils
+ECU | East Carolina Pirates | EAST CAROLINA
+EMU | Eastern Michigan Eagles | E MICHIGAN, EASTERN MICHIGAN
+FAU | Florida Atlantic Owls | FLORIDA ATLANTIC
+FLA | Florida Gators | GATORS, UF?
+FIU | Florida International Panthers | FLORIDA INTERNATIONAL
+FSU | Florida State Seminoles | FLORIDA ST, FLORIDA STATE, FLA ST, SEMINOLES, NOLES
+FRES | Fresno State Bulldogs | FRESNO ST, FRESNO STATE
+UGA | Georgia Bulldogs
+GASO | Georgia Southern Eagles | GA SOUTHERN, GEORGIA SOUTHERN
+GAST | Georgia State Panthers | GEORGIA ST, GEORGIA STATE
+GT | Georgia Tech Yellow Jackets | GEORGIA TECH, GA TECH, GTECH, YELLOW JACKETS
+HAW | Hawai'i Rainbow Warriors | HAWAI'I, HAWAII
+HOU | Houston Cougars
+ILL | Illinois Fighting Illini | ILLINI
+IU | Indiana Hoosiers | INDIANA
+IOWA | Iowa Hawkeyes
+ISU | Iowa State Cyclones | IOWA STATE, IOWA ST, CYCLONES
+JXST | Jacksonville State Gamecocks | JAX STATE, JACKSONVILLE STATE
+JMU | James Madison Dukes | JAMES MADISON
+KU | Kansas Jayhawks
+KSU | Kansas State Wildcats | KANSAS ST, KANSAS STATE, K-STATE, KSTATE
+KENN | Kennesaw State Owls | KENNESAW ST, KENNESAW STATE
+KENT | Kent State Golden Flashes | KENT STATE
+UK | Kentucky Wildcats
+LSU | LSU Tigers
+LIB | Liberty Flames | LIBERTY
+UL | Louisiana Ragin' Cajuns
+LT | Louisiana Tech Bulldogs | LOUISIANA TECH
+LOU | Louisville Cardinals | LOUISVILLE
+MRSH | Marshall Thundering Herd | MARSHALL
+MD | Maryland Terrapins | MARYLAND, UMD, TERPS
+MASS | Massachusetts Minutemen | UMASS, MASSACHUSETTS
+MEM | Memphis Tigers | MEMPHIS
+M-OH | Miami (OH) RedHawks | MIAMI OH, MIAMI (OH), MIAMI-OH
+MIA | Miami Hurricanes | MIAMI FL, MIAMI (FL), CANES, UM?
+MSU | Michigan State Spartans | MICHIGAN ST, MICHIGAN STATE, MICH ST, MICHST?
+MICH | Michigan Wolverines | WOLVERINES
+MTSU | Middle Tennessee Blue Raiders | MIDDLE TENNESSEE
+MINN | Minnesota Golden Gophers | MINNESOTA
+MSST | Mississippi State Bulldogs | MISSISSIPPI ST, MISSISSIPPI STATE, MISS ST, MISS STATE
+MOST | Missouri State Bears | MISSOURI ST, MISSOURI STATE
+MIZ | Missouri Tigers | MIZZOU
+NCSU | NC State Wolfpack | NC STATE, NC ST, N.C. STATE, NCST, WOLFPACK
+NAVY | Navy Midshipmen
+NEB | Nebraska Cornhuskers | NEBRASKA, HUSKERS
+NEV | Nevada Wolf Pack | NEVADA
+UNM | New Mexico Lobos
+NMSU | New Mexico State Aggies | NEW MEXICO ST, NEW MEXICO STATE
+UNC | North Carolina Tar Heels | NORTH CAROLINA, N CAROLINA, TAR HEELS
+NDSU | North Dakota State Bison | N DAKOTA ST, NORTH DAKOTA STATE
+UNT | North Texas Mean Green | NORTH TEXAS
+NIU | Northern Illinois Huskies | N ILLINOIS, NORTHERN ILLINOIS
+NU | Northwestern Wildcats | NORTHWESTERN
+ND | Notre Dame Fighting Irish | NOTRE DAME
+OHIO | Ohio Bobcats
+OSU | Ohio State Buckeyes | OHIO STATE, OHIO ST, BUCKEYES
+OU | Oklahoma Sooners | SOONERS
+OKST | Oklahoma State Cowboys | OKLAHOMA ST, OKLAHOMA STATE, OKLA ST, OKLA STATE, OK STATE
+ODU | Old Dominion Monarchs | OLD DOMINION
+MISS | Ole Miss Rebels | OLE MISS
+ORE | Oregon Ducks
+ORST | Oregon State Beavers | OREGON ST, OREGON STATE, ORE ST
+PSU | Penn State Nittany Lions | PENN STATE, PENN ST, NITTANY LIONS
+PITT | Pittsburgh Panthers | PITTSBURGH
+PUR | Purdue Boilermakers | PURDUE
+RICE | Rice Owls
+RUTG | Rutgers Scarlet Knights | RUTGERS, RU?
+SMU | SMU Mustangs
+SAC | Sacramento State Hornets | SACRAMENTO ST, SACRAMENTO STATE
+SHSU | Sam Houston Bearkats | SAM HOUSTON
+SDSU | San Diego State Aztecs | SAN DIEGO ST, SAN DIEGO STATE
+SJSU | San José State Spartans | SAN JOSE ST, SAN JOSE STATE
+USA | South Alabama Jaguars | SOUTH ALABAMA, S ALABAMA
+SC | South Carolina Gamecocks | SOUTH CAROLINA, SCAR, S CAROLINA
+USF | South Florida Bulls | SOUTH FLORIDA
+USM | Southern Miss Golden Eagles | SOUTHERN MISS
+STAN | Stanford Cardinal | STANFORD
+SYR | Syracuse Orange | SYRACUSE
+TCU | TCU Horned Frogs
+TEM | Temple Owls | TEMPLE
+TENN | Tennessee Volunteers | VOLS
+TA&M | Texas A&M Aggies | TEXAS A&M, TXAM, TAMU, A&M, TX A&M, AGGIES?
+TEX | Texas Longhorns | LONGHORNS
+TXST | Texas State Bobcats | TEXAS ST, TEXAS STATE
+TTU | Texas Tech Red Raiders | TEXAS TECH, TX TECH, TEXTECH?
+TOL | Toledo Rockets | TOLEDO
+TROY | Troy Trojans
+TULN | Tulane Green Wave | TULANE
+TLSA | Tulsa Golden Hurricane | TULSA
+UAB | UAB Blazers
+UCF | UCF Knights
+UCLA | UCLA Bruins
+CONN | UConn Huskies | UCONN, CONNECTICUT
+ULM | UL Monroe Warhawks | UL MONROE
+UNLV | UNLV Rebels
+USC | USC Trojans | SOUTHERN CAL, SO CAL?
+UTEP | UTEP Miners
+UTSA | UTSA Roadrunners
+USU | Utah State Aggies | UTAH STATE
+UTAH | Utah Utes
+VAN | Vanderbilt Commodores | VANDERBILT, VANDY
+UVA | Virginia Cavaliers | HOOS?
+VT | Virginia Tech Hokies | VIRGINIA TECH, VA TECH, VTECH, HOKIES
+WAKE | Wake Forest Demon Deacons | WAKE FOREST
+WASH | Washington Huskies | UW
+WSU | Washington State Cougars | WASHINGTON ST, WASHINGTON STATE, WASH ST, WASH STATE, WAZZU?
+WVU | West Virginia Mountaineers | WEST VIRGINIA, W VIRGINIA, MOUNTAINEERS?
+WKU | Western Kentucky Hilltoppers | WESTERN KY, WESTERN KENTUCKY
+WMU | Western Michigan Broncos | W MICHIGAN, WESTERN MICHIGAN
+WIS | Wisconsin Badgers | WISCONSIN, WISC, BADGERS
+WYO | Wyoming Cowboys | WYOMING
+
+[ambiguous cfb]
+ALABAMA | Alabama Crimson Tide; South Alabama Jaguars
+ARIZONA | Arizona Wildcats; Arizona State Sun Devils
+ARKANSAS | Arkansas Razorbacks; Arkansas State Red Wolves
+CAROLINA | North Carolina; South Carolina; East Carolina; Coastal Carolina
+COLORADO | Colorado Buffaloes; Colorado State Rams
+CU | Colorado; Cincinnati
+FLORIDA | Florida Gators; Florida Atlantic Owls; Florida International Panthers; Florida State Seminoles
+GEORGIA | Georgia Bulldogs; Georgia Southern Eagles; Georgia State Panthers; Georgia Tech Yellow Jackets
+GSU | Georgia State; Georgia Southern; Grambling State
+HOUSTON | Houston Cougars; Sam Houston Bearkats
+ILLINOIS | Illinois Fighting Illini; Northern Illinois Huskies
+KANSAS | Kansas Jayhawks; Kansas State Wildcats
+KENTUCKY | Kentucky Wildcats; Western Kentucky Hilltoppers
+LOUISIANA | Louisiana Ragin' Cajuns; Louisiana Tech Bulldogs
+MIAMI | Miami Hurricanes; Miami (OH) RedHawks
+MICHIGAN | Michigan Wolverines; Central Michigan Chippewas; Eastern Michigan Eagles; Michigan State Spartans
+MISSOURI | Missouri Tigers; Missouri State Bears
+MSU | Michigan State; Mississippi State; Montana State
+NEW MEXICO | New Mexico Lobos; New Mexico State Aggies
+OKLA | Oklahoma Sooners; Oklahoma State Cowboys
+OKLAHOMA | Oklahoma Sooners; Oklahoma State Cowboys
+OREGON | Oregon Ducks; Oregon State Beavers
+OSU | Ohio State; Oklahoma State; Oregon State
+SC | South Carolina Gamecocks; USC Trojans
+SPARTANS | Michigan State Spartans; San José State Spartans
+TECH | Georgia Tech; Texas Tech; Virginia Tech
+TENNESSEE | Tennessee Volunteers; Middle Tennessee Blue Raiders
+TEXAS | Texas Longhorns; North Texas Mean Green; Texas A&M Aggies; Texas State Bobcats
+UK | Kentucky Wildcats
+USC | USC Trojans; South Carolina Gamecocks
+UT | Texas; Tennessee; Utah; UTEP
+VIRGINIA | Virginia Cavaliers; Virginia Tech Hokies; West Virginia Mountaineers
+WASH | Washington; Washington State
+WASHINGTON | Washington Huskies; Washington State Cougars
