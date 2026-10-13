@@ -124,6 +124,19 @@ class SpeechMemory:
         recent = [tier for t, tiers in self._heard.get(tab_id, []) if 0 <= now - t <= self.window_s for tier in tiers]
         return next((tier for tier in TIER_ORDER if tier in recent), None)   # the highest: contradictory commentary counts for its biggest subject
 
+    def remove(self, tab_id: int) -> None:
+        """Forget a tab (and, for a multiview, its tiles: the key is the tab id or `(tab id, video index)`)."""
+        for key in [k for k in self._heard if k == tab_id or (isinstance(k, tuple) and k[0] == tab_id)]:
+            del self._heard[key]
+
+    def swap(self, a, b) -> None:
+        """Two streams change places (DAZN's expand): what was heard follows its video."""
+        moved_a, moved_b = self._heard.pop(a, None), self._heard.pop(b, None)
+        if moved_b is not None:
+            self._heard[a] = moved_b
+        if moved_a is not None:
+            self._heard[b] = moved_a
+
 
 def end_zone_factor(yards: float | None, down: int | None, goal_to_go: bool, cfg) -> float | None:
     """0..1: how close to the end zone the ball is, from a distance in yards from ANY source (the scorebug's yard line graphic, the feed).

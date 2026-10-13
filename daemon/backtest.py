@@ -18,10 +18,10 @@ TS = r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3})"
 SIGNAL_LINE = re.compile(
     TS + r"\s+(MAIN )?(\d+): (live|break) fav=(-?[\d.]+) score=(-?[\d.]+) surge=(-?[\d.]+) crowd=(-?[\d.]+) speech=(-?[\d.]+)")
 GOAL_LINE = re.compile(TS + r" score change tab (\d+) tile (\d+):")
-CUE_LINE = re.compile(TS + r" anticipation (.+?) tab (\d+)(?: tile \d+)?(?: \(spoken\))?(?: weight ([\d.]+))?\s*$")
+CUE_LINE = re.compile(TS + r" anticipation (.+?) tab (\d+)(?: tile (\d+))?(?: \(spoken\))?(?: weight ([\d.]+))?\s*$")
 BANNER_LINE = re.compile(TS + r" goal banner tab (\d+) tile (\d+): (.*)$")
-SPORT_LINE = re.compile(TS + r" sport detected tab (\d+) tile \d+: (.+?)\s*$")
-BUILDUP_LINE = re.compile(TS + r" buildup would take MAIN tab (\d+):")
+SPORT_LINE = re.compile(TS + r" sport detected tab (\d+) tile (\d+): (.+?)\s*$")
+BUILDUP_LINE = re.compile(TS + r" buildup would take MAIN tab (\d+)(?: tile (\d+))?(?: \([^)]*\))?:")   # a multiview line: "tab 7 tile 1 (football):"
 FEED_LAG_LINE = re.compile(TS + r" feed confirmed tab (\d+) tile (\d+) .*feed lag (-?\d+) s")
 BEFORE_S = (30.0, 20.0, 10.0, 5.0)        # how long before the goal the scores are read
 SEARCH_S = 90.0                           # how far back the first qualifying moment is looked for
@@ -59,6 +59,7 @@ class Cue:
     tab: int
     kind: str             # "var", "penalty", "chance (spoken)"...
     weight: float | None
+    tile: int | None = None   # the video of a multiview it was seen on (None = not said: the whole tab)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -112,18 +113,28 @@ def parse_cues(lines) -> list[Cue]:
         m = CUE_LINE.search(line)
         if m:
             out.append(Cue(parse_time(m.group(1)), int(m.group(3)), m.group(2) + (" (spoken)" if "(spoken)" in line else ""),
-                           float(m.group(4)) if m.group(4) else None))
+                           float(m.group(5)) if m.group(5) else None, int(m.group(4)) if m.group(4) else None))
     return out
 
 
 def parse_sports(lines) -> list[tuple[datetime.datetime, int, str]]:
     """(time, tab, sport) of every `sport detected` line, in log order."""
-    return [(parse_time(m.group(1)), int(m.group(2)), m.group(3)) for line in lines if (m := SPORT_LINE.search(line))]
+    return [(parse_time(m.group(1)), int(m.group(2)), m.group(4)) for line in lines if (m := SPORT_LINE.search(line))]
+
+
+def parse_tile_sports(lines) -> list[tuple[datetime.datetime, int, int, str]]:
+    """(time, tab, tile, sport) of every `sport detected` line: in a mixed multiview each tile has its own sport."""
+    return [(parse_time(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4)) for line in lines if (m := SPORT_LINE.search(line))]
 
 
 def parse_buildups(lines) -> list[tuple[datetime.datetime, int]]:
     """(time, tab) of the `buildup would take MAIN` lines (the shadow build-up tracker, daemon/buildup.py)."""
     return [(parse_time(m.group(1)), int(m.group(2))) for line in lines if (m := BUILDUP_LINE.search(line))]
+
+
+def parse_tile_buildups(lines) -> list[tuple[datetime.datetime, int, int | None]]:
+    """(time, tab, tile or None) of the `buildup would take MAIN` lines; a multiview line names its tile."""
+    return [(parse_time(m.group(1)), int(m.group(2)), int(m.group(3)) if m.group(3) else None) for line in lines if (m := BUILDUP_LINE.search(line))]
 
 
 def parse_feed_lags(lines) -> list[tuple[datetime.datetime, int, int]]:
@@ -200,11 +211,14 @@ def measure(readings: list[Reading], goals: list[Goal], cues: list[Cue], feed_la
             before[s] = None if mine is None else mine.score
             other[s] = max((o.score for o in theirs), default=None)
         early = series.at(goal.tab, goal.t - datetime.timedelta(seconds=BEFORE_S[0]))
-        cues_before = [c for c in cues if c.tab == goal.tab and 0 <= (goal.t - c.t).total_seconds() <= SEARCH_S]
+        cues_before = [c for c in cues if c.tab == goal.tab and (c.tile is None or c.tile == goal.tile) and 0 <= (goal.t - c.t).total_seconds() <= SEARCH_S]
         first_cue = max(((goal.t - c.t).total_seconds(), c.kind) for c in cues_before) if cues_before else None
         lag = next((lag for t, tab, lag in feed_lags if tab == goal.tab and 0 <= (t - goal.t).total_seconds() <= 60), None)
-        sport = next((name for t, tab, name in reversed(list(sports)) if tab == goal.tab and t <= goal.t), "unknown")
-        built = [(goal.t - t).total_seconds() for t, tab in buildups if tab == goal.tab and 0 <= (goal.t - t).total_seconds() <= SEARCH_S]
+        # `sports` entries are (time, tab, sport) or (time, tab, tile, sport); `buildups` (time, tab) or (time, tab, tile): a tile of a mixed
+        # multiview is matched on its own tile, an entry without a tile on the tab
+        sport = next((e[-1] for e in reversed(list(sports)) if e[1] == goal.tab and e[0] <= goal.t and (len(e) < 4 or e[2] == goal.tile)), "unknown")
+        built = [(goal.t - e[0]).total_seconds() for e in buildups if e[1] == goal.tab and (len(e) < 3 or e[2] is None or e[2] == goal.tile)
+                 and 0 <= (goal.t - e[0]).total_seconds() <= SEARCH_S]
         out.append(Lead(goal, bool(early and early.main), before, other, swap_lead(series, goal, rule), first_cue, sport,
                         max(built) if built else None, lag))
     return out

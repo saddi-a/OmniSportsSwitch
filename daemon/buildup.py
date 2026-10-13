@@ -44,13 +44,24 @@ class BuildUp:
         if value > 0:
             self._cues.setdefault(tab_id, []).append(_Cue(now, value, kind))
 
+    def _stores(self):
+        return (self._cues, self._fired_at, self._surge_noted_at, self._crowd_run, self._crowd_noted_at, self._blocked_logged_at)
+
     def remove(self, tab_id: int) -> None:
-        self._cues.pop(tab_id, None)
-        self._fired_at.pop(tab_id, None)
-        self._surge_noted_at.pop(tab_id, None)
-        self._crowd_run.pop(tab_id, None)
-        self._crowd_noted_at.pop(tab_id, None)
-        self._blocked_logged_at.pop(tab_id, None)
+        """Forget a tab: its own key and, for a multiview, the key of every tile `(tab_id, index)` (a stream is keyed by the tab id, or by
+        `(tab id, video index)` when the tab has several videos: each tile has its own cues, cooldowns and notes)."""
+        for store in self._stores():
+            for key in [k for k in store if k == tab_id or (isinstance(k, tuple) and k[0] == tab_id)]:
+                del store[key]
+
+    def swap(self, a, b) -> None:
+        """Two streams change places (DAZN's expand moves the clicked video into the big slot): their cues and cooldowns follow."""
+        for store in self._stores():
+            moved_a, moved_b = store.pop(a, None), store.pop(b, None)
+            if moved_b is not None:
+                store[a] = moved_b
+            if moved_a is not None:
+                store[b] = moved_a
 
     def cues(self, tab_id: int, now: float) -> list[tuple[float, float]]:
         """(age in seconds, faded value) of the cues still in the window, oldest first. A cue fades linearly to 0 over the window."""

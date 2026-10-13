@@ -361,6 +361,11 @@ class Scorer:
         stream = self.streams.get(tab_id)
         return stream is not None and all(rec.on_ad for _, rec in self._recs(stream))
 
+    def tab_auto_state(self, tab_id: int) -> str:
+        """The state the pictures show (live if any video of the tab is live), whatever the user chose."""
+        stream = self.streams.get(tab_id)
+        return "live" if stream is None else _combine(rec.auto_state for _, rec in self._recs(stream))
+
     def tab_state(self, tab_id: int) -> str:
         """The user's choice, else live if any video of the tab is live (break, then over)."""
         stream = self.streams[tab_id]

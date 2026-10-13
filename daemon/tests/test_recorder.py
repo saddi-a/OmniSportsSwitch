@@ -10,7 +10,7 @@ from daemon.server import Server
 
 ROW_FIELDS = {"v", "t", "mono", "tab", "role", "is_main", "sport", "warm", "state", "auto_state", "override", "ad", "on_ad", "can_main", "weight",
               "score", "surge", "crowd", "speech", "music", "shout", "event", "cue_fade", "cue_part", "fav", "lev", "loud", "baseline", "top", "cue",
-              "bu", "home", "away", "clock", "period", "replay", "goal_hold", "goal_age", "hold", "game_id", "league", "tiles", "main", "frozen",
+              "bu", "tile", "tile_sport", "home", "away", "clock", "period", "replay", "goal_hold", "goal_age", "hold", "game_id", "league", "tiles", "main", "frozen",
               "last_swap_age", "swap_pending"}
 BU_FIELDS = {"level", "cues_sum", "support", "cues", "min", "gap", "live", "main_score", "main_level", "hot_left", "qualifies", "cooldown_left", "surge_note_left",
              "crowd_note_left", "crowd_run", "blocked"}

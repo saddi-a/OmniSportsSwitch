@@ -156,7 +156,7 @@ class DatasetRecorder:
 
 
 # --- building the rows ---
-def _tile_rows(server, tab_id: int, now: float) -> list[dict]:
+def _tile_rows(server, tab_id: int, now: float, c: dict | None = None) -> list[dict]:
     tiles = []
     rects = (server.rects.get(tab_id) or {}).get("rects") or []
     audible = {r.get("index", pos): bool(r.get("audible")) for pos, r in enumerate(rects)}
@@ -184,26 +184,26 @@ def _tile_rows(server, tab_id: int, now: float) -> list[dict]:
             "game_id": mapping.game_id if mapping else None,
             "league": mapping.league if mapping else None,
             "mapped_ok": mapping.verified if mapping else None,
+            "score": _r(c["tile_scores"].get(index)) if c and c["tile"] is not None else None,   # multiview: the score of THIS tile (the tab scores as its best)
         })
     return tiles
 
 
 def _buildup_part(server, tab_id: int, c: dict | None, now: float) -> dict:
-    cfg = server.scorer.cfg_for(tab_id)
+    tile = c["tile"] if c else None   # the build-up of the tab's best tile (the only video of a tab: its own)
+    key = server._bkey(tab_id, tile)
+    cfg = server.scorer.tile_cfg(tab_id, tile)
     bu = server.buildup
     bu.window_s, bu.cooldown_s = cfg.buildup_window_s, cfg.buildup_cooldown_s
     w = cfg.weights
-    details = bu.cue_details(tab_id, now)
+    details = bu.cue_details(key, now)
     cues_sum = sum(v for _, v, _ in details)
-    support = (w.surge * c["surge"] + w.crowd * c["crowd"] + w.shout * c["shout"]) if c else 0.0
-    level = bu.level(tab_id, now, support)
+    support = (w.surge * c["surge"] + w.crowd * c["crowd"] + w.shout * c["shout"]) if c and server._hears(tab_id, tile) else 0.0
+    level = bu.level(key, now, support)
     main = server.scorer.main
     main_c = server.scorer.components(main, now) if main is not None and main != tab_id else None
     main_score = main_c["score"] if main_c else 0.0
-    main_level = 0.0   # MAIN's own build-up level: the bar a challenger must beat together with MAIN's score (as Server._check_buildup)
-    if main_c:
-        mw = server.scorer.cfg_for(main).weights
-        main_level = bu.level(main, now, mw.surge * main_c["surge"] + mw.crowd * main_c["crowd"] + mw.shout * main_c["shout"])
+    main_level = server.main_buildup_level(main_c, now)   # MAIN's own build-up level: the bar a challenger must beat together with MAIN's score (as Server._check_buildup)
     part = {
         "level": _r(level),
         "cues_sum": _r(cues_sum),
@@ -214,13 +214,15 @@ def _buildup_part(server, tab_id: int, c: dict | None, now: float) -> dict:
         "hot_left": _r(server.scorer.hot_left(main, now), 1) if main is not None else 0.0,   # s MAIN stays hot (its goal / strong cue); `blocked` then includes the hot margin
         "qualifies": bool(level >= cfg.buildup_min and level - max(main_score, main_level) >= cfg.buildup_gap),
     }
-    part.update(bu.state(tab_id, now))
+    part.update(bu.state(key, now))
+    if tile is not None:
+        part["tile"] = tile
     if tab_id == main:
         part["blocked"] = "already MAIN"
     else:
-        part["blocked"] = server.scorer.take_main_block(tab_id, now, level=level, cue_age=bu.spoken_age(tab_id, now), main_level=main_level)
+        part["blocked"] = server.scorer.take_main_block(tab_id, now, level=level, cue_age=bu.spoken_age(key, now), main_level=main_level, tile=tile)
         if part["blocked"] is None and part["qualifies"] and cfg.buildup_live > 0:   # MAIN keeps its seat after its own cue / review
-            part["blocked"] = bu.main_hold(main, tab_id, now, level, main_level, cfg)
+            part["blocked"] = server._main_hold(main, key, now, level, main_level, cfg)
     return part
 
 
@@ -232,7 +234,7 @@ def snapshot_rows(server, now: float, wall: float | None = None) -> list[dict]:
     swap = scorer.swap_context(now)
     for tab_id, stream in list(scorer.streams.items()):
         c = scorer.components(tab_id, now)
-        tiles = _tile_rows(server, tab_id, now)
+        tiles = _tile_rows(server, tab_id, now, c)
         first = next((t for t in tiles if t["home"] is not None), None)
         mapped = next((t for t in tiles if t["game_id"]), None)
         probs = server.tags.get(tab_id)
@@ -242,31 +244,33 @@ def snapshot_rows(server, now: float, wall: float | None = None) -> list[dict]:
                 top = [[n, _r(p, 2)] for n, p in server.classifier.top(probs, 3)]
             except Exception:
                 top = None
-        cue_age = now - stream.anticipation_at if stream.anticipation_at != float("-inf") else None
-        goal_age = now - stream.goal_at if stream.goal_at != float("-inf") else None
+        rec = scorer._rec_of(stream, c["tile"] if c else None)   # the picture signals of the tab's best tile (the stream itself for one video)
+        cue_age = now - rec.anticipation_at if rec.anticipation_at != float("-inf") else None
+        goal_age = now - rec.goal_at if rec.goal_at != float("-inf") else None
         row = {
             "v": SCHEMA_VERSION, "t": _r(wall), "mono": _r(now),
             "tab": tab_id, "role": server.roles.get(tab_id), "is_main": tab_id == scorer.main,
             "sport": server._tab_sport(tab_id),
             "warm": c is not None,
-            "state": c["status"] if c else (stream.override or stream.auto_state),
-            "auto_state": stream.auto_state, "override": stream.override,
-            "ad": bool(c["ad"]) if c else stream.on_ad, "on_ad": stream.on_ad,
+            "state": c["status"] if c else scorer.tab_state(tab_id),
+            "auto_state": scorer.tab_auto_state(tab_id), "override": stream.override,
+            "ad": bool(c["ad"]) if c else scorer.tab_on_ad(tab_id), "on_ad": scorer.tab_on_ad(tab_id),
+            "tile": c["tile"] if c else None, "tile_sport": c["sport"] if c else None,   # which video scored the tab, and its sport (None = the only video)
             "can_main": stream.can_main, "weight": stream.weight,
             "score": _r(c["score"]) if c else None,
             "surge": _r(c["surge"]) if c else None, "crowd": _r(c["crowd"]) if c else None,
             "speech": _r(c["speech"]) if c else None, "music": _r(c["music"]) if c else None,
             "shout": _r(c["shout"]) if c else None, "event": _r(c["event"]) if c else None,
             "cue_fade": _r(c["anticipation"]) if c else None, "cue_part": _r(c["cue"]) if c else None,
-            "fav": c["fav"] if c else stream.favourite, "lev": _r(c["lev"], 2) if c else _r(stream.leverage, 2),
+            "fav": c["fav"] if c else stream.favourite, "lev": _r(c["lev"], 2) if c else _r(rec.leverage, 2),
             "loud": _r(c["level"], 5) if c else None, "baseline": _r(stream.baseline, 5),
             "top": top,
-            "cue": {"value": _r(stream.anticipation_value), "age": _r(cue_age, 1), "strong": stream.anticipation_strong} if cue_age is not None else None,
+            "cue": {"value": _r(rec.anticipation_value), "age": _r(cue_age, 1), "strong": rec.anticipation_strong} if cue_age is not None else None,
             "bu": _buildup_part(server, tab_id, c, now),
             "home": first["home"] if first else None, "away": first["away"] if first else None,
             "clock": first["clock"] if first else (tiles[0]["clock"] if tiles else None),
             "period": first["period"] if first else (tiles[0]["period"] if tiles else None),
-            "replay": stream.replay, "goal_hold": _r(scorer.goal_hold_left(tab_id, now), 1), "goal_age": _r(goal_age, 1),
+            "replay": scorer.replay_of(tab_id, c["tile"] if c else None), "goal_hold": _r(scorer.goal_hold_left(tab_id, now), 1), "goal_age": _r(goal_age, 1),
             "hold": _r(scorer.hold_left(now), 1) if tab_id == scorer.hold_tab else 0.0,
             "game_id": mapped["game_id"] if mapped else None, "league": mapped["league"] if mapped else None,
             "tiles": tiles,

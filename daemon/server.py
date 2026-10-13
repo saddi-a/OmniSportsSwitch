@@ -85,6 +85,8 @@ class Server:
                  speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None):
         self.scorer = scorer or Scorer()
         self.scorer.sport_of = self._tab_sport   # per-sport settings overrides: the scorer asks which sport a stream is
+        self.scorer.tile_sport_of = self.scoring_sport   # ...and, in a multiview, which sport each tile is
+        self.scorer.audible_of = self._audible_index     # ...and which tile has the sound (the audio terms belong to it)
         self.speech = speech                    # SpeechListener or None: the commentary listener (measuring only)
         self.semantic = semantic                # SemanticMatcher or None: how close the commentary is to big-moment phrases (measuring only)
         self.speech_buffers: dict[int, np.ndarray] = {}   # tab id -> last speech_window_s seconds of audio
@@ -165,6 +167,7 @@ class Server:
         elif kind == "unregister":
             self.scorer.remove(msg["tab_id"])
             self.buildup.remove(msg["tab_id"])
+            self.cue_speech.remove(msg["tab_id"])
             self.surge_rise.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
             self.speech_buffers.pop(msg["tab_id"], None)
@@ -312,8 +315,11 @@ class Server:
         if self.recorder is None or not self.recorder.enabled():
             return
         try:
+            sport = None
+            if tab_id is not None:   # a tile of a multiview has its own sport; the only video of a tab has the tab's
+                sport = self.scoring_sport(tab_id, tile) if tile is not None and self._is_multi(tab_id) else self._tab_sport(tab_id)
             event = {"v": 1, "t": round(time.time(), 3), "mono": round(time.monotonic(), 3), "kind": kind, "tab": tab_id, "tile": tile,
-                     "sport": self._tab_sport(tab_id) if tab_id is not None else None, "main": self.scorer.main}
+                     "sport": sport, "main": self.scorer.main}
             event.update(fields)
             self.recorder.add_event(event)
         except Exception as e:
@@ -357,6 +363,8 @@ class Server:
                 continue
             text = (f"{tag}{tab_id}: {'AD' if c['ad'] else c['status']} fav={c['fav']:.1f} score={c['score']:.2f} surge={c['surge']:.2f} crowd={c['crowd']:.2f} "
                     f"speech={c['speech']:.2f} music={c['music']:.2f} shout={c['shout']:.2f} lev={c['lev']:.1f}")
+            if c["tile"] is not None:   # a multiview: the tab scores as its best tile; say which tile and sport
+                text += f" tile={c['tile']} sport={c['sport'] or 'unknown'} tiles=" + ",".join(f"{i}:{s:.2f}" for i, s in sorted(c["tile_scores"].items()))
             probs = self.tags.get(tab_id)
             if probs is not None:
                 text += " top=" + ",".join(f"{n}:{p:.2f}" for n, p in self.classifier.top(probs, 3))
@@ -374,66 +382,101 @@ class Server:
         """Soccer: the loudness of a live stream rises fast over a few seconds (voted over consecutive readings, with a cooldown): a medium
         cue (`cue_surge_rise`) that arrives before the commentator's words. It feeds the score like a banner cue, the build-up tracker (kind
         'surge_rise') and the dataset (event 'surge_rise'). Not on an ad, a break or a replay."""
-        cfg = self.scorer.cfg_for(tab_id)
-        sport = self._tab_sport(tab_id)
+        tile, sport = self._audible_target(tab_id)   # the sound belongs to the audible tile: its cue, its sport
+        cfg = self.scorer.tile_cfg(tab_id, tile)
         weight = surge_rise_weight(sport, cfg.weights)
-        if weight is None or c["ad"] or c["status"] != "live" or self.scorer.streams[tab_id].replay:
+        if weight is None or c["ad"] or c["status"] != "live" or self.scorer.replay_of(tab_id, tile):
             self.surge_rise.reading(tab_id, now, c["level"], 0.0, cfg)   # keeps the history and resets the vote
             return False
         if not self.surge_rise.reading(tab_id, now, c["level"], c["surge"], cfg):
             return False
-        log.info("anticipation surge rise tab %s (sound) weight %.2f: surge %.2f level %.4f", tab_id, weight, c["surge"], c["level"])
-        self.scorer.set_anticipation(tab_id, now, weight)
-        self.buildup.note(tab_id, now, weight, "surge_rise")
-        self._rec_event("surge_rise", tab_id, weight=round(weight, 3), surge=round(c["surge"], 3), crowd=round(c["crowd"], 3), level=round(c["level"], 5))
+        where = "" if tile is None else f" tile {tile}"
+        log.info("anticipation surge rise tab %s%s (sound) weight %.2f: surge %.2f level %.4f", tab_id, where, weight, c["surge"], c["level"])
+        self.scorer.set_anticipation(tab_id, now, weight, tile=tile)
+        self.buildup.note(self._bkey(tab_id, tile), now, weight, "surge_rise")
+        self._rec_event("surge_rise", tab_id, tile, weight=round(weight, 3), surge=round(c["surge"], 3), crowd=round(c["crowd"], 3), level=round(c["level"], 5))
         return True
 
     def _check_buildup(self, tab_id: int, c: dict, now: float) -> Swap | None:
         """Measuring only, soccer only (each sport has its own clues and needs its own calibration): log when the cues of a stream added
         together, plus its loudness and crowd, would have been enough to take MAIN. Compare these lines with the goals: scripts/backtest.py."""
-        cfg = self.scorer.cfg_for(tab_id)   # the build-up values of THIS stream's sport (shared unless overridden in settings.toml)
-        if cfg.buildup_mode <= 0 or tab_id == self.scorer.main or not is_soccer(self._tab_sport(tab_id)):
+        if not self._is_multi(tab_id):
+            return self._check_buildup_tile(tab_id, None, c, now)
+        taken = None
+        for index in self._tab_indices(tab_id):   # every video of a multiview has its own build-up, with its own sport
+            taken = taken or self._check_buildup_tile(tab_id, index, c, now)
+        return taken
+
+    def main_buildup_level(self, main_c: dict | None, now: float) -> float:
+        """MAIN's own build-up level (its cues + surge/crowd with ITS sport's weights): the bar a challenger must beat. In a multiview the
+        highest of its tiles; only the tile that has the sound gets the surge / crowd part."""
+        main = self.scorer.main
+        if not main_c or main is None:
+            return 0.0
+        best = 0.0
+        multi = self._is_multi(main)
+        for index in (self._tab_indices(main) if multi else [None]):
+            mw = self.scorer.tile_cfg(main, index).weights
+            support = (mw.surge * main_c["surge"] + mw.crowd * main_c["crowd"] + mw.shout * main_c["shout"]) if self._hears(main, index) else 0.0
+            best = max(best, self.buildup.level(self._bkey(main, index), now, support))
+        return best
+
+    def _main_hold(self, main: int | None, key, now: float, level: float, main_level: float, cfg) -> str | None:
+        """`BuildUp.main_hold` against every stream of the MAIN tab (its tiles in a multiview)."""
+        if main is None:
             return None
+        for main_key in self._bkeys(main):
+            blocked = self.buildup.main_hold(main_key, key, now, level, main_level, cfg)
+            if blocked is not None:
+                return blocked
+        return None
+
+    def _check_buildup_tile(self, tab_id: int, tile: int | None, c: dict, now: float) -> Swap | None:
+        """The build-up of ONE video (the tab's only video, or one tile of a multiview) with that video's sport. The loudness and crowd
+        (`c`, the tab's audio) support only the tile that has the sound; the others build up on their cues alone."""
+        cfg = self.scorer.tile_cfg(tab_id, tile)   # the build-up values of THIS stream's sport (shared unless overridden in settings.toml)
+        sport = self.scoring_sport(tab_id, tile)
+        if cfg.buildup_mode <= 0 or tab_id == self.scorer.main or not is_soccer(sport):
+            return None
+        key, hears = self._bkey(tab_id, tile), self._hears(tab_id, tile)
         main = self.scorer.components(self.scorer.main, now) if self.scorer.main is not None else None
         main_score = main["score"] if main else 0.0
         w = cfg.weights
         self.buildup.window_s, self.buildup.cooldown_s = cfg.buildup_window_s, cfg.buildup_cooldown_s
-        main_level = 0.0   # MAIN's own build-up level (its cues + surge/crowd with ITS sport's weights): the bar a challenger must beat
-        if main:
-            mw = self.scorer.cfg_for(self.scorer.main).weights
-            main_level = self.buildup.level(self.scorer.main, now, mw.surge * main["surge"] + mw.crowd * main["crowd"] + mw.shout * main["shout"])
-        support = w.surge * c["surge"] + w.crowd * c["crowd"] + w.shout * c["shout"]
-        if self.buildup.surge_note_due(tab_id, now, c["surge"], cfg.buildup_surge_min):
-            self.buildup.note(tab_id, now, cfg.buildup_surge_note, "surge_note")   # measuring only: a sign for the build-up, never set_anticipation
-        if self.buildup.crowd_note_due(tab_id, now, c["crowd"], cfg.buildup_crowd_min):
-            self.buildup.note(tab_id, now, cfg.buildup_crowd_note, "crowd_note")   # a crowd that keeps building: a sign, never a score
+        main_level = self.main_buildup_level(main, now)
+        support = (w.surge * c["surge"] + w.crowd * c["crowd"] + w.shout * c["shout"]) if hears else 0.0
+        if hears and self.buildup.surge_note_due(key, now, c["surge"], cfg.buildup_surge_min):
+            self.buildup.note(key, now, cfg.buildup_surge_note, "surge_note")   # measuring only: a sign for the build-up, never set_anticipation
+        if hears and self.buildup.crowd_note_due(key, now, c["crowd"], cfg.buildup_crowd_min):
+            self.buildup.note(key, now, cfg.buildup_crowd_note, "crowd_note")   # a crowd that keeps building: a sign, never a score
         # the cooldown starts only when the swap really happens (or in log-only mode): a swap a guard stopped may be tried again
-        level = self.buildup.would_take(tab_id, now, support, main_score, cfg.buildup_min, cfg.buildup_gap, start_cooldown=False, main_level=main_level)
+        level = self.buildup.would_take(key, now, support, main_score, cfg.buildup_min, cfg.buildup_gap, start_cooldown=False, main_level=main_level)
         if level is not None:
-            cues = ", ".join(f"{v:.2f}@{age:.0f}s" for age, v in self.buildup.cues(tab_id, now))
+            cues = ", ".join(f"{v:.2f}@{age:.0f}s" for age, v in self.buildup.cues(key, now))
             outcome, swap, stopped = "log only", None, False
             if cfg.buildup_live > 0:
-                if not moves_main(self._tab_sport(tab_id)):
+                if not moves_main(sport):
                     outcome, stopped = "not moved: sport not detected as football", True
                 else:
                     # the swap guards, then MAIN keeping its seat after its own cue / review (log-only mode applies neither)
-                    blocked = (self.scorer.take_main_block(tab_id, now, level=level, cue_age=self.buildup.spoken_age(tab_id, now), main_level=main_level)
-                               or self.buildup.main_hold(self.scorer.main, tab_id, now, level, main_level, cfg))
+                    blocked = (self.scorer.take_main_block(tab_id, now, level=level, cue_age=self.buildup.spoken_age(key, now), main_level=main_level, tile=tile)
+                               or self._main_hold(self.scorer.main, key, now, level, main_level, cfg))
                     if blocked is not None:
                         outcome, stopped = f"not moved: {blocked}", True
                     else:
                         reason = f"build-up: level {level:.2f} (cues {cues}) vs main {main_score:.2f}"
-                        swap = self.scorer.take_main(tab_id, now, reason, level=level, cue_age=self.buildup.spoken_age(tab_id, now), main_level=main_level)
+                        swap = self.scorer.take_main(tab_id, now, reason, level=level, cue_age=self.buildup.spoken_age(key, now), main_level=main_level, tile=tile)
                         outcome = "moved MAIN"
             if stopped:
-                if not self.buildup.blocked_log_due(tab_id, now):
+                if not self.buildup.blocked_log_due(key, now):
                     return None   # a stopped build-up may fire on every reading: say why only every 10 s
             else:
-                self.buildup.mark_fired(tab_id, now)
+                self.buildup.mark_fired(key, now)
+            where = f"{tab_id}" if tile is None else f"{tab_id} tile {tile} ({sport or 'unknown'})"   # a multiview line says which tile and sport
             log.info("buildup would take MAIN tab %s: level %.2f (cues %s; surge %.2f crowd %.2f) vs main %.2f (%s)",
-                     tab_id, level, cues, c["surge"], c["crowd"], main_score, outcome)
-            self._rec_event("buildup", tab_id, level=round(level, 3), main_score=round(main_score, 3), surge=round(c["surge"], 3),
-                            crowd=round(c["crowd"], 3), outcome=outcome, moved=swap is not None)
+                     where, level, cues, c["surge"] if hears else 0.0, c["crowd"] if hears else 0.0, main_score, outcome)
+            self._rec_event("buildup", tab_id, tile, level=round(level, 3), main_score=round(main_score, 3), surge=round(c["surge"], 3) if hears else 0.0,
+                            crowd=round(c["crowd"], 3) if hears else 0.0, outcome=outcome, moved=swap is not None)
             return swap
         return None
 
@@ -475,11 +518,11 @@ class Server:
             for tab_id, tile in self.feed_gate.confirmations(now):   # the feed confirmed an OCR score change later: full strength
                 full = self.unconfirmed.pop((tab_id, tile), None)
                 if full is not None:
-                    self.scorer.set_event(tab_id, now, full[0], goal=True)
+                    self.scorer.set_event(tab_id, now, full[0], goal=True, tile=self._tkey(tab_id, tile))
             weight = self.scorer.config.feed_event_weight   # 0 = the feed only logs; above 0 a released feed goal counts like a score change
             for f in self.feed_gate.drain_fired():
                 if weight > 0:
-                    self.scorer.set_event(f.tab, now, f.strength * weight, goal=True)
+                    self.scorer.set_event(f.tab, now, f.strength * weight, goal=True, tile=self._tkey(f.tab, f.tile))
                     self.fed[(f.tab, f.tile)] = now
                     self._rec_event("feed_goal", f.tab, f.tile, goal_kind=f.kind, strength=f.strength)
             for key in [k for k, (_, at) in self.unconfirmed.items() if now - at > self.scorer.config.feed_confirm_s]:
@@ -527,29 +570,32 @@ class Server:
                         self.speech_cue_at[(tab_id, "semantic " + tier)] = now
                         log.info("semantic %s tab %s: high=%.2f mid=%.2f low=%.2f best='%s' piece='%s'", tier, tab_id, match["high"],
                                  match["mid"], match["low"], match["phrase"], match["piece"])
-                tcfg = self.scorer.cfg_for(tab_id)   # cue weights and factor of this stream's sport
-                cues = find_speech_cues(text, self._tab_sport(tab_id))
+                tile, sport = self._audible_target(tab_id)   # the commentary is the audible tile's: its sport, its cues, its build-up
+                tcfg = self.scorer.tile_cfg(tab_id, tile)   # cue weights and factor of this stream's sport
+                bkey = self._bkey(tab_id, tile)
+                cues = find_speech_cues(text, sport)
                 self.cue_speech.window_s = cfg.cue_speech_window_s
-                self.cue_speech.record(tab_id, cues, text, self._tab_sport(tab_id), now)
+                self.cue_speech.record(bkey, cues, text, sport, now)
                 self.goal_watch.surge_min, self.goal_watch.window_s = cfg.goal_phrase_surge, cfg.goal_phrase_window_s
                 if "goal" in cues and self.goal_watch.phrase(tab_id, now):
                     log.info("goal phrase + surge would fire tab %s (measuring only)", tab_id)
                 if "replay" in cues:
-                    self.scorer.note_replay(tab_id, now)   # the commentator says replay: extends a post-goal hold
+                    self.scorer.note_replay(tab_id, now, tile)   # the commentator says replay: extends a post-goal hold
+                where = "" if tile is None else f" tile {tile}"
                 for cue in cues:
                     if now - self.speech_cue_at.get((tab_id, cue), float("-inf")) >= tcfg.speech_cue_cooldown_s:
                         self.speech_cue_at[(tab_id, cue)] = now
                         log.info("speech cue %s tab %s: %s", cue, tab_id, text)
-                        self._rec_event("speech_cue", tab_id, cue=cue, text=text, language=language)
-                        weight = speech_cue_weight(cue, self._tab_sport(tab_id), tcfg.weights, tcfg.speech_cue_factor)
+                        self._rec_event("speech_cue", tab_id, tile, cue=cue, text=text, language=language)
+                        weight = speech_cue_weight(cue, sport, tcfg.weights, tcfg.speech_cue_factor)
                         if weight is not None:   # a commentator calling a dangerous moment boosts the stream like the banner would, at a discount
-                            log.info("anticipation %s tab %s (spoken) weight %.2f", cue, tab_id, weight)
-                            self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, self._tab_sport(tab_id), tcfg.weights))
-                            self.buildup.note(tab_id, now, weight, "spoken:" + cue)
-                        note = tracker_note_weight(cue, self._tab_sport(tab_id), tcfg.weights, tcfg.speech_cue_factor)
+                            log.info("anticipation %s tab %s%s (spoken) weight %.2f", cue, tab_id, where, weight)
+                            self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, sport, tcfg.weights), tile=tile)
+                            self.buildup.note(bkey, now, weight, "spoken:" + cue)
+                        note = tracker_note_weight(cue, sport, tcfg.weights, tcfg.speech_cue_factor)
                         if note is not None:   # a set piece is a build-up sign for the tracker only: no score, no anticipation
-                            log.info("buildup note %s tab %s weight %.2f", cue, tab_id, note)
-                            self.buildup.note(tab_id, now, note, "note:" + cue)
+                            log.info("buildup note %s tab %s%s weight %.2f", cue, tab_id, where, note)
+                            self.buildup.note(bkey, now, note, "note:" + cue)
 
     def _feed_text(self, tab_id: int) -> str:
         """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says."""
@@ -609,6 +655,58 @@ class Server:
         """The sport of a tab, lowercase (what the Scorer, the speech loop and the build-up tracker use): that of the audible tile."""
         return self.audible_sport(tab_id)
 
+    # ---- tiles of a multiview tab: each video is scored, built up and spoken to with its own sport (docs/per-tile-sport.md, Stage 2) ----
+
+    def _tab_indices(self, tab_id: int, extra=()) -> list[int]:
+        """The video indexes of a tab: those of its reported rects (else of its trackers), plus `extra` (the tiles just read)."""
+        rects = (self.rects.get(tab_id) or {}).get("rects") or []
+        if rects:
+            return sorted({r.get("index", pos) for pos, r in enumerate(rects)} | set(extra))
+        return sorted(set(extra) | {i for (t, i) in self.trackers if t == tab_id})
+
+    def _is_multi(self, tab_id: int, extra=()) -> bool:
+        """The tab shows two or more videos at once (a DAZN multiview). One video = the tab behaves exactly as before the per-tile work."""
+        return len(self._tab_indices(tab_id, extra)) >= 2
+
+    def _tkey(self, tab_id: int, index: int, extra=()) -> int | None:
+        """The tile argument for the Scorer: the video index in a multiview, None for the only video of a tab."""
+        return index if self._is_multi(tab_id, extra) else None
+
+    @staticmethod
+    def _bkey(tab_id: int, tile: int | None):
+        """The key of a stream in `buildup` and `cue_speech`: the tab id, or `(tab id, video index)` for a tile of a multiview."""
+        return tab_id if tile is None else (tab_id, tile)
+
+    def scoring_sport(self, tab_id: int, tile: int | None) -> str | None:
+        """The sport the Scorer reads a tile with (lowercase). A tile of a multiview whose sport is not known is football, like the audible
+        sport of Stage 1; the only video of a tab keeps the tab sport (None when unknown)."""
+        if tile is None:
+            return self._tab_sport(tab_id)
+        return self.tile_sport(tab_id, tile) or ("football" if self._is_multi(tab_id) else self._tab_sport(tab_id))
+
+    def _audible_target(self, tab_id: int) -> tuple[int | None, str | None]:
+        """(tile, sport) the tab's AUDIO belongs to (speech, rising-sound cue): the only video of a tab, or the tile that has the sound in a
+        multiview. With the sound's tile not known the tile whose sport is the tab's audible sport, else the first one."""
+        if not self._is_multi(tab_id):
+            return None, self._tab_sport(tab_id)
+        index = self._audible_index(tab_id)
+        if index is None:
+            indices = self._tab_indices(tab_id)
+            sport = self._tab_sport(tab_id)
+            index = next((i for i in indices if self.scoring_sport(tab_id, i) == sport), indices[0])
+        return index, self.scoring_sport(tab_id, index)
+
+    def _hears(self, tab_id: int, tile: int | None) -> bool:
+        """The tab's sound belongs to this tile (every tile of a multiview hears it while the audible tile is not known)."""
+        if tile is None:
+            return True
+        audible = self._audible_index(tab_id)
+        return audible is None or audible == tile
+
+    def _bkeys(self, tab_id: int) -> list:
+        """The build-up keys of a tab: its id, or one `(tab, tile)` per video in a multiview."""
+        return [self._bkey(tab_id, i) for i in self._tab_indices(tab_id)] if self._is_multi(tab_id) else [tab_id]
+
     def _note_audible(self, tab_id: int, info: dict) -> None:
         """Multiview: when the sound moves to another tile, drop the audio of the old one (it is another commentary, another crowd) and say so."""
         rects = info.get("rects") or []
@@ -627,6 +725,7 @@ class Server:
         self.speech_buffers.pop(tab_id, None)
         self.buffers.pop(tab_id, None)
         self.tags.pop(tab_id, None)
+        self.surge_rise.remove(tab_id)   # the loudness history is the old tile's
         stream = self.scorer.streams.get(tab_id)
         if stream is not None:
             stream.tags_at = float("-inf")   # the crowd / speech / music tags belong to the old tile: stale until the next classification
@@ -712,8 +811,15 @@ class Server:
 
     def _update_game_states(self, results: dict, now: float) -> None:
         per_tab: dict[int, list[str]] = {}
-        ads: dict[int, list[bool]] = {}
+        tile_states: dict[tuple[int, int], str] = {}
+        read: dict[int, list[int]] = {}
+        for tab_id, index in results:
+            read.setdefault(tab_id, []).append(index)
+        multi = {t for t, indices in read.items() if self._is_multi(t, indices)}   # tabs that show several videos: one scorer record per video
+        for tab_id, indices in read.items():
+            self.scorer.set_tiles(tab_id, self._tab_indices(tab_id, indices) if tab_id in multi else [])
         for (tab_id, index), r in results.items():
+            tk = index if tab_id in multi else None   # the tile argument of every scorer call below
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id), self.scorer.config))
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
             det = self.sport_detectors[(tab_id, index)]
@@ -733,7 +839,8 @@ class Server:
             if detected != self.sport_seen.get((tab_id, index)):
                 log.info("sport detected tab %s tile %s: %s", tab_id, index, detected or "unknown")
                 self.sport_seen[(tab_id, index)] = detected
-            per_tab.setdefault(tab_id, []).append(tracker.update(now, r["texts"], r["clocks"]))
+            tile_states[(tab_id, index)] = tracker.update(now, r["texts"], r["clocks"])
+            per_tab.setdefault(tab_id, []).append(tile_states[(tab_id, index)])
             if tracker.scorebug_note:   # measuring only: DAZN hides the scorebug during replays
                 kind, secs = tracker.scorebug_note
                 log.info("scorebug %s tab %s tile %s: %.0f s", kind, tab_id, index, secs)
@@ -745,22 +852,21 @@ class Server:
             if tracker.clock_replay_note:
                 self.replay_signal[(tab_id, index, "clock")] = tracker.clock_replay_note[0] == "start"
             if self.replay_signal.get((tab_id, index, "bug")) or self.replay_signal.get((tab_id, index, "clock")):
-                self.scorer.note_replay(tab_id, now)   # extends a post-goal hold
+                self.scorer.note_replay(tab_id, now, tk)   # extends the post-goal hold of this tile
             tile_cfg = self.scorer.config.for_sport(tracker.sport)   # this tile's sport: shared values unless overridden in settings.toml
             for cue in tracker.anticipation:
                 banner = tracker.anticipation_text.get(cue, cue)
                 zone = end_zone_factor(tracker.end_zone_yards, tracker.down, tracker.goal_to_go, tile_cfg)   # None when the distance is unknown
-                weight = cue_weight(cue, banner, self.cue_speech.tier(tab_id, now), tracker.sport or None, tile_cfg.weights, zone=zone)
+                weight = cue_weight(cue, banner, self.cue_speech.tier(self._bkey(tab_id, tk), now), tracker.sport or None, tile_cfg.weights, zone=zone)
                 log.info("anticipation %s tab %s tile %s weight %.2f", cue, tab_id, index, weight)
-                self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, tracker.sport or None, tile_cfg.weights))
-                self.buildup.note(tab_id, now, weight, cue)
+                self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, tracker.sport or None, tile_cfg.weights), tile=tk)
+                self.buildup.note(self._bkey(tab_id, tk), now, weight, cue)
                 self._rec_event("banner_cue", tab_id, index, cue=cue, banner=banner, weight=round(weight, 3))
-            ads.setdefault(tab_id, []).append(tracker.on_ad)
             if tracker.big_play:
                 strength = tile_cfg.big_play_strength
                 self.event_at[(tab_id, index)] = max(self.event_at.get((tab_id, index), float("-inf")),
                                                      now - (1.0 - strength) * self.scorer.config.event_s)
-                self.scorer.set_event(tab_id, now, strength)
+                self.scorer.set_event(tab_id, now, strength, tile=tk)
                 log.info("big play tab %s tile %s: %s", tab_id, index, tracker.big_play)
                 self._rec_event("big_play", tab_id, index, text=str(tracker.big_play), strength=strength)
             if tracker.goal_banner:   # a GOAL banner (soccer): an early event, a real score change takes it to full strength
@@ -768,7 +874,7 @@ class Server:
                 if strength > 0:
                     self.event_at[(tab_id, index)] = max(self.event_at.get((tab_id, index), float("-inf")),
                                                          now - (1.0 - strength) * self.scorer.config.event_s)
-                    self.scorer.set_event(tab_id, now, strength, goal=True)
+                    self.scorer.set_event(tab_id, now, strength, goal=True, tile=tk)
                 log.info("goal banner tab %s tile %s: %s", tab_id, index, tracker.goal_banner)
                 self._rec_event("goal_banner", tab_id, index, text=str(tracker.goal_banner), strength=strength)
             seen = match_multiplier(r["texts"], self.favourites)
@@ -808,7 +914,7 @@ class Server:
             elif held is not None and not changed and per_tab[tab_id][-1] == "live":   # the game is live again: the held change counts now
                 del self.held_change[(tab_id, index)]
                 self.event_at[(tab_id, index)] = now - (1.0 - held[0]) * self.scorer.config.event_s
-                self.scorer.set_event(tab_id, now, held[0], goal=True)
+                self.scorer.set_event(tab_id, now, held[0], goal=True, tile=tk)
                 log.info("score change tab %s tile %s counted late: it was read %.0f s ago while the game looked like a break", tab_id, index, now - held[1])
                 self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=held[0], note="counted late")
             elif changed:
@@ -826,27 +932,34 @@ class Server:
                     self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=strength, note="counted by the feed already")
                 else:
                     self.event_at[(tab_id, index)] = now - (1.0 - strength) * self.scorer.config.event_s
-                    self.scorer.set_event(tab_id, now, strength, goal=True)
+                    self.scorer.set_event(tab_id, now, strength, goal=True, tile=tk)
                     log.info("score change tab %s tile %s: %s", tab_id, index, r["texts"][:8])
                     self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=strength, verdict=change.verdict)
         for tab_id, states in per_tab.items():
             self._update_favourite(tab_id, now)
-            self.scorer.set_on_ad(tab_id, all(ads.get(tab_id, [False])), now)   # the whole tab is on an ad
-            self.scorer.set_replay(tab_id, any(self.trackers[key].replay for key in results if key[0] == tab_id), now)
+            before = self.scorer.tab_auto_state(tab_id)
+            for index in read[tab_id]:   # the picture signals of each video go to its own record (a single video: the stream's own)
+                tk = index if tab_id in multi else None
+                self.scorer.set_on_ad(tab_id, self.trackers[(tab_id, index)].on_ad, now, tile=tk)   # a tab is on an ad when all its videos are
+                self.scorer.set_replay(tab_id, self.trackers[(tab_id, index)].replay, now, tile=tk)
+                self.scorer.set_auto_state(tab_id, tile_states[(tab_id, index)], tile=tk)
             state = combine(states)
             stream = self.scorer.streams.get(tab_id)
-            if stream is not None and stream.auto_state != state:
-                log.info("game state tab %s: %s -> %s", tab_id, stream.auto_state, state)
-                self._rec_event("game_state", tab_id, old=stream.auto_state, new=state)
-            self.scorer.set_auto_state(tab_id, state)
-            tiles = []   # closeness and time left of the best game in this tab
+            if stream is not None and before != state:
+                log.info("game state tab %s: %s -> %s", tab_id, before, state)
+                self._rec_event("game_state", tab_id, old=before, new=state)
+            tiles = {}   # closeness and time left of each game in this tab
             for (t, index), watcher in self.watchers.items():
                 if t != tab_id:
                     continue
                 tracker = self.trackers.get((t, index))
-                tiles.append((self.tile_sport(t, index), watcher.score, tracker.period if tracker else None,
-                              tracker.clock_minute if tracker else None))
-            self.scorer.set_leverage(tab_id, tab_leverage(tiles, self.scorer.config))
+                tiles[index] = (self.tile_sport(t, index), watcher.score, tracker.period if tracker else None, tracker.clock_minute if tracker else None)
+            if tab_id in multi:   # each tile has its own leverage, read with its own sport
+                for index in read[tab_id]:
+                    if index in tiles:
+                        self.scorer.set_leverage(tab_id, tab_leverage([tiles[index]], self.scorer.config), tile=index)
+            else:   # a single video: the closeness and time left of the best game of the tab, as before
+                self.scorer.set_leverage(tab_id, tab_leverage(list(tiles.values()), self.scorer.config))
 
     def _focus_commands(self, now: float) -> list[dict]:
         """For multiview tabs: which tile should have the sound?"""
@@ -920,6 +1033,9 @@ class Server:
                 self.replay_signal[a] = moved_b
             if moved_a is not None:
                 self.replay_signal[b] = moved_a
+        self.scorer.swap_tiles(tab_id, target, main)   # the scorer's picture records, the build-ups and what was heard follow their videos too
+        self.buildup.swap((tab_id, target), (tab_id, main))
+        self.cue_speech.swap((tab_id, target), (tab_id, main))
         seen = self.audible_seen.get(tab_id)
         if seen is not None and seen[0] in (target, main):   # the stream that had the sound moved with its record
             self.audible_seen[tab_id] = (main if seen[0] == target else target, seen[1])

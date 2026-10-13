@@ -12,8 +12,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from daemon.backtest import (Rule, measure, measure_feed, parse_buildups, parse_cues, parse_feed_events, parse_feed_lags, parse_goals,   # noqa: E402
-                             parse_mappings, parse_signals, parse_sports, summarise, summarise_feed)
+from daemon.backtest import (Rule, measure, measure_feed, parse_cues, parse_feed_events, parse_feed_lags, parse_goals,   # noqa: E402
+                             parse_mappings, parse_signals, parse_tile_buildups, parse_tile_sports, summarise, summarise_feed)
 from daemon.feed_compare import parse_feed   # noqa: E402
 
 
@@ -31,8 +31,8 @@ def main() -> None:
     day = next((a for a in sys.argv[1:] if a[:2].isdigit()), None)
     daemon = read_lines(logs, ["daemon.log.3", "daemon.log.2", "daemon.log.1", "daemon.log"], day)
     events = read_lines(logs, ["events.log"], day)
-    readings, cues, lags, sports = parse_signals(daemon), parse_cues(events), parse_feed_lags(events), parse_sports(events)
-    buildups = parse_buildups(daemon + events)
+    readings, cues, lags, sports = parse_signals(daemon), parse_cues(events), parse_feed_lags(events), parse_tile_sports(events)
+    buildups = parse_tile_buildups(daemon + events)
     leads = measure(readings, parse_goals(events), cues, lags, Rule(), sports=sports, buildups=buildups)
     print(summarise(leads, detail="--summary" not in sys.argv))
     feed_lines = []

@@ -23,6 +23,7 @@ to subtract times inside a run; it restarts at each daemon start). Ages and "lef
 | `tab`, `role` | tab id; its window slot (`MAIN`, `LEFT`, `RIGHT_BOT`, ... as the windows report it) |
 | `is_main` | this stream is on MAIN now |
 | `sport` | the sport the scorer uses for this tab (lowercase: football, american football, basketball, or null) |
+| `tile`, `tile_sport` | DAZN multiview only (null for a tab with one video): the tile that scored the tab this tick (the tab scores as its best tile; its picture signals `event`, `cue*`, `lev`, `replay`, `goal_*` are that tile's) and that tile's sport. Added 2026-10-14 (per-tile scoring, `docs/per-tile-sport.md`) |
 | `warm` | false while the stream has no recent audio or is warming up: its audio fields are then null |
 | `state`, `auto_state`, `override` | game state in use (`live`/`break`/`over`); the one detected from the picture; the one the user forced (or null) |
 | `ad`, `on_ad` | ad flag in use (picture or music-only sound); ad seen in the picture |
@@ -53,15 +54,16 @@ to subtract times inside a run; it restarts at each daemon start). Ages and "lef
 part (`weights` x signals), `cues` = `[[age_s, faded_value, kind], ...]` oldest first (kind = banner cue name, `spoken:<cue>`, `note:<cue>` for a set-piece
 note, `surge_note`, `crowd_note`, `surge_rise`), `min`/`gap`/`live` = the thresholds and the live switch of this stream's sport, `main_score` MAIN's score, `main_level` MAIN's own build-up level (its cues + surge/crowd; 0 on MAIN's own row), `hot_left` seconds MAIN stays 'hot' (after its own goal or a strong cue: `scoring.hot_game_s`; 0 = not hot, also 0 on MAIN's own row when not hot), `qualifies` level
 >= `min` and >= `gap` above the larger of `main_score` and `main_level` (the cooldown and the guards ignored), `cooldown_left` s of the stream's build-up cooldown, `surge_note_left` /
-`crowd_note_left` s until another surge / crowd note can be made, `crowd_run` consecutive loud-crowd readings, `blocked` = why `take_main` would refuse now (also MAIN keeping its seat: "MAIN's own cue ..." / "MAIN under review ...", only when live and the row qualifies; "MAIN is hot (...)" while `hot_left` > 0 and the level is below MAIN's score or level + `hot_game_margin`)
+`crowd_note_left` s until another surge / crowd note can be made, `crowd_run` consecutive loud-crowd readings, `tile` (multiview only: the tile this build-up belongs to, the tab's best tile; each tile has its own cues and cooldowns), `blocked` = why `take_main` would refuse now (also MAIN keeping its seat: "MAIN's own cue ..." / "MAIN under review ...", only when live and the row qualifies; "MAIN is hot (...)" while `hot_left` > 0 and the level is below MAIN's score or level + `hot_game_margin`)
 (`dwell`, `goal on MAIN N s ago`, `not live`, `slot rules`, `on an ad`, `manual hold`, `MAIN is frozen`, `already MAIN`) or null.
 
 `tiles[]`: `i` tile index, `sport` / `sport_src` (popup, hard, feed, title, weak, memory), `state`, `ad`, `replay`, `period`, `clock` (text), `clock_min`,
-`home`, `away` (voted score), `audible` (this tile has the sound), `game_id`, `league`, `mapped_ok` (the feed mapping is verified by the OCR score/clock).
+`home`, `away` (voted score), `audible` (this tile has the sound), `game_id`, `league`, `mapped_ok` (the feed mapping is verified by the OCR score/clock),
+`score` (multiview only, else null: the score of THIS tile; the tab's `score` is the best of them; the audio terms are in the audible tile's score only).
 
 ## Event lines
 
-Common: `v`, `t`, `mono`, `kind`, `tab`, `tile` (null when not about a tile), `sport`, `main` (MAIN tab at that moment). Then by `kind`:
+Common: `v`, `t`, `mono`, `kind`, `tab`, `tile` (null when not about a tile), `sport` (a tile event of a multiview: that tile's sport; else the tab's), `main` (MAIN tab at that moment). In a multiview `buildup`, `speech_cue` and `surge_rise` events carry the tile they belong to (the audible tile for speech and sound; null for a tab with one video). Then by `kind`:
 
 | kind | extra fields |
 |---|---|
