@@ -36,6 +36,7 @@ SCOREBOARD_ITEM_RE = re.compile(r"\d{1,3}|\d{1,3}\s?[-/]\s?\d{1,3}|[A-Z]{2,4}\s+
 TEAM_CODE_RE = re.compile(r"[A-Z]{3,4}")
 CLOCK_WITH_CODE_RE = re.compile(r"\d{1,3}\s?[:.,]\s?\d{2}\s+\W?[A-Z]{2,4}\W?")
 DOWN_MEMORY_S = 20.0
+OVERLAY_TEXTS = ("OmniSportsSwitch", "Freeze MAIN", "Re-track this tab", "held on")   # the extension's own overlay: its countdowns are not a game clock
 IN_PLAY_MEMORY_S = 15.0   # a "Final" caption is ignored this long after the scorebug of a game in play was seen
 PERIOD_OF = {"1st": 1, "ist": 1, "isr": 1, "lst": 1, "2nd": 2, "znd": 2, "3rd": 3, "3r0": 3, "jrd": 3, "4th": 4, "ath": 4, "q1": 1, "q2": 2, "q3": 3, "q4": 4}
 PERIOD_VOTES, PERIOD_NEEDED = 5, 3   # the period is the value most of the last readings agree on
@@ -195,6 +196,9 @@ class GameTracker:
         self._gap_announced = False
         self._gap_dead = False                 # the gap was an ad / break / stale: never reported
         self.clock_replay_note: tuple[str, float] | None = None   # ("start", s back) / ("end", s long) on the reading that detects a replay by its clock
+        self._real_clock: tuple[float, float] | None = None   # football: (seconds, time) of the last clock that fitted the game; replays, highlights and overlays are filtered against it
+        self._game_codes: frozenset = frozenset()   # football: the two team codes read beside the last real clock
+        self._foreign: tuple[float, float, float] | None = None   # (first time, last time, last seconds) of an odd clock that keeps running
         self._cs_last: float | None = None     # last game clock in seconds, and when it was read
         self._cs_time = 0.0
         self._cs_dir = 0                       # +1 the clock counts up (soccer), -1 down (American football, basketball), 0 not known yet
@@ -218,10 +222,58 @@ class GameTracker:
         self.sport = (sport or "").strip().lower()
         self.profile = profile_for(sport)
 
+    def _drop_foreign_clocks(self, now: float, texts: list[str], clocks: list[str]) -> list[str]:
+        """Football: the clocks that may be the live game clock. Dropped: any clock read while the extension's own overlay is on screen
+        (its countdowns '0:58' are not a clock), a clock more than `football_clock_back_s` below the last real one (a replay package or
+        highlights; the 2nd half's 45:00 is fine), and one more than `football_clock_ahead_s` above what the last real one plus the elapsed
+        time allows (another match's scorebug). An odd clock that keeps running for `foreign_clock_accept_s` is believed (the viewer rewound)."""
+        if self.sport != "football" or not clocks:
+            return clocks
+        if any(o.casefold() in t.casefold() for t in texts for o in OVERLAY_TEXTS):
+            return []
+        lone = not has_scoreboard_text(texts, clocks)   # no scoreboard beside the clock: perhaps an ad countdown (judged by the ad rules)
+        cfg, kept = self.config, []
+        codes = frozenset(t for t in (re.sub(r"[^\w\s-]", "", x).strip() for x in texts) if TEAM_CODE_RE.fullmatch(t) and t not in NOT_TEAM_CODES)
+        other_game = len(codes) >= 2 and len(self._game_codes) >= 2 and not (codes & self._game_codes)   # a scorebug of two other teams
+        for c in clocks:
+            m = re.fullmatch(r"(\d{1,3}):(\d{2})", c.strip())
+            if not m:
+                kept.append(c)
+                continue
+            s = int(m.group(1)) * 60 + int(m.group(2))
+            if self._real_clock is None:
+                kept.append(c)
+                self._real_clock = (s, now)
+                if len(codes) >= 2:
+                    self._game_codes = codes
+                continue
+            last, then = self._real_clock
+            second_half = 45 * 60 <= s < 46 * 60 and last >= 44 * 60
+            odd = other_game or (s < last - cfg.football_clock_back_s and not second_half) or s > last + (now - then) + cfg.football_clock_ahead_s
+            if not odd:
+                kept.append(c)
+                self._real_clock, self._foreign = (s, now), None
+                if len(codes) >= 2:
+                    self._game_codes = codes
+                continue
+            first, prev, prev_s = self._foreign if self._foreign is not None else (now, now, s)
+            runs = now - prev <= 15.0 and abs(s - prev_s - (now - prev)) <= 20    # the same odd clock, still running
+            if lone and not (self._foreign is not None and runs):
+                kept.append(c)   # an odd clock alone on screen that is not an odd clock we already follow: an ad countdown, not ours to judge
+                continue
+            first = first if runs or self._foreign is None else now
+            self._foreign = (first, now, s)
+            if now - first >= cfg.foreign_clock_accept_s:
+                kept.append(c)
+                self._real_clock, self._foreign = (s, now), None
+                self._game_codes = codes if len(codes) >= 2 else frozenset()
+        return kept
+
     def update(self, now: float, texts: list[str], clocks: list[str]) -> str:
         self.clock_replay_note = None
         if self._first_seen is None:
             self._first_seen = now
+        clocks = self._drop_foreign_clocks(now, texts, clocks)
 
         items = [re.sub(r"[^\w\s-]", "", t).strip() for t in texts]
         if any(DOWN_RE.fullmatch(t.strip()) or QUARTER_RE.fullmatch(t.strip()) for t in texts):

@@ -1059,3 +1059,115 @@ def test_a_sponsor_al_beside_an_intact_scorebug_is_not_a_goal_banner():
     g2.update(3.0, ["CION", "GREE", "LDER"], [])
     g2.update(7.0, ["GREE", "ny", "3", "98", "88.05", "ADESITAL", "Al"], [])
     assert g2.goal_banner == ""
+
+
+# ---- half time stays a break (2026-10-13 21:52, readings from logs/daemon.log): overlay text, highlights and replay packages are not the live clock ----
+
+BOARD = ["GAL", "1", "1", "BAR"]
+
+
+def _clk(seconds):
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+def _first_half_then_half_time(g):
+    """Live from 44:00 to 46:30 (added time) with a scorebug, then no scorebug for good: a break after the no-clock timeout."""
+    t = 0.0
+    while t < 150:
+        c = _clk(44 * 60 + t)
+        g.update(t, [c] + BOARD, [c])
+        t += 3
+    while t < 150 + 120:
+        g.update(t, ["#FOOT", "DIRECT"], [])                                    # no scorebug during half time
+        t += 3
+    assert g.state == "break"
+    return t
+
+
+def test_extension_overlay_clocks_are_not_a_game_clock():
+    g = GameTracker("football")
+    t = _first_half_then_half_time(g)
+    overlay = ["OmniSportsSwitch", "This window is", "Window 3", "Freeze MAIN (Ctrl+Shift+P)", "Re-track this tab (Ctrl+Shift+Y)", "Main is held on \"Toutes\"", "for 0.58 more"]
+    for i, clock in enumerate(["0:25", "0:25", "0:58", "1:08", "1:09", "1:10"]):
+        assert g.update(t + 3 * i, overlay, [clock]) == "break"
+
+
+def test_replay_package_with_an_old_scorebug_does_not_turn_half_time_live():
+    g = GameTracker("football")
+    t = _first_half_then_half_time(g)
+    for i in range(25):    # GAL 0-0 BAR 26:36 ... running: the first half replayed
+        s = 26 * 60 + 36 + 3 * i
+        clock = f"{s // 60}:{s % 60:02d}"
+        assert g.update(t + 3 * i, [clock, "GAL", "0", "0", "BAR", "#SPORT"], [clock]) == "break", i
+
+
+def test_highlights_of_another_match_with_a_later_clock_do_not_turn_half_time_live():
+    g = GameTracker("football")
+    t = _first_half_then_half_time(g)
+    for i in range(10):    # 76:57 BAR 3 0 FEY: far AHEAD of the clock this game could show
+        s = 76 * 60 + 57 + 3 * i
+        clock = f"{s // 60}:{s % 60:02d}"
+        assert g.update(t + 3 * i, [clock, "BAR", "3", "0", "FEY"], [clock]) == "break", i
+
+
+def test_second_half_start_at_45_00_after_added_time_still_goes_live():
+    g = GameTracker("football")
+    t = _first_half_then_half_time(g)
+    state = None
+    for i in range(10):
+        s = 45 * 60 + 3 * i
+        clock = f"{s // 60}:{s % 60:02d}"
+        state = g.update(t + 3 * i, [clock] + BOARD, [clock])
+    assert state == "live"
+
+
+def test_extra_time_start_at_105_00_goes_live():
+    g = GameTracker("football")
+    run(g, 0, 60, lambda t: f"{90 + int(t) // 60}:{int(t) % 60:02d}", texts=BOARD)   # 90:00 .. 90:57
+    t = 60.0
+    for i in range(60):
+        g.update(t + 3 * i, ["#FOOT"], [])
+    t += 180
+    state = None
+    for i in range(10):
+        s = 105 * 60 + 3 * i
+        clock = f"{s // 60}:{s % 60:02d}"
+        state = g.update(t + 3 * i, [clock] + BOARD, [clock])
+    assert state == "live"
+
+
+def test_a_foreign_clock_that_keeps_running_is_believed_after_a_while():
+    g = GameTracker("football")
+    t = _first_half_then_half_time(g)
+    state = None
+    for i in range(110):   # 5.5 minutes of a clock 30 minutes back: you rewound the stream
+        s = 16 * 60 + 3 * i
+        clock = f"{s // 60}:{s % 60:02d}"
+        state = g.update(t + 3 * i, [clock] + BOARD, [clock])
+    assert state == "live"
+
+
+def test_other_sports_are_not_filtered_by_the_football_clock_rule():
+    g = GameTracker("basketball")
+    run(g, 0, 60, lambda t: f"{19 - int(t) // 60}:{59 - int(t) % 60:02d}")
+    assert run(g, 60, 12, lambda t: "5:00") in ("live", "break")   # no exception: the rule is not applied
+    assert g._real_clock is None
+
+
+def test_a_scorebug_with_other_team_codes_is_not_this_game_even_if_its_clock_fits():
+    # 21:53:00 ATM-MUN tab: highlights with 'SLA 0 0 LEN' at 50:35 while the game's last clock was ~47:30
+    g = GameTracker("football")
+    t = 0.0
+    while t < 150:
+        c = _clk(46 * 60 + t - 100)
+        g.update(t, [c, "ATM", "2", "0", "MUN"], [c])
+        t += 3
+    while t < 150 + 120:
+        g.update(t, ["#FOOT"], [])
+        t += 3
+    assert g.state == "break"
+    for i in range(12):
+        c = _clk(50 * 60 + 35 + 3 * i)
+        assert g.update(t + 3 * i, [c, "SLA", "0", "0", "LEN"], [c]) == "break", i
+    c = _clk(48 * 60)    # the real game's scorebug again (same codes), clock plausible
+    assert g.update(t + 60, [c, "ATM", "2", "0", "MUN"], [c]) == "live"
