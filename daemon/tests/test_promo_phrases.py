@@ -48,3 +48,20 @@ def test_the_lists_are_in_the_defaults():
 def test_one_reading_is_not_enough():
     g = readings(["NFL GAME PASS"], n=1)
     assert not g.on_ad
+
+
+# ---- scoring-bugs-64: the DAZN carousel cards seen on MAIN at 23:44 (real OCR text) ----------------------------------
+
+@pytest.mark.parametrize("texts", [
+    ["Hive /", "ORIGIN", "@RIGIn", "Origi", "FIFA+", "Stream live matches, relive iconic", "moments and enjoy world class", "documentaries.", "10", "DA", "ZN", "FIFA+"],
+    ["EK", "REBER VS", "STREET", "23OCTOBER", "DA", "ZN", "Check your schedule for availability"],
+    ["FIFAe", "Iorld Cup", "OCT 16-25", "Check vour schedule for availability"],
+])
+def test_the_dazn_carousel_cards_are_ads_even_with_loose_numbers_on_them(texts):
+    g = readings(texts)
+    assert g.on_ad and g.state == "break"
+
+
+def test_a_live_game_is_not_an_ad_because_of_these_phrases():
+    g = readings(["SEC NETWORK", "MISSOURI", "5-1", "21", "3rd & 6", "2:13", "9 OLE MISS", "3RD QTR"], clocks=["2:13"], n=6)
+    assert not g.on_ad

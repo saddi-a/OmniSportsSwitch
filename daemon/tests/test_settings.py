@@ -38,7 +38,8 @@ def test_the_shipped_settings_file_equals_the_built_in_defaults(tmp_path):
     assert game_state.AD_PHRASES == ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire",
                                      "publicidade", "pausa comercial", "ad break", "advertisement", "right back", "volvemos",
                                      "de retour dans", "watch now", "ondazn", "event break", "evento em intervalo",
-                                     "interrupcion del evento", "interrupción del evento"]
+                                     "interrupcion del evento", "interrupción del evento", "stream live matches",
+                                     "schedule for availability"]
     assert game_state.PROMO_PHRASES == ["advertising", "on dazn", "nfl game pass", "watchevery", "daznboxing", "dazn boxing"]
     assert game_state.BIG_PLAY_WORDS == ["takeaway", "interception", "intercepted", "fumble", "sack", "red card",
                                          "carton rouge", "penalty kick"]

@@ -157,7 +157,7 @@ ad_penalty = 0.5     # a tile showing an ad gets negative interest, so focus mov
 [banners]
 # Text a streaming player shows while an ad break is on (matched anywhere inside a text item, any case). It must
 # appear on two readings in a row. Add the wording your services use, in any language.
-break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire", "publicidade", "pausa comercial", "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn", "event break", "evento em intervalo", "interrupcion del evento", "interrupción del evento"]
+break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire", "publicidade", "pausa comercial", "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn", "event break", "evento em intervalo", "interrupcion del evento", "interrupción del evento", "stream live matches", "schedule for availability"]
 # Promo screens between games (DAZN). They count as an ad only when NO scoreboard is on screen: a live game frame shows "US advertising" or a Game Pass logo beside its scorebug.
 promo_phrases = ["advertising", "on dazn", "nfl game pass", "watchevery", "daznboxing", "dazn boxing"]
 
