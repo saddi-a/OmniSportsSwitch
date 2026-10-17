@@ -2,7 +2,7 @@
 
 ## Public repo
 - `saddi-a/OmniSportsSwitch` on GitHub was made PUBLIC on 2026-10-11 (so friends can use it). Everything pushed is visible to everyone: never commit logs, samples, screenshots, stream URLs or personal data.
-- Cleaning the public history is a pending decision (see `PLAN.md` section 0, "Public repo").
+- The user dropped the idea of cleaning the public history (2026-10-17): do not propose it again.
 
 ## Branches
 - Work on `develop` (renamed on 2026-10-11 from the old spike/daemon branch).

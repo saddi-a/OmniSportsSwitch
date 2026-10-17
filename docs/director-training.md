@@ -212,7 +212,7 @@ Decisions by the user:
 6. Sports: football AND American football first. Basketball is forgotten for now (its work is parked, not deleted).
 7. Data mix: replays AND live games, whichever is available when the user is free. The plan has no fixed schedule; stages are gated by event counts, not dates.
 8. Raw data stays LOCAL ONLY in the gitignored `logs/`. The user declined a backup: a disk loss loses the data.
-9. Hygiene rules stay. Cleaning the public history is decided separately and does not block this work.
+9. Hygiene rules stay.
 
 Facts that shape shipping: per-sport settings overrides exist (README "Per-sport settings", `Config.for_sport` in `daemon/scoring.py`), so learned numbers go in `[scoring.football]` / `[weights.football]` style sections. Sport is per TAB (popup choice or first sport detected on any tile), so a mixed-sport DAZN multiview tab is an open limitation.
 
