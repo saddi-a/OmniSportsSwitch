@@ -759,7 +759,8 @@ def test_buildup_log_only_starts_the_cooldown(caplog):
     assert caplog.text.count("log only") == 1
 
 
-def test_buildup_crowd_pressure_notes_a_cue_after_two_readings(caplog):
+def test_buildup_crowd_pressure_notes_a_cue_after_two_readings(caplog, monkeypatch):
+    monkeypatch.setattr("daemon.buildup.CROWD_NOTE_READINGS", 2)   # this test pins the 2-reading rule
     server = _buildup_server("football", level=0.0)
     c = dict(server.scorer.components(2, 60.0), crowd=0.30, surge=0.0)
     with caplog.at_level(logging.INFO):

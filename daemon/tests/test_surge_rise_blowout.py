@@ -8,7 +8,7 @@ from daemon.scoring import Config, Scorer, Weights
 from daemon.server import Server
 from daemon.tests.test_scoring import make, quiet_play, warm_up
 
-CFG = Config()
+CFG = Config(surge_rise_votes=2.0)   # these tests feed readings 2 s apart, the old tick; the default is 3 votes at the 1 s tick (test below)
 
 
 # ---- SurgeRiseWatch ---------------------------------------------------------------------------------------------------------------------
@@ -22,6 +22,12 @@ def test_a_rise_on_two_readings_in_a_row_fires_once():
     # quiet, then the level climbs (0.05 -> 0.10 -> 0.14 -> 0.18) with the surge well above the baseline
     readings = [(0, 0.05, 0.0), (2, 0.05, 0.0), (4, 0.06, 0.1), (6, 0.10, 0.6), (8, 0.14, 0.9), (10, 0.18, 1.0)]
     assert feed(SurgeRiseWatch(), readings) == [8]    # t=6 is the first vote, t=8 the second; t=10 is inside the cooldown
+
+
+def test_default_is_three_readings_one_second_apart():
+    # the same 2 s hold as two readings 2 s apart at the old tick
+    readings = [(0, 0.05, 0.0), (1, 0.05, 0.0), (2, 0.05, 0.0), (3, 0.06, 0.1), (4, 0.10, 0.6), (5, 0.14, 0.9), (6, 0.16, 1.0), (7, 0.18, 1.0)]
+    assert feed(SurgeRiseWatch(), readings, cfg=Config()) == [6]
 
 
 def test_one_reading_is_never_enough():
@@ -79,6 +85,7 @@ def test_weight_is_soccer_only_and_zero_is_off():
 
 def _server(sport="football"):
     server = Server()
+    server.scorer.config.surge_rise_votes = 2.0
     for t in (1, 2):
         server.handle_message({"type": "register", "tab_id": t, "is_main": t == 1})
     if sport:

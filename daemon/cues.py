@@ -213,7 +213,7 @@ class GoalPhraseWatch:
 
 class SurgeRiseWatch:
     """Soccer: the crowd noise of a stream is RISING fast. A goal or a big chance is heard on the sound a few seconds before the commentator
-    says it, so this fires on the sound alone. It is fed one reading per stream per score line (every ~2 s) with the stream's loudness
+    says it, so this fires on the sound alone. It is fed one reading per stream per scoring tick (every ~1 s since 2026-10-17, 2 s before) with the stream's loudness
     `level` and its `surge` (level over its own long-term baseline, `Scorer.components`), and `reading(...)` returns True when
     (1) the surge is at least `surge_min` (clearly above the stream's normal), (2) the level is at least `ratio` times the level of the
     oldest reading in the last `window_s` seconds (that reading is at least half the window old: a rise over several seconds, not a plateau),

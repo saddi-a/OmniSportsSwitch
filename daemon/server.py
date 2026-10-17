@@ -51,7 +51,7 @@ from daemon.scoring import SHOUT_CLASSES, Scorer, Swap
 
 HOST, PORT = "127.0.0.1", 8765
 DECIDE_INTERVAL_S = 0.25
-SCORE_LOG_INTERVAL_S = 2.0   # the scoring tick: cue checks, build-up, surge rise (they count readings, so this pace is part of their tuning)
+SCORE_LOG_INTERVAL_S = 1.0   # the scoring tick: cue checks, build-up, surge rise. Was 2.0 until 2026-10-17: the rules that count readings (surge_rise_votes, CROWD_NOTE_READINGS) went 2 -> 3 to keep their 2 s hold
 SNAPSHOT_INTERVAL_S = 1.0    # the score lines of daemon.log and the dataset rows (logging only, changes no decision)
 MAINTENANCE_INTERVAL_S = 3600.0   # the log archive is completed and pruned this often (and once at the start)
 CLASSIFY_INTERVAL_S = 1.0

@@ -9,6 +9,7 @@ import tempfile
 from daemon.scoring import Config, Scorer
 from daemon.server import Server
 import daemon.server as server_module
+import daemon.buildup as buildup_module
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "golden_single_tile.json"
 KEYS = ("score", "surge", "crowd", "speech", "music", "shout", "event", "cue", "anticipation", "lev", "status", "ad", "level")
@@ -27,11 +28,12 @@ def _board(t):
 
 
 def run() -> list:
-    saved = server_module.LOG_DIR
+    saved, saved_readings = server_module.LOG_DIR, buildup_module.CROWD_NOTE_READINGS
     server_module.LOG_DIR = pathlib.Path(tempfile.mkdtemp()) / "logs"
     server_module.LOG_DIR.mkdir()
     try:
-        server = Server(Scorer(Config()))
+        server = Server(Scorer(Config(surge_rise_votes=2.0)))   # recorded at the old 2 s tick: pin its 2-reading rules
+        buildup_module.CROWD_NOTE_READINGS = 2
         for tab, sport in ((1, "Football"), (2, "Football"), (3, "American football"), (4, None)):
             server.handle_message({"type": "register", "tab_id": tab, "is_main": tab == 1, "sport": sport})
         out = []
@@ -67,6 +69,7 @@ def run() -> list:
         return out
     finally:
         server_module.LOG_DIR = saved
+        buildup_module.CROWD_NOTE_READINGS = saved_readings
 
 
 if __name__ == "__main__":

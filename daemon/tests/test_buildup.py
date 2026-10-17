@@ -83,30 +83,30 @@ def test_corner_plus_chance_plus_surge_reaches_the_level_but_a_corner_alone_does
 
 def test_crowd_note_needs_two_consecutive_readings_at_the_threshold():
     b = BuildUp(cooldown_s=30.0)
-    assert not b.crowd_note_due(1, 0.0, 0.25, 0.25)              # a single reading does not fire
-    assert b.crowd_note_due(1, 2.0, 0.25, 0.25)                  # the second one in a row does (>= threshold)
+    assert not b.crowd_note_due(1, 0.0, 0.25, 0.25, readings=2)              # a single reading does not fire
+    assert b.crowd_note_due(1, 2.0, 0.25, 0.25, readings=2)                  # the second one in a row does (>= threshold)
     b2 = BuildUp()
-    assert not b2.crowd_note_due(1, 0.0, 0.24, 0.25) and not b2.crowd_note_due(1, 2.0, 0.24, 0.25)   # below: never
+    assert not b2.crowd_note_due(1, 0.0, 0.24, 0.25, readings=2) and not b2.crowd_note_due(1, 2.0, 0.24, 0.25, readings=2)   # below: never
 
 
 def test_crowd_note_gap_resets_the_run():
     b = BuildUp()
-    assert not b.crowd_note_due(1, 0.0, 0.5, 0.25)
-    assert not b.crowd_note_due(1, 2.0, 0.1, 0.25)               # a low reading in between
-    assert not b.crowd_note_due(1, 4.0, 0.5, 0.25)               # starts again at 1
-    assert b.crowd_note_due(1, 6.0, 0.5, 0.25)
+    assert not b.crowd_note_due(1, 0.0, 0.5, 0.25, readings=2)
+    assert not b.crowd_note_due(1, 2.0, 0.1, 0.25, readings=2)               # a low reading in between
+    assert not b.crowd_note_due(1, 4.0, 0.5, 0.25, readings=2)               # starts again at 1
+    assert b.crowd_note_due(1, 6.0, 0.5, 0.25, readings=2)
 
 
 def test_crowd_note_is_per_stream_and_once_per_cooldown():
     b = BuildUp(cooldown_s=30.0)
-    b.crowd_note_due(1, 0.0, 0.5, 0.25)
-    assert b.crowd_note_due(1, 2.0, 0.5, 0.25)
-    assert not b.crowd_note_due(1, 4.0, 0.5, 0.25)               # cooldown
-    assert not b.crowd_note_due(2, 4.0, 0.5, 0.25)               # stream 2 has its own run: first reading
-    assert b.crowd_note_due(2, 6.0, 0.5, 0.25)
-    assert b.crowd_note_due(1, 32.0, 0.5, 0.25)                  # cooldown passed
+    b.crowd_note_due(1, 0.0, 0.5, 0.25, readings=2)
+    assert b.crowd_note_due(1, 2.0, 0.5, 0.25, readings=2)
+    assert not b.crowd_note_due(1, 4.0, 0.5, 0.25, readings=2)               # cooldown
+    assert not b.crowd_note_due(2, 4.0, 0.5, 0.25, readings=2)               # stream 2 has its own run: first reading
+    assert b.crowd_note_due(2, 6.0, 0.5, 0.25, readings=2)
+    assert b.crowd_note_due(1, 32.0, 0.5, 0.25, readings=2)                  # cooldown passed
     b.remove(1)
-    assert not b.crowd_note_due(1, 34.0, 0.5, 0.25)              # forgotten: the run starts over
+    assert not b.crowd_note_due(1, 34.0, 0.5, 0.25, readings=2)              # forgotten: the run starts over
 
 
 def test_would_take_without_cooldown_can_fire_again_until_marked():
@@ -204,3 +204,9 @@ def test_hold_settings_are_per_sport_overridable_and_in_the_layout():
     from daemon.scoring import OVERRIDABLE_SCORING
     for k in ("buildup_hold_s", "buildup_hold_cue_min", "buildup_hold_margin", "buildup_review_hold_s", "buildup_review_min", "buildup_review_margin"):
         assert k in OVERRIDABLE_SCORING
+
+
+def test_crowd_note_default_is_three_readings_at_the_one_second_tick():
+    b = BuildUp(cooldown_s=30.0)
+    assert not b.crowd_note_due(1, 0.0, 0.5, 0.25) and not b.crowd_note_due(1, 1.0, 0.5, 0.25)
+    assert b.crowd_note_due(1, 2.0, 0.5, 0.25)       # the same 2 s hold as two readings at the old 2 s tick

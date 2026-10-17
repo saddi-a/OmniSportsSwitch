@@ -10,6 +10,8 @@ log can be compared with the real goals (scripts/backtest.py). It changes no sco
 """
 import dataclasses
 
+CROWD_NOTE_READINGS = 3   # consecutive score readings of a loud crowd that note a sign: 3 at the 1 s scoring tick = the 2 s hold it had at the old 2 s tick (2 readings)
+
 
 def is_soccer(sport: str | None) -> bool:
     """Soccer is "football" (lowercase, as the tabs name it); an unknown sport is treated like soccer, as for the spoken cues
@@ -96,10 +98,11 @@ class BuildUp:
         self._surge_noted_at[tab_id] = now
         return True
 
-    def crowd_note_due(self, tab_id: int, now: float, crowd: float, min_crowd: float, readings: int = 2) -> bool:
+    def crowd_note_due(self, tab_id: int, now: float, crowd: float, min_crowd: float, readings: int | None = None) -> bool:
         """True (and the cooldown starts) when the crowd probability was at least `min_crowd` on `readings` CONSECUTIVE calls (one call per
         score reading; a lower reading resets the count) and no crowd note was made for this stream within `cooldown_s`. The caller then
         notes a small pseudo-cue: a crowd that keeps building is a sign, a single roar is not."""
+        readings = CROWD_NOTE_READINGS if readings is None else readings
         if crowd < min_crowd:
             self._crowd_run[tab_id] = 0
             return False
