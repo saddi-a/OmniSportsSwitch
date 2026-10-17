@@ -1,7 +1,7 @@
 import itertools
 
 from daemon.sport_choice import SOURCES, choose_sport, sport_from_feed
-from daemon.sport_detect import BASKETBALL, FOOTBALL, SOCCER
+from daemon.sport_detect import FOOTBALL, SOCCER
 
 # the user's order: 1 popup, 2 hard scorebug cue, 3 feed league, 4 tab title, 5 league words on screen, 6 remembered sport
 
@@ -20,7 +20,7 @@ def test_nothing_known_is_unknown():
 
 
 def test_a_higher_source_always_replaces_a_lower_one():
-    sports = [FOOTBALL, SOCCER, BASKETBALL]
+    sports = [FOOTBALL, SOCCER]
     for i, high in enumerate(SOURCES):
         for low in SOURCES[i + 1:]:
             for a, b in itertools.permutations(sports, 2):
@@ -28,7 +28,7 @@ def test_a_higher_source_always_replaces_a_lower_one():
 
 
 def test_six_different_answers_the_popup_wins_then_dropping_the_top_one_each_time():
-    answers = {"popup": BASKETBALL, "hard": FOOTBALL, "feed": SOCCER, "title": BASKETBALL, "weak": FOOTBALL, "memory": SOCCER}
+    answers = {"popup": SOCCER, "hard": FOOTBALL, "feed": SOCCER, "title": FOOTBALL, "weak": FOOTBALL, "memory": SOCCER}
     remaining = dict(answers)
     for name in SOURCES:
         assert choose_sport(**remaining) == (answers[name], name)
@@ -44,10 +44,10 @@ def test_empty_values_do_not_count():
 def test_the_feed_sport_names_map_to_ours():
     assert sport_from_feed("soccer") == SOCCER
     assert sport_from_feed("american football") == FOOTBALL
-    assert sport_from_feed("basketball") == BASKETBALL
+    assert sport_from_feed("basketball") is None
     assert sport_from_feed("hockey") is None and sport_from_feed(None) is None and sport_from_feed("") is None
 
 
 def test_the_names_are_compared_without_case():
     assert choose_sport(popup="american football") == (FOOTBALL, "popup")
-    assert choose_sport(hard="BASKETBALL") == (BASKETBALL, "hard")
+    assert choose_sport(hard="FOOTBALL") == (SOCCER, "hard")

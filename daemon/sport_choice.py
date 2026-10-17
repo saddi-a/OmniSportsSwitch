@@ -8,11 +8,11 @@ The user's order (2026-10-11), a higher source always replaces a lower one:
   weak   league words on the screen (`SportDetector.weak_sport`, needs its own vote)
   memory the sport last seen on this tab (`SportMemory`): only a start guess
 """
-from daemon.sport_detect import BASKETBALL, FOOTBALL, SOCCER
+from daemon.sport_detect import FOOTBALL, SOCCER
 
 SOURCES = ("popup", "hard", "feed", "title", "weak", "memory")
-_KNOWN = {name.casefold(): name for name in (FOOTBALL, SOCCER, BASKETBALL)}
-_FEED_SPORTS = {"soccer": SOCCER, "american football": FOOTBALL, "basketball": BASKETBALL}   # the sport names of `feed.LEAGUES`
+_KNOWN = {name.casefold(): name for name in (FOOTBALL, SOCCER)}
+_FEED_SPORTS = {"soccer": SOCCER, "american football": FOOTBALL}   # the sport names of `feed.LEAGUES`
 
 
 def _known(name: str | None) -> str | None:
@@ -20,7 +20,7 @@ def _known(name: str | None) -> str | None:
 
 
 def sport_from_feed(feed_sport: str | None) -> str | None:
-    """Our sport name for the feed's ("soccer", "american football", "basketball"); None for anything else."""
+    """Our sport name for the feed's ("soccer", "american football"); None for anything else."""
     return _FEED_SPORTS.get((feed_sport or "").strip().casefold())
 
 

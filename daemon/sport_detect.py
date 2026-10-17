@@ -5,26 +5,21 @@ Cues (OCR text is noisy, so evidence accumulates over many readings and fades sl
   * Soccer: a game clock that RUNS up beyond 20:00 (no other supported sport does) and stoppage time "45+2".
     A static time such as the kickoff text "Match started at 20:45" is not a clock, and "halftime" exists in
     every sport, so neither counts.
-  * Basketball: "Q1".."Q4", "FOULS", "BONUS", "TIMEOUTS"
 The names match the sport dropdown in the extension and the profiles in game_state.
 """
 import re
 
 FOOTBALL = "American football"
 SOCCER = "Football"
-BASKETBALL = "Basketball"
 
 DOWN_DISTANCE_RE = re.compile(r"^\S{2,4}\s*&\s*(\d{1,2}|goal)$", re.IGNORECASE)   # "1ST & 10", "2no & 10"
 DOWN_WORD_RE = re.compile(r"\bdown\b", re.IGNORECASE)
-QUARTER_RE = re.compile(r"^(q[1-4]|[1-4]q)$", re.IGNORECASE)
-BASKETBALL_WORDS_RE = re.compile(r"\b(fouls?|bonus|timeouts?)\b", re.IGNORECASE)
 STOPPAGE_RE = re.compile(r"^\d{2}\s?\+\s?\d{1,2}$")                               # "45+2"
 CLOCK_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 
 # League words on the screen (header, network bug, scorebug): weak evidence, kept apart from the hard cues above. Whole words only.
 LEAGUE_WORDS = {
     FOOTBALL: r"NFL|NCAAF|NCAA FOOTBALL|COLLEGE FOOTBALL|SUPER ?BOWL|FOOTBALL AM[EÉ]RICAIN",
-    BASKETBALL: r"NBA|WNBA|NCAAB|EURO ?LEAGUE|EURO ?LIGUE|BASKET(?:BALL)?",
     SOCCER: (r"PREMIER L\w{1,2}GUE|LIGUE 1|LIGUE 2|LIGUE DES CHAMPIONS|CHAMPIONS LEAGUE|EUROPA LEAGUE|LA ?LIGA|SERIE A|BUNDESLIGA|MLS"
              r"|UEFA|COUPE DE FRANCE|FA CUP|COPA DEL REY|EREDIVISIE|LIGA PORTUGAL"),
 }
@@ -46,9 +41,9 @@ def sport_from_title(title: str | None) -> str | None:
 
 class SportDetector:
     def __init__(self):
-        self._evidence = {FOOTBALL: 0.0, SOCCER: 0.0, BASKETBALL: 0.0}
+        self._evidence = {FOOTBALL: 0.0, SOCCER: 0.0}
         self._previous_clocks: list[int] = []
-        self._weak = {FOOTBALL: 0.0, SOCCER: 0.0, BASKETBALL: 0.0}
+        self._weak = {FOOTBALL: 0.0, SOCCER: 0.0}
 
     def update(self, texts: list[str], clocks: list[str]) -> str | None:
         for sport in self._evidence:
@@ -64,10 +59,6 @@ class SportDetector:
                 ev[FOOTBALL] += 3
             elif DOWN_WORD_RE.search(text):
                 ev[FOOTBALL] += 1
-            if QUARTER_RE.match(text):
-                ev[BASKETBALL] += 2
-            if BASKETBALL_WORDS_RE.search(text):
-                ev[BASKETBALL] += 1
             if STOPPAGE_RE.match(text):
                 ev[SOCCER] += 4                                    # rare and decisive
 
@@ -81,9 +72,8 @@ class SportDetector:
                 now, before = steps[0]
                 if now > before:                                   # counting up
                     ev[SOCCER] += 3 if 20 * 60 < now < 130 * 60 else 0.5
-                else:                                              # counting down: football or basketball
+                else:                                              # counting down: American football
                     ev[FOOTBALL] += 0.25
-                    ev[BASKETBALL] += 0.25
             self._previous_clocks = seconds
         return self.sport
 

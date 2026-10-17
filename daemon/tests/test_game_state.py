@@ -68,7 +68,7 @@ def test_no_clock_for_a_long_time_is_a_break():
 
 
 def test_never_seeing_a_clock_becomes_break_after_the_grace_period():
-    g = GameTracker("basketball")
+    g = GameTracker("hockey")
     assert run(g, 0, 30, lambda t: None) == "live"
     assert run(g, 30, 60, lambda t: None) == "break"
 
@@ -718,20 +718,11 @@ def test_english_and_french_banners():
 
 
 def test_banner_cues_of_another_sport_are_dropped():
-    for sport, text in (("football", "RED ZONE"), ("football", "FIELD GOAL"), ("football", "FLAG"), ("basketball", "CORNER"), ("basketball", "VAR"),
-                        ("American football", "CORNER"), ("American football", "FREE KICK"), ("football", "FREE THROWS")):
+    for sport, text in (("football", "RED ZONE"), ("football", "FIELD GOAL"), ("football", "FLAG"),
+                        ("American football", "CORNER"), ("American football", "FREE KICK")):
         assert cues_over(GameTracker(sport), 0, [text, "PSG", "0", "LYON"], "30:00") == [], (sport, text)
     assert [c for _, c in cues_over(GameTracker(""), 0, ["RED ZONE", "PSG", "0", "LYON"], "30:00")] == ["red zone"]   # unknown sport keeps all
-    assert [c for _, c in cues_over(GameTracker("basketball"), 0, ["UNDER REVIEW", "PSG", "0", "LYON"], "30:00")] == ["under review"]
-
-
-def test_basketball_banners():
-    for text, cue in (("TECHNICAL FOUL", "technical foul"), ("FLAGRANT FOUL", "flagrant foul"), ("BUZZER BEATER", "buzzer beater"),
-                      ("FREE THROWS", "free throws"), ("TIMEOUT", "timeout"), ("LANCERS FRANCS", "lancers francs"), ("TEMPS MORT", "temps mort")):
-        g = GameTracker("basketball")
-        assert [c for _, c in cues_over(g, 0, [text, "LAL", "55", "50", "BOS"], "5:30")] == [cue], text
-    g = GameTracker("basketball")
-    assert cues_over(g, 0, ["TIMEOUTS", "LAL", "55", "50", "BOS"], "5:30") == []    # a stat label
+    assert [c for _, c in cues_over(GameTracker("hockey"), 0, ["UNDER REVIEW", "PSG", "0", "LYON"], "30:00")] == ["under review"]
 
 
 def test_a_red_card_or_penalty_kick_is_a_big_play_not_also_a_cue():
@@ -1041,8 +1032,8 @@ def test_no_goal_banner_without_a_scorebug_in_sight():
     assert g.goal_banner == ""
 
 
-def test_no_goal_banner_in_american_football_basketball_or_unknown_sports():
-    for sport in ("American football", "Basketball", None):
+def test_no_goal_banner_in_american_football_or_unknown_sports():
+    for sport in ("American football", None):
         assert goal_banner_after(["GOAL", "LIV", "0", "MCI"], sport=sport).goal_banner == "", sport
 
 
@@ -1148,7 +1139,7 @@ def test_a_foreign_clock_that_keeps_running_is_believed_after_a_while():
 
 
 def test_other_sports_are_not_filtered_by_the_football_clock_rule():
-    g = GameTracker("basketball")
+    g = GameTracker("hockey")
     run(g, 0, 60, lambda t: f"{19 - int(t) // 60}:{59 - int(t) % 60:02d}")
     assert run(g, 60, 12, lambda t: "5:00") in ("live", "break")   # no exception: the rule is not applied
     assert g._real_clock is None

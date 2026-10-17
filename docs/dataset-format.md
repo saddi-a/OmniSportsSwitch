@@ -22,7 +22,7 @@ to subtract times inside a run; it restarts at each daemon start). Ages and "lef
 | `v`, `t`, `mono` | format version, wall time, monotonic time |
 | `tab`, `role` | tab id; its window slot (`MAIN`, `LEFT`, `RIGHT_BOT`, ... as the windows report it) |
 | `is_main` | this stream is on MAIN now |
-| `sport` | the sport the scorer uses for this tab (lowercase: football, american football, basketball, or null) |
+| `sport` | the sport the scorer uses for this tab (lowercase: football, american football, or null) |
 | `tile`, `tile_sport` | DAZN multiview only (null for a tab with one video): the tile that scored the tab this tick (the tab scores as its best tile; its picture signals `event`, `cue*`, `lev`, `replay`, `goal_*` are that tile's) and that tile's sport. Added 2026-10-14 (per-tile scoring, `docs/per-tile-sport.md`) |
 | `warm` | false while the stream has no recent audio or is warming up: its audio fields are then null |
 | `state`, `auto_state`, `override` | game state in use (`live`/`break`/`over`); the one detected from the picture; the one the user forced (or null) |

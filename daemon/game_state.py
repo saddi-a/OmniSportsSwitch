@@ -21,7 +21,7 @@ from daemon.scoring import Config
 OVER_RE = re.compile(r"(FINA[LU1I](?:\s?[/|IlU1]?\s?\d?OT\d?)?|SCORE FINAL|FULL[\s-]?TIME|FT|FIN DU MATCH|MATCH TERMIN[EÉ]|TERMIN[EÉ]|COUP DE SIFFLET FINAL"
                      r"|FINAL DEL PARTIDO|FIN DEL PARTIDO|PARTIDO FINALIZADO|FINALIZADO|TERMINADO|FIM DE JOGO|FIM DO JOGO|FINAL DO JOGO|JOGO ENCERRADO)",
                      re.IGNORECASE)   # also "FINAL/OT", "FINAL/2OT" as OCR mangles them (FINAUOT, FINALIOT)
-# Overtime (American football, basketball) has no game clock on the scoreboard, so a missing clock is not a break there.
+# Overtime (American football) has no game clock on the scoreboard, so a missing clock is not a break there.
 OVERTIME_RE = re.compile(r"(\d?OT|.*(OVERTIME|PROLONGATION|TEMPS SUPPL[EÉ]MENTAIRE).*)", re.IGNORECASE)
 OVERTIME_MEMORY_S = 30.0
 # American football down and distance on the scorebug ("3rd & 4", "Ath & 2", "Ist & GOAL" as OCR mangles them). Seen on the
@@ -74,10 +74,10 @@ SCOREBUG_MEMORY_S = 6.0   # a clock / down / quarter on screen proves a live sco
 # Anticipation cues (measuring only): banners and graphics that come just before a likely score. A phrase counts when a text item is
 # (nearly) just that phrase, like the big-play banners; the cue is the phrase. Red card / penalty kick are big plays and not repeated here.
 ANTICIPATION_WORDS = ["red zone", "goal to go", "two minute warning", "two-minute warning", "field goal", "field goal attempt", "penalty", "flag", "flag on the play", "review", "under review", "replay review", "challenge", "big play", "var", "var check", "free kick", "corner", "corner kick", "penalty shootout", "avertissement de deux minutes", "tir de placement", "pénalité", "pénalty", "drapeau", "révision", "contestation", "assistance vidéo", "coup franc", "tir au but", "tirs au but", "penalti", "tiro libre", "saque de esquina", "escanteio", "tiro livre", "pênalti",
-                      "free throw", "free throws", "technical foul", "flagrant foul", "flagrant", "buzzer beater", "timeout", "lancer franc", "lancers francs", "faute technique", "faute flagrante", "temps mort", "tiros libres", "falta técnica"]
+                      "timeout", "temps mort"]
 # Banner cues that only exist in some sports (same idea as speech.CUE_SPORTS). A cue not listed here is valid everywhere (review, replay,
 # timeout, var, foul...). Applied only when the tracker's sport is known; an unknown sport keeps every cue.
-_AF, _SOC, _BB = "american football", "football", "basketball"
+_AF, _SOC = "american football", "football"
 BANNER_CUE_SPORTS = {
     **dict.fromkeys(["red zone", "goal to go", "yard line", "4th down", "big gain", "two minute warning", "two-minute warning",
                      "avertissement de deux minutes", "field goal", "field goal attempt", "tir de placement", "flag", "flag on the play",
@@ -85,8 +85,6 @@ BANNER_CUE_SPORTS = {
     **dict.fromkeys(["free kick", "coup franc", "corner", "corner kick", "saque de esquina", "escanteio", "penalty shootout", "tir au but",
                      "tirs au but", "added time", "var", "var check"], {_SOC}),
     **dict.fromkeys(["penalty", "pénalité", "pénalty", "penalti", "pênalti"], {_SOC, _AF}),   # a penalty kick, or a flag in American football
-    **dict.fromkeys(["free throw", "free throws", "technical foul", "flagrant foul", "flagrant", "buzzer beater", "lancer franc", "lancers francs",
-                     "faute technique", "faute flagrante", "tiros libres", "falta técnica"], {_BB}),
 }
 
 
@@ -128,12 +126,11 @@ class SportProfile:
 PROFILES = {
     "football": SportProfile(freeze_s=20, no_clock_s=45),             # soccer: the clock only stops at half time / full time
     "american football": SportProfile(freeze_s=240, no_clock_s=90),   # clock stops after most plays and for TV timeouts
-    "basketball": SportProfile(freeze_s=180, no_clock_s=60),          # clock stops on every foul and timeout
     "generic": SportProfile(freeze_s=120, no_clock_s=60),             # any other or unknown sport
 }
 
 # A clock above this many minutes is not the game clock of the sport (a stats table: "80:40"); sports not listed allow 130.
-MAX_CLOCK_MIN = {"american football": 20, "basketball": 20}
+MAX_CLOCK_MIN = {"american football": 20}
 MAX_CLOCK_MIN_DEFAULT = 130
 
 
@@ -206,7 +203,7 @@ class GameTracker:
         self._foreign: tuple[float, float, float] | None = None   # (first time, last time, last seconds) of an odd clock that keeps running
         self._cs_last: float | None = None     # last game clock in seconds, and when it was read
         self._cs_time = 0.0
-        self._cs_dir = 0                       # +1 the clock counts up (soccer), -1 down (American football, basketball), 0 not known yet
+        self._cs_dir = 0                       # +1 the clock counts up (soccer), -1 down (American football), 0 not known yet
         self._cs_pending: tuple[float, float, float, float] | None = None   # (clock, time, seconds back, seconds since the clock before) of a back step waiting for confirmation
         self._clock_replay_start: float | None = None   # when the clock replay in progress was detected
         self.anticipation: list[str] = []   # cues reported on this reading

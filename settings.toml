@@ -116,8 +116,6 @@ ad_penalty = 0.5     # an ad in the picture scores -0.5 (music-only: half of it)
 leverage_weight = 0.3   # closeness and time left: a late close game adds up to this to its score, a late blowout takes it away
 lev_us_football_close = 8.0     # points apart that count as close (one score) in American football...
 lev_us_football_blowout = 28.0  # ...and as a blowout (more than three touchdowns)
-lev_basketball_close = 6.0
-lev_basketball_blowout = 20.0
 lev_soccer_close = 1.0
 lev_soccer_blowout = 4.0
 manual_hold_s = 60.0    # "Make Main" in the popup holds the stream on MAIN this long (seconds)
@@ -136,7 +134,7 @@ cue_review_top = 0.50    # a review (VAR, challenge) of a possible goal / touchd
 cue_review_high = 0.35   # ...of an interception, fumble or turnover
 cue_review_mid = 0.20    # ...of offside, pass interference or a foul
 cue_review_low = 0.10    # ...with no subject known
-cue_chance = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
+cue_chance = 0.25        # red zone, goal to go, field goal attempt, penalty kick (soccer)
 cue_minor = 0.10         # corner, flag, 4th down, big gain, added time, timeout...
 cue_free_kick = 0.25     # a free kick (soccer): the user finds minor (0.10) too low
 cue_surge_rise = 0.20    # soccer: the crowd noise is rising fast (a medium cue, heard BEFORE the commentator's words); 0 = off
@@ -167,12 +165,12 @@ big_play_words = ["takeaway", "interception", "intercepted", "fumble", "sack", "
 
 # Banners of a replay (English, French, Spanish, Portuguese), same rule: the text must be just that phrase. A replay over a live
 # scorebug has its crowd noise dampened and its graphics ignored; a replay with no scorebug (studio show) counts as a break.
-anticipation_words = ["red zone", "goal to go", "two minute warning", "two-minute warning", "field goal", "field goal attempt", "penalty", "flag", "flag on the play", "review", "under review", "replay review", "challenge", "big play", "var", "var check", "free kick", "corner", "corner kick", "penalty shootout", "avertissement de deux minutes", "tir de placement", "pénalité", "pénalty", "drapeau", "révision", "contestation", "assistance vidéo", "coup franc", "tir au but", "tirs au but", "penalti", "tiro libre", "saque de esquina", "escanteio", "tiro livre", "pênalti", "free throw", "free throws", "technical foul", "flagrant foul", "flagrant", "buzzer beater", "timeout", "lancer franc", "lancers francs", "faute technique", "faute flagrante", "temps mort", "tiros libres", "falta técnica"]
+anticipation_words = ["red zone", "goal to go", "two minute warning", "two-minute warning", "field goal", "field goal attempt", "penalty", "flag", "flag on the play", "review", "under review", "replay review", "challenge", "big play", "var", "var check", "free kick", "corner", "corner kick", "penalty shootout", "avertissement de deux minutes", "tir de placement", "pénalité", "pénalty", "drapeau", "révision", "contestation", "assistance vidéo", "coup franc", "tir au but", "tirs au but", "penalti", "tiro libre", "saque de esquina", "escanteio", "tiro livre", "pênalti", "timeout", "temps mort"]
 replay_words = ["replay", "instant replay", "action replay", "slo-mo", "slow motion", "ralenti", "reprise", "reprise vidéo", "reprise video", "repetición", "repeticion", "ralentí", "câmera lenta", "camera lenta", "cámara lenta", "camara lenta", "repetição", "repeticao"]
 
 # When does a stopped game clock mean a break?  freeze_s: clock unchanged this long.  no_clock_s: scoreboard
-# without a readable clock this long. Soccer's clock only stops at half-time; American football and basketball
-# stop it constantly, so they allow much longer.
+# without a readable clock this long. Soccer's clock only stops at half-time; American football
+# stops it constantly, so it allows much longer.
 [sports.football]
 freeze_s = 20
 no_clock_s = 45
@@ -181,18 +179,14 @@ no_clock_s = 45
 freeze_s = 240
 no_clock_s = 90
 
-[sports.basketball]
-freeze_s = 180
-no_clock_s = 60
-
 [sports.generic]       # any other or unknown sport
 freeze_s = 120
 no_clock_s = 60
 
 
 # Per-sport overrides (file only; the popup shows and edits the shared values above). A sport may list ONLY the values that differ
-# from the shared ones, in its own table: [scoring.football], [weights.football], [scoring."american football"], [weights.basketball].
-# The sports are football (soccer), "american football" and basketball; any other or unknown sport uses the shared values. Only
+# from the shared ones, in its own table: [scoring.football], [weights.football], [scoring."american football"], [weights."american football"].
+# The sports are football (soccer), "american football"; any other or unknown sport uses the shared values. Only
 # per-stream values may be overridden (all [weights]; of [scoring] the swap margins, cue, leverage, goal hold and build-up values; the
 # list is OVERRIDABLE_SCORING in daemon/scoring.py); a server-wide key is ignored with a warning. A shared value changed in the popup
 # still reaches every sport that does not override it. Nothing is overridden by default (a test checks this file equals the defaults).

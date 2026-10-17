@@ -6,7 +6,7 @@ This repo is public: only derived numbers, code and tiny synthetic fixtures may 
 
 ## 1. Goal and non-goals
 
-Goal: learn, offline and per sport (football/soccer and American football first; basketball is parked), the weights and thresholds of the existing cues so that MAIN
+Goal: learn, offline and per sport (football/soccer and American football only), the weights and thresholds of the existing cues so that MAIN
 moves BEFORE a goal (big chance, save, VAR, penalty awarded, red zone) with few regret swaps (a swap to a less interesting stream). The cues stay as features. The result is a handful of
 plain numbers shipped as per-sport settings overrides (`[scoring.football]` style), editable and explainable.
 
@@ -64,13 +64,12 @@ What the dataset must hold for the regret and miss metrics (checked against `doc
 
 ## 3. Event taxonomy per sport
 
-Tiers say how much the user wants MAIN to move. Proposal, v1, to be tuned (accepted by the user as a starting point). The basketball row is parked.
+Tiers say how much the user wants MAIN to move. Proposal, v1, to be tuned (accepted by the user as a starting point).
 
 | Sport | Tier 1 (move now) | Tier 2 (move if MAIN is quiet) | Tier 3 (note only) |
 |---|---|---|---|
 | Football | goal, penalty awarded, red card, VAR check on a goal/penalty | big chance, shot on target, save, post/bar, free kick near the box, corner | foul, offside, yellow card, substitution |
 | American football | touchdown, field goal made, turnover returned for a score | red zone entry, 4th down near the goal line, field goal attempt, interception, fumble | sack, penalty flag, big gain |
-| Basketball | game-winning/lead-changing shot in the last 2 min, buzzer beater | run (>= 8-0), close game last 5 min, technical/flagrant | free throws, timeout |
 
 Label sources (best first) and what exists today:
 
@@ -78,13 +77,12 @@ Label sources (best first) and what exists today:
 |---|---|---|
 | Soccer goals, red and yellow cards | ESPN scoreboard events in `logs/feed/*.jsonl` | **[checked]** yes. Feed kinds seen: goal 36, penalty goal 2, yellow card 47, red card 5 (soccer, all polled leagues, not only watched games) |
 | American football scores, turnovers, sacks, penalties, big plays | ESPN summary plays (`feed.parse_summary`) | **[checked]** yes: touchdown 39, field goal good 22, big play 102, penalty 81, sack 41, fumble 30, interception 9 (NFL + college) |
-| Basketball scores | feed `score` snapshots (NBA, 14 games polled) | **[checked]** score yes, no play types; run/clutch derived from the score timeline |
 | Soccer shots, saves, corners, VAR, penalty awarded | ESPN summary commentary list | **[unverified]** the daemon never fetches the soccer summary (`parse_summary` is American football only). A read-only probe is needed, NOT approved yet |
 | Same, plus near misses, from French text (L'Equipe etc.) | scraping a site | Not recommended (terms/copyright, raw text must stay out of the repo); optional, local only |
 | "Good swap / false alarm / late" | the user, after a game | Not recorded today. Needs the review tool (T3) |
 | Big chances without a text source | the user's own judgement, or the build-up cues themselves | Only the cues, which is circular for fitting |
 
-Unlabelled today: every tier-2 soccer event, all basketball plays, all "was this swap good" judgements. Until the probe says otherwise, tier-2 soccer
+Unlabelled today: every tier-2 soccer event, all "was this swap good" judgements. Until the probe says otherwise, tier-2 soccer
 labels are the weakest part of the plan.
 
 ## 4. Dataset schema
@@ -130,13 +128,13 @@ sport. Positives are few: about 3 goals per soccer game x 15 rows (30 s / 2 s) =
 What exists to train on today **[checked]**: logs cover 2026-10-10 22:58 to 2026-10-13 20:57 (about 3 days). `events.log` keeps everything (2 MB x 10
 files, 9064 lines). `daemon.log` rotates at 5 MB with 5 backups (3 exist; the oldest starts 2026-10-10 22:58 and rolls over about every 4-18 h with load), so
 older score lines will be lost within a day or two of heavy use. Score readings: 34,800 across 4 files. Spoken transcripts exist only in the 3 newest files
-(7,200 `speech heard` lines). Sport detections: 124 American football, 52 football, 5 basketball, 23 unknown. Goals by the backtest: 23 football, 64
+(7,200 `speech heard` lines). Sport detections: 124 American football, 52 football, 23 unknown (and 5 basketball, since removed). Goals by the backtest: 23 football, 64
 American football (many are OCR noise), 3 unknown. Feed ground truth on tiles we really watched: football 8 goals (OCR saw 6), American football 16
-(OCR saw 2). So: roughly 8 usable football and 16 NFL events today; basketball essentially none. Far too little to fit anything now.
+(OCR saw 2). So: roughly 8 usable football and 16 NFL events today. Far too little to fit anything now.
 
 ## 5. Replay-session protocol
 
-- Games per sport: 15-20 football and 15-20 American football (basketball parked) before any fit (checked against the 60-independent-events estimate above).
+- Games per sport: 15-20 football and 15-20 American football before any fit (checked against the 60-independent-events estimate above).
   A session is 3-4 games in parallel for about 2 hours; so about 5 sessions per sport.
 - Choosing games: finished games with a known feed id; mix of high-scoring and quiet (0-0, 1-0) games; a spread of leagues, competitions and
   commentary languages and broadcasters (the cues are French and English phrases; broadcaster style shifts the speech cues); avoid highlights, they
@@ -187,7 +185,7 @@ Each stage ends with a short report to the user and a go/no-go.
 
 ## 8. Work breakdown (agent-sized tasks)
 
-Basketball tasks are parked. Order is by dependency, not by date.
+Order is by dependency, not by date.
 
 | Id | Task | Status | Inputs | Outputs | Acceptance | User approval |
 |---|---|---|---|---|---|---|
@@ -209,7 +207,7 @@ Decisions by the user:
 3. ESPN summary probe: approved, a separate agent is running it. Any source of information is welcome and other sources can come later; the scraping/copyright caveats and the public-repo rules (section 7) stay.
 4. Swap review: BOTH automatic labels and the user's marks; where they disagree the user's mark is the final reference.
 5. Recorder and log archive: built tonight by another agent (`logs/dataset/`, `logs/archive/`, both gitignored; storage is no constraint). Tonight is Champions League night with 3 games, the first recorded data.
-6. Sports: football AND American football first. Basketball is forgotten for now (its work is parked, not deleted).
+6. Sports: football AND American football only (basketball support was removed on 2026-10-18).
 7. Data mix: replays AND live games, whichever is available when the user is free. The plan has no fixed schedule; stages are gated by event counts, not dates.
 8. Raw data stays LOCAL ONLY in the gitignored `logs/`. The user declined a backup: a disk loss loses the data.
 9. Hygiene rules stay.

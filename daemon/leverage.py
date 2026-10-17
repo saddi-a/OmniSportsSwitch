@@ -18,8 +18,6 @@ SOCCER_LATE_START_MIN, SOCCER_LATE_SPAN_MIN = 30.0, 55.0          # lateness 0 a
 def _scale(sport: str, cfg) -> tuple[float, float] | None:
     if sport == "american football":
         return cfg.lev_us_football_close, cfg.lev_us_football_blowout
-    if sport == "basketball":
-        return cfg.lev_basketball_close, cfg.lev_basketball_blowout
     if sport == "football":
         return cfg.lev_soccer_close, cfg.lev_soccer_blowout
     return None

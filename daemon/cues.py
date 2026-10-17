@@ -4,14 +4,14 @@ A cue is a banner or graphic (`GameTracker.anticipation`). Reviews (VAR, "under 
 SUBJECT: a possible goal or touchdown, a penalty kick or a red card (top) > an interception, fumble or turnover (high) > offside, pass
 interference or a foul (mid) > no subject (low). The subject comes from the banner text itself ("VAR: POSSIBLE GOAL", "PENALTY CHECK"),
 else from the commentary heard in the last seconds (`SpeechMemory`). Other cues have one weight per group: scoring chances (red zone,
-goal to go, field goal, free throw, penalty kick in soccer) and minor cues (corner, flag, 4th down...). Pure logic, callers pass `now`.
+goal to go, field goal, penalty kick in soccer) and minor cues (corner, flag, 4th down...). Pure logic, callers pass `now`.
 The weights are `Weights.cue_*`; `Scorer` scales them by the stream's leverage and the master weight `Weights.anticipation`.
 """
 import re
 
 REVIEW_CUES = frozenset({"review", "under review", "replay review", "challenge", "var", "var check", "révision", "contestation", "assistance vidéo"})
-CHANCE_CUES = frozenset({"red zone", "goal to go", "yard line", "field goal", "field goal attempt", "tir de placement", "free throw", "free throws",
-                         "lancer franc", "lancers francs", "tiro libre", "tiros libres", "tiro livre", "buzzer beater", "penalty shootout",
+CHANCE_CUES = frozenset({"red zone", "goal to go", "yard line", "field goal", "field goal attempt", "tir de placement",
+                         "tiro libre", "tiros libres", "tiro livre", "penalty shootout",
                          "tir au but", "tirs au but"})
 PENALTY_KICK_CUES = frozenset({"penalty", "pénalty", "penalti", "pênalti"})   # a chance in soccer; in American football a flag (minor)
 FREE_KICK_CUES = frozenset({"free kick", "coup franc", "coups francs"})   # soccer: its own weight (`Weights.cue_free_kick`)
@@ -75,7 +75,7 @@ def group_of(cue: str, sport: str | None) -> str:
     """"review", "chance" or "minor"."""
     if cue in REVIEW_CUES:
         return "review"
-    if cue in CHANCE_CUES or (cue in PENALTY_KICK_CUES and not _is_american_football(sport) and (sport or "").strip().lower() != "basketball"):
+    if cue in CHANCE_CUES or (cue in PENALTY_KICK_CUES and not _is_american_football(sport)):
         return "chance"
     return "minor"
 
@@ -93,7 +93,7 @@ def banner_tier(text: str, sport: str | None) -> str | None:
 def speech_tiers(cues: list[str], text: str, sport: str | None) -> list[str]:
     """The review tiers a commentary reading points to, by sport; an empty list when it names no subject."""
     american = _is_american_football(sport)
-    soccer_like = not american and (sport or "").strip().lower() != "basketball"
+    soccer_like = not american
     found = []
     for cue in cues:
         if cue == "touchdown" and (american or sport is None):
@@ -169,9 +169,9 @@ def zone_weight(cue: str, factor: float | None, weights) -> float:
 def cue_weight(cue: str, banner: str, speech_tier: str | None, sport: str | None, weights, zone: float | None = None) -> float:
     """The weight of one cue (before leverage and the master scale). `banner` is the text on screen, `speech_tier` what `SpeechMemory.tier` says."""
     group = group_of(cue, sport)
-    if cue in PENALTY_KICK_CUES and not _is_american_football(sport) and (sport or "").strip().lower() != "basketball":
+    if cue in PENALTY_KICK_CUES and not _is_american_football(sport):
         return weights.cue_review_top   # a penalty kick in football: the next thing that happens is very likely a goal
-    if cue in FREE_KICK_CUES and not _is_american_football(sport) and (sport or "").strip().lower() != "basketball":
+    if cue in FREE_KICK_CUES and not _is_american_football(sport):
         return weights.cue_free_kick
     if cue in ZONE_CUES and _is_american_football(sport):
         return zone_weight(cue, zone, weights)   # `zone` = end_zone_factor(...) or None

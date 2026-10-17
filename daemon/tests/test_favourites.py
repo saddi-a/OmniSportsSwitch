@@ -21,7 +21,7 @@ def test_no_favourite_means_one():
 
 
 def test_very_short_names_must_be_a_whole_item():
-    assert match_multiplier(["BASKETBALL", "ASTON VILLA"], FAVS) == 1.0
+    assert match_multiplier(["HOCKEY", "ASTON VILLA"], FAVS) == 1.0
     assert match_multiplier(["AS"], FAVS) == 3
 
 

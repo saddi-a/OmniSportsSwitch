@@ -20,7 +20,7 @@ log = logging.getLogger("daemon")
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/"
 USER_AGENT = "OmniSportsSwitch/0.1 (personal project, one request per league every 5 s)"
-# slug -> (sport, path). Only ita.1, uefa.champions, nfl, college-football and nba were checked; a slug that does not
+# slug -> (sport, path). Only ita.1, uefa.champions, nfl and college-football were checked; a slug that does not
 # exist answers 404 and is switched off after two answers (logged), which tells us which ones work.
 LEAGUES = {
     "ita.1": ("soccer", "soccer/ita.1"), "eng.1": ("soccer", "soccer/eng.1"), "esp.1": ("soccer", "soccer/esp.1"),
@@ -29,9 +29,8 @@ LEAGUES = {
     "fifa.world": ("soccer", "soccer/fifa.world"), "uefa.nations": ("soccer", "soccer/uefa.nations"),
     "fifa.friendly": ("soccer", "soccer/fifa.friendly"),
     "nfl": ("american football", "football/nfl"), "college-football": ("american football", "football/college-football"),
-    "nba": ("basketball", "basketball/nba"),
 }
-QUARTER_S = {"american football": 900.0, "basketball": 720.0}
+QUARTER_S = {"american football": 900.0}
 BACKOFF_S = (5.0, 10.0, 30.0, 60.0)     # after errors, per league
 SOON_MIN = 20.0                         # a game starting within this many minutes counts as active
 MAX_SUMMARIES = 6                       # live American football games whose plays are fetched at once
@@ -63,7 +62,7 @@ class FeedEvent:
     key: tuple              # identity, to notice an event only once
     kind: str               # goal, red card, touchdown, field goal, interception, big play, ...
     period: int | None
-    clock_s: float | None   # soccer: seconds into the match; American football / basketball: seconds left in the period
+    clock_s: float | None   # soccer: seconds into the match; American football: seconds left in the period
     display: str            # the feed's own clock text ("53'", "10:51")
     team: str               # team abbreviation ("" if unknown)
     text: str = ""
@@ -130,7 +129,7 @@ def clock_seconds(text) -> float | None:
 
 def game_elapsed_s(sport: str, period: int | None, clock_s: float | None) -> float | None:
     """Seconds since the start of the game on one scale, so two moments of a game can be compared. Soccer clocks already
-    run up from the kick-off; American football and basketball clocks count down inside each period."""
+    run up from the kick-off; American football clocks count down inside each period."""
     if clock_s is None:
         return None
     if sport == "soccer":

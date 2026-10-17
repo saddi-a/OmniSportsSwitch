@@ -73,7 +73,7 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
         key = name.strip().lower()
         known = game_state.PROFILES.get(key)
         if known is None:
-            log.warning("settings: unknown sport [sports.%s] ignored (use football, american football, basketball or generic)", name)
+            log.warning("settings: unknown sport [sports.%s] ignored (use football, american football or generic)", name)
             continue
         edited = dataclasses.replace(known, **{k: float(v) for k, v in values.items()
                                                if k in ("freeze_s", "no_clock_s") and isinstance(v, (int, float))})
@@ -98,7 +98,7 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
 def _read_sport_overrides(store: dict, section_data: dict, section: str, names: set, allowed: frozenset | None) -> None:
     """Per-sport overrides: `[scoring.football]`, `[weights."american football"]`... list only the values that differ from the shared
     ones. `store` becomes {sport: {name: value}}. Same rules as the shared values (a number), plus: the sport must be football,
-    american football or basketball ("generic" means the shared values), and the name must be one a sport may override
+    american football ("generic" means the shared values), and the name must be one a sport may override
     (`scoring.OVERRIDABLE_SCORING`; every weight). Mistakes are ignored with a warning. They are read from the file only, never by the
     popup, and `reset_all` leaves them alone."""
     store.clear()
@@ -107,7 +107,7 @@ def _read_sport_overrides(store: dict, section_data: dict, section: str, names: 
             continue
         key = " ".join(str(table).lower().split())
         if key not in SPORT_KEYS:
-            log.warning("settings: unknown sport [%s.%s] ignored (use football, american football or basketball; generic uses the shared values)", section, table)
+            log.warning("settings: unknown sport [%s.%s] ignored (use football or american football; generic uses the shared values)", section, table)
             continue
         for name, value in values.items():
             if name not in names:
@@ -129,8 +129,7 @@ _PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "promo_phrases": game_s
                  "anticipation_words": game_state.ANTICIPATION_WORDS}
 _DEFAULT_PHRASES = {key: list(target) for key, target in _PHRASE_LISTS.items()}
 
-_SPORT_LABELS = {"football": "Football (soccer)", "american football": "American football",
-                 "basketball": "Basketball", "generic": "Other sports"}
+_SPORT_LABELS = {"football": "Football (soccer)", "american football": "American football", "generic": "Other sports"}
 
 # (group title, [(setting id, label, help text)]) - this is what the popup shows, in this order.
 LAYOUT = [
@@ -163,8 +162,6 @@ LAYOUT = [
         ("scoring.leverage_weight", "Close / late game bonus", "A late close game adds up to this to a stream's score; a late blowout takes it away. 0 turns it off."),
         ("scoring.lev_us_football_close", "American football: close (points)", "At most this many points apart counts as a close game."),
         ("scoring.lev_us_football_blowout", "American football: blowout (points)", "This many points apart or more counts as a blowout."),
-        ("scoring.lev_basketball_close", "Basketball: close (points)", "At most this many points apart counts as a close game."),
-        ("scoring.lev_basketball_blowout", "Basketball: blowout (points)", "This many points apart or more counts as a blowout."),
         ("scoring.lev_soccer_close", "Soccer: close (goals)", "At most this many goals apart counts as a close game."),
         ("scoring.lev_soccer_blowout", "Soccer: blowout (goals)", "This many goals apart or more counts as a blowout."),
         ("scoring.field_goal_strength", "Field goal strength", "American football: a field goal or safety counts this much of a touchdown (1.0 = the same)."),
@@ -267,7 +264,7 @@ LAYOUT = [
         ("weights.cue_review_high", "Cue: review of a turnover", "VAR / review of an interception, fumble or turnover."),
         ("weights.cue_review_mid", "Cue: review of a foul", "VAR / review of offside, pass interference or a foul."),
         ("weights.cue_review_low", "Cue: review, subject unknown", "A bare review or VAR check with no subject on screen or in the commentary."),
-        ("weights.cue_chance", "Cue: scoring chance", "Red zone, goal to go, field goal attempt, free throws, a penalty kick (soccer)."),
+        ("weights.cue_chance", "Cue: scoring chance", "Red zone, goal to go, field goal attempt, a penalty kick (soccer)."),
         ("weights.cue_zone_far", "Cue: end zone, far", "American football: goal-to-go / yard line cue with the ball about 10 yards from the end zone (when the distance is read)."),
         ("weights.cue_zone_near", "Cue: end zone, near", "...and 1 to 3 yards from it, or a 4th down at the goal line. With no distance read the plain scoring chance weight is used."),
         ("weights.cue_minor", "Cue: minor", "Corner, flag, 4th down, big gain, added time, timeout."),

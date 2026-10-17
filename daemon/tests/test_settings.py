@@ -151,11 +151,11 @@ def test_weights_may_be_negative_but_timings_may_not(tmp_path):
 
 def test_reset_restores_every_default_and_removes_the_saved_file(tmp_path):
     settings = load_settings(tmp_path / "settings.toml")
-    settings_module.apply_changes(settings, {"scoring.threshold": 0.9, "sports.basketball.freeze_s": 5,
+    settings_module.apply_changes(settings, {"scoring.threshold": 0.9, "sports.football.freeze_s": 5,
                                              "banners.break_phrases": ["x"]})
     settings_module.reset_all(settings)
     assert settings.scoring.threshold == Config().threshold
-    assert game_state.profile_for("basketball").freeze_s == 180
+    assert game_state.profile_for("football").freeze_s == 20
     assert "commercial break" in game_state.AD_PHRASES
     assert not (tmp_path / "settings.local.json").exists()
 

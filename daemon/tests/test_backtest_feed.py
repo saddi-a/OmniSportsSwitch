@@ -58,14 +58,13 @@ def test_goal_time_is_the_snapshot_score_rise_when_it_came_before_the_event_row(
 def test_repeated_event_rows_are_one_goal_and_sports_are_split():
     rows = [event(at(0), "goal"), event(at(75), "goal"), event(at(102), "goal"), event(at(1000), "goal"),
             event(at(5), "touchdown", league="nfl", game="2", home="SEA", away="SF", team="SF"),
-            event(at(6), "field goal good", league="nfl", game="2", home="SEA", away="SF", team="SF"),
-            event(at(7), "goal", league="nba", game="3", home="A", away="B")]
+            event(at(6), "field goal good", league="nfl", game="2", home="SEA", away="SF", team="SF")]
     goals, _ = feed_events(rows)
     assert [(g.sport, g.kind) for g in goals] == [("Football", "goal"), ("American football", "touchdown"), ("American football", "field goal good"),
                                                   ("Football", "goal")]
 
 
-def test_non_goal_events_are_collected_and_basketball_has_no_goals():
+def test_non_goal_events_are_collected():
     goals, others = feed_events([event(at(0), "red card"), event(at(1), "interception", league="nfl", home="SEA", away="SF", game="2"),
                                  event(at(2), "sack", league="nfl", game="2")])
     assert goals == [] and sorted((o.sport, o.kind) for o in others) == [("American football", "interception"), ("Football", "red card")]
