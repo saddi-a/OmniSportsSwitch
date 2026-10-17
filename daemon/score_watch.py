@@ -386,6 +386,7 @@ class ScoreWatcher:
         self._before_reset: tuple[tuple[int, int], float, tuple[int, float] | None] | None = None   # ceiling when the baseline was last reset, when, and the game clock then
         self._recent_clock: tuple[int, float] | None = None   # the latest game clock read at all (even a jumped one) and when
         self._readings = 0
+        self.candidate = False   # the last reading was a score above the ceiling that the vote has not confirmed (yet)
         self._clock: tuple[int, float] | None = None   # last plausible game clock and when it was read
         self._alt: tuple[int, float] | None = None     # an implausible clock seen once, waiting for confirmation
 
@@ -463,6 +464,7 @@ class ScoreWatcher:
                replay: bool = False, sport: str | None = None) -> bool:
         # A countdown with no scoreboard beside it is the player's ad countdown: it is not a game clock and must not look like a
         # clock jump (that threw the score away at every commercial break, so a touchdown before the break was never seen).
+        self.candidate = False
         if replay and self._stable is None:
             return False   # a replay shows old action with its own graphics: with no score known there is nothing to compare it with
         game_clocks = [] if clocks and _no_scoreboard(texts, clocks) else clocks
@@ -485,6 +487,9 @@ class ScoreWatcher:
             return False   # a replay re-shows old action (the same or an older score): not a reading at all
         self._readings += 1
         t = now if now is not None else self._readings * READING_S
+        # A live reading above the ceiling by 1..MAX_RISE (neither side lower) is a goal CANDIDATE before the vote confirms it.
+        self.candidate = (not replay and self._stable is not None and self._is_news(score)
+                          and not (self._fired is not None and self._fired[0] == score and t - self._fired[1] < FIRED_MEMORY_S))   # not the goal just announced
         self._history.append(score)
         left, right = _vote(p[0] for p in self._history), _vote(p[1] for p in self._history)
         if left is None or right is None:

@@ -29,7 +29,7 @@ SPORT_KEYS = ("football", "american football", "basketball")   # same keys as th
 # can be overridden. An override of any other key is ignored with a warning (daemon/settings.py).
 OVERRIDABLE_SCORING = frozenset({
     "min_score", "threshold", "min_gap", "confirm_s", "hold_break_score",          # a challenger against MAIN: the CHALLENGER's sport
-    "surge_cap", "audio_ad_goal_s", "anticipation_s", "cue_alone_cap", "cue_support", "cue_leverage_gain", "leverage_weight", "replay_dampen",
+    "surge_cap", "audio_ad_goal_s", "goal_pending_s", "goal_pending_surge", "goal_pending_crowd", "anticipation_s", "cue_alone_cap", "cue_support", "cue_leverage_gain", "leverage_weight", "replay_dampen",
     "big_play_strength", "goal_banner_strength", "cue_zone_near_yd", "cue_zone_far_yd",
     "speech_cue_factor", "speech_cue_cooldown_s",
     "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
@@ -91,6 +91,9 @@ class Config:
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
+    goal_pending_s: float = 6.0      # a first new-score reading (before the vote) backs the goal-music exemption this long unless the vote confirms it (0 = off)
+    goal_pending_surge: float = 0.5  # ...only if the sound was this much above its normal level (surge) or...
+    goal_pending_crowd: float = 0.3  # ...this crowd-like within audio_ad_goal_s before it (a lone misread in a quiet game or an ad changes nothing)
     audio_ad_goal_s: float = 20.0    # music within this long of a goal signal (score change, GOAL banner, feed goal, either order) is the celebration, not an ad (0 = off)
     manual_hold_s: float = 60.0    # "Make Main" from the popup holds the stream on MAIN this long
     hold_over_s: float = 60.0      # a held stream whose game has looked over for this long loses the hold
@@ -238,6 +241,7 @@ class _Tile:
     anticipation_strong: bool = False   # a football cue worth a review of a possible goal or more: it counts in full without other signs
     event_at: float = float("-inf")  # when a score change was last seen
     goal_at: float = float("-inf")   # real time of the last goal (score change or goal banner)
+    pending_at: float = float("-inf")   # last reading of a higher score that the vote has not confirmed (a goal candidate)
     replay_seen_at: float = float("-inf")   # last replay sign seen while the post-goal hold ran
     goal_hold_on: bool = False       # the post-goal replay hold has started and not yet been reported over
     on_ad: bool = False    # the player is showing its ad placeholder (seen in the picture)
@@ -258,6 +262,7 @@ class _Stream(_Tile):
     tags_at: float = float("-inf")
     shout: float = 0.0   # 0..1 probability of shouting / yelling / screaming
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
+    loud_at: float = float("-inf")      # when the sound last was a clear surge or crowd roar (for the early goal signal)
     audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
     ad_at: float = float("-inf")        # when the stream was last seen on an ad (picture or sound)
     music_hits: list = field(default_factory=list)  # recent readings: did each one look like an ad?
@@ -436,16 +441,51 @@ class Scorer:
         stream = self.streams.get(tab_id)
         if stream is not None:
             stream.tags, stream.tags_at, stream.shout = (crowd, speech, music), now, shout
+            cfg = self.cfg_for(tab_id)
+            if music < cfg.idle_music and (crowd >= cfg.goal_pending_crowd or self._surge_now(stream, cfg) >= cfg.goal_pending_surge):   # an ad's own jump in loudness is no roar
+                stream.loud_at = now
             stream.music_hits.append(music >= self.config.idle_music and crowd < 0.1
                                          and music - speech >= self.config.audio_ad_margin)
             del stream.music_hits[: -int(self.config.audio_ad_window)]
             if sum(stream.music_hits) >= self.config.audio_ad_votes and not self._goal_music(tab_id, stream, now):
                 stream.audio_ad_at = stream.ad_at = now
 
+    def _cancel_music_ad(self, tab_id: int, stream: _Stream, now: float) -> None:
+        """The music came first and a goal signal came after it: it is what the music celebrates, so drop the ad flag (and the
+        'recently on an ad' mark that came from the same music)."""
+        window = self.cfg_for(tab_id).audio_ad_goal_s
+        if window > 0 and now - stream.audio_ad_at <= window:
+            if stream.ad_at == stream.audio_ad_at:
+                stream.ad_at = float("-inf")
+            stream.audio_ad_at = float("-inf")
+
     def _goal_music(self, tab_id: int, stream: _Stream, now: float) -> bool:
         """The music is the celebration of a goal, not an ad: a goal signal (`goal_at`) is within `audio_ad_goal_s` before it."""
-        window = self.cfg_for(tab_id).audio_ad_goal_s
-        return window > 0 and 0 <= now - self._last_goal(stream) <= window
+        cfg = self.cfg_for(tab_id)
+        if cfg.audio_ad_goal_s > 0 and 0 <= now - self._last_goal(stream) <= cfg.audio_ad_goal_s:
+            return True
+        return self._goal_candidate(stream, cfg, now)
+
+    def _goal_candidate(self, stream: _Stream, cfg, now: float) -> bool:
+        """A first new-score reading is fresh (`goal_pending_s`) and the sound was loud just before it (`audio_ad_goal_s`)."""
+        return (cfg.goal_pending_s > 0 and cfg.audio_ad_goal_s > 0 and now - stream.loud_at <= cfg.audio_ad_goal_s
+                and any(0 <= now - rec.pending_at <= cfg.goal_pending_s for _, rec in self._recs(stream)))
+
+    def _surge_now(self, stream: _Stream, cfg) -> float:
+        if not stream.samples or stream.baseline is None:
+            return 0.0
+        level = sum(v for _, v in stream.samples) / len(stream.samples)
+        return min(max(level / max(stream.baseline, MIN_BASELINE) - 1.0, 0.0), cfg.surge_cap)
+
+    def set_goal_pending(self, tab_id: int, now: float, tile: int | None = None) -> None:
+        """The score reader saw a higher score that its vote has not confirmed yet (a goal candidate). With a loud moment just before,
+        it already counts as a goal signal for the music exemption; it lapses after `goal_pending_s` unless the vote confirms it
+        (`set_event(goal=True)`), and then the ad rule applies again."""
+        stream = self.streams.get(tab_id)
+        if stream is not None:
+            self._write_rec(stream, tile).pending_at = now
+            if self._goal_candidate(stream, self.cfg_for(tab_id), now):
+                self._cancel_music_ad(tab_id, stream, now)
 
     def set_can_main(self, tab_id: int, can_main: bool) -> None:
         if tab_id in self.streams:
@@ -545,12 +585,7 @@ class Scorer:
             if goal:   # a score change or a goal banner: starts the post-goal replay hold (real time, whatever the strength)
                 rec.goal_at = max(rec.goal_at, now)
                 self._hot_trigger(rec, now, self.tile_cfg(tab_id, tile))
-                stream = self.streams[tab_id]
-                window = self.cfg_for(tab_id).audio_ad_goal_s
-                if window > 0 and now - stream.audio_ad_at <= window:   # the music came first: the goal confirmed late is what it celebrates
-                    if stream.ad_at == stream.audio_ad_at:
-                        stream.ad_at = float("-inf")
-                    stream.audio_ad_at = float("-inf")
+                self._cancel_music_ad(tab_id, self.streams[tab_id], now)
 
     def set_status(self, tab_id: int, override: str | None) -> None:
         if tab_id in self.streams:

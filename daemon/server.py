@@ -887,6 +887,8 @@ class Server:
             watcher = self.watchers.setdefault((tab_id, index), ScoreWatcher(self.scorer.config))
             changed = watcher.update(r["texts"], r["clocks"], now, r.get("items"), replay=tracker.replay,
                                      sport=self.tile_sport(tab_id, index))
+            if watcher.candidate and per_tab[tab_id][-1] == "live":   # a higher score the vote has not confirmed yet: an early goal signal for the music rule
+                self.scorer.set_goal_pending(tab_id, now, tile=tk)
             for line in self.feed_map.observe(tab_id, index, r["texts"], watcher.score, r["clocks"]):
                 log.info("%s", line)
             mapped = self.feed_map.mapping(tab_id, index)

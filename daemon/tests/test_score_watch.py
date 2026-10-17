@@ -598,3 +598,58 @@ def test_the_atm_reading_does_not_fire_a_goal_when_the_score_is_unchanged():
         fired.append(w.update(["72.38", "ATM", "1 0", "MUN", "LIVE 3"], ["72:38"], t, items))
         t += 3
     assert not any(fired) and w.score == (1, 0)
+
+
+# ---- the first reading of a higher score is a goal candidate before the vote confirms it -------------------
+
+def _read(w, score, now, replay=False):
+    return w.update(["PSG", str(score[0]), "STR", str(score[1])], ["16:30"], now, replay=replay)
+
+
+def test_the_first_higher_reading_is_a_candidate_before_the_vote_confirms_it():
+    w = ScoreWatcher(Config())
+    for i in range(5):
+        _read(w, (0, 0), 100.0 + i * 3)
+    assert not w.candidate
+    assert _read(w, (0, 1), 115.0) is False       # one reading: not confirmed yet
+    assert w.candidate
+    _read(w, (0, 1), 118.0)
+    assert w.candidate
+    assert _read(w, (0, 1), 121.0) is True        # the vote confirms it: the event fires
+
+
+def test_a_candidate_ends_with_a_reading_that_is_not_higher():
+    w = ScoreWatcher(Config())
+    for i in range(5):
+        _read(w, (0, 0), 100.0 + i * 3)
+    _read(w, (0, 1), 115.0)
+    assert w.candidate
+    _read(w, (0, 0), 118.0)
+    assert not w.candidate
+
+
+def test_a_lower_or_huge_jump_is_no_candidate_and_neither_is_a_replay_reading():
+    w = ScoreWatcher(Config())
+    for i in range(5):
+        _read(w, (2, 1), 100.0 + i * 3)
+    _read(w, (1, 1), 115.0)
+    assert not w.candidate                         # lower
+    _read(w, (2, 40), 118.0)
+    assert not w.candidate                         # more than MAX_RISE
+    _read(w, (3, 1), 121.0, replay=True)
+    assert not w.candidate                         # a replay is not a live goal
+
+
+def test_no_candidate_without_a_baseline():
+    w = ScoreWatcher(Config())
+    _read(w, (0, 1), 100.0)
+    assert not w.candidate
+
+
+def test_the_goal_just_announced_is_no_candidate_any_more():
+    w = ScoreWatcher(Config())
+    for i in range(5):
+        _read(w, (0, 0), 100.0 + i * 3)
+    fired = [_read(w, (0, 1), 115.0 + i * 3) for i in range(4)]
+    assert True in fired
+    assert not w.candidate                         # the peak has not risen yet, but the goal is already counted
