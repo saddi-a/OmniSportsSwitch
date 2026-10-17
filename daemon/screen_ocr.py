@@ -141,7 +141,7 @@ class ScreenReader:
             return None
         a, b = pair
         h = max(a["y1"] - a["y0"], b["y1"] - b["y0"])
-        height, width = image.shape[:2]
+        height = image.shape[0]
         x0, x1, y0, y1 = a["x1"], b["x0"], max(0, a["y0"] - h // 3), min(height, a["y1"] + h // 3)
         crop = image[y0:y1, x0:x1]
         if crop.size == 0:

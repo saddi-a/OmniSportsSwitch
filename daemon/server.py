@@ -40,7 +40,7 @@ from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
-from daemon.score_watch import ScoreWatcher, find_score, find_score_geo
+from daemon.score_watch import ScoreWatcher, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
@@ -653,7 +653,7 @@ class Server:
             if len((self.rects.get(tab_id) or {}).get("rects") or []) >= 2:
                 return "football"
         for store in (self.sport_choice_seen, self.sport_seen):
-            for (t, i), value in store.items():
+            for (t, _), value in store.items():
                 found = value[0] if isinstance(value, tuple) else value
                 if t == tab_id and found:
                     return found.lower()
