@@ -125,7 +125,7 @@ def _read_sport_overrides(store: dict, section_data: dict, section: str, names: 
 # ---------------------------------------------------------------------------------------------------------------
 LOCAL_NAME = "settings.local.json"
 _DEFAULT_PROFILES = dict(game_state.PROFILES)
-_PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "big_play_words": game_state.BIG_PLAY_WORDS, "replay_words": game_state.REPLAY_WORDS,
+_PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "promo_phrases": game_state.PROMO_PHRASES, "big_play_words": game_state.BIG_PLAY_WORDS, "replay_words": game_state.REPLAY_WORDS,
                  "anticipation_words": game_state.ANTICIPATION_WORDS}
 _DEFAULT_PHRASES = {key: list(target) for key, target in _PHRASE_LISTS.items()}
 
@@ -292,6 +292,7 @@ LAYOUT = [
                                  ("no_clock_s", "no clock (s)", "A scoreboard with no readable clock for this long means a break."))
     ]),
     ("Banner phrases", [
+        ("banners.promo_phrases", "Promo screen wording", "Text of a promo screen between games. Counts as an ad only when no scoreboard is on screen."),
         ("banners.break_phrases", "Ad break wording", "Text a player shows during an ad break (any case, inside a text). Add your service's wording."),
         ("banners.big_play_words", "Big play banners", "Banners flashed for a big play (the text must be just that phrase)."),
         ("banners.anticipation_words", "Anticipation banners", "Banners that come before a likely score: red zone, VAR, corner, penalty, review... (the text must be just that phrase)."),
