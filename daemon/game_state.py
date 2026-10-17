@@ -184,6 +184,7 @@ class GameTracker:
         self._over_hits = 0
         self._break_hits = 0
         self._ad_hits = 0
+        self._board_since_ad = 0   # scoreboard readings since an ad was last confirmed (3 of them end a sticky ad)
         self._game_clock: tuple[float, float] | None = None   # (seconds, time) of the clock last read beside a scoreboard
         self._ad_seen = float("-inf")
         self.on_ad = False   # True while the player's ad placeholder is showing
@@ -323,7 +324,14 @@ class GameTracker:
         self._ad_hits = self._ad_hits + 1 if lone_clock or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
-        on_ad = now - self._ad_seen <= AD_MEMORY_S
+            self._board_since_ad = 0
+        elif scoreboard:   # the same evidence the ad countdown rule asks for: a score, a pair, a down or quarter, team codes
+            self._board_since_ad += 1
+        # An ad break stays an ad until the game is seen again: the countdown is read on only some frames, so the short memory ran out
+        # inside one break and the picture flickered AD / break / live. It ends after `ad_exit_readings` scoreboard readings, or at the cap.
+        sticky = (self.config.ad_sticky_s > 0 and now - self._ad_seen <= self.config.ad_sticky_s
+                  and self._board_since_ad < self.config.ad_exit_readings)
+        on_ad = now - self._ad_seen <= AD_MEMORY_S or sticky
         self.on_ad = on_ad
 
         # A replay: the banner on two readings in a row. With the scorebug still on screen it is a replay inside the live game

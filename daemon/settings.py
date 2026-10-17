@@ -194,6 +194,8 @@ LAYOUT = [
         ("scoring.recent_ad_s", "No hopping between ads (s)", "MAIN is not handed to a stream that was showing an ad this recently."),
         ("scoring.held_change_s", "Keep a score change in a break (s, 0 = drop)", "A score change read while the game looked like a break (a wrong break reading right after a touchdown) is kept this long and counts if the game is live again. Results tickers stay ignored."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
+        ("scoring.ad_sticky_s", "Ad break stays an ad (s, 0 = off)", "A commercial seen in the picture stays an ad until the scoreboard is read again, or this long. Stops the stream flickering between ad, break and live inside one ad break."),
+        ("scoring.ad_exit_readings", "Scoreboard readings that end an ad", "This many readings of a scorebug end the ad at once."),
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
         ("scoring.goal_pending_s", "Early goal reading (s, 0 = off)", "A first new-score reading, before the vote confirms it, already backs the goal-music exemption this long, if the sound was loud just before. It lapses when the vote does not confirm it."),
         ("scoring.goal_pending_surge", "Early goal: surge needed", "The sound must be this far above its normal level just before an early goal reading..."),

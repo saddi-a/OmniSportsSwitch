@@ -90,6 +90,8 @@ class Config:
     stale_s: float = 5.0      # a stream with no audio for this long is ignored
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
+    ad_sticky_s: float = 120.0       # a picture ad break stays an ad this long unless the scoreboard is read again (0 = the short 8 s memory only)
+    ad_exit_readings: float = 3.0    # ...this many scoreboard readings (down/quarter, clock + team code, two team codes) end it
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
     goal_pending_s: float = 6.0      # a first new-score reading (before the vote) backs the goal-music exemption this long unless the vote confirms it (0 = off)
     goal_pending_surge: float = 0.5  # ...only if the sound was this much above its normal level (surge) or...
