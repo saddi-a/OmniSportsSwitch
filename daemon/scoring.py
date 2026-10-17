@@ -700,7 +700,6 @@ class Scorer:
         if warming:
             # Still warming up (the first seconds after a restart): nothing fair to compare by loudness. But a stream
             # that the picture shows on an ad, a break or over can still hand over to a live stream without an ad.
-            stream = self.streams[replaced]
             if not (self.tab_on_ad(replaced) or self.tab_state(replaced) != "live"):
                 return None
             current_c = self.components(replaced, now, warmup=False)
