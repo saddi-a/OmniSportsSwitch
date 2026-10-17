@@ -14,12 +14,14 @@ from daemon.settings import SETTINGS_PATH, load_settings
 def restore_profiles():
     saved = copy.deepcopy(game_state.PROFILES)
     saved_phrases = list(game_state.AD_PHRASES)
+    saved_promo = list(game_state.PROMO_PHRASES)
     saved_big = list(game_state.BIG_PLAY_WORDS)
     saved_replay = list(game_state.REPLAY_WORDS)
     yield
     game_state.PROFILES.clear()
     game_state.PROFILES.update(saved)
     game_state.AD_PHRASES[:] = saved_phrases
+    game_state.PROMO_PHRASES[:] = saved_promo
     game_state.BIG_PLAY_WORDS[:] = saved_big
     game_state.REPLAY_WORDS[:] = saved_replay
 
@@ -35,7 +37,9 @@ def test_the_shipped_settings_file_equals_the_built_in_defaults(tmp_path):
     assert game_state.profile_for(None) == game_state.SportProfile(120, 60)
     assert game_state.AD_PHRASES == ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire",
                                      "publicidade", "pausa comercial", "ad break", "advertisement", "right back", "volvemos",
-                                     "de retour dans", "watch now", "ondazn"]
+                                     "de retour dans", "watch now", "ondazn", "event break", "evento em intervalo",
+                                     "interrupcion del evento", "interrupción del evento"]
+    assert game_state.PROMO_PHRASES == ["advertising", "on dazn", "nfl game pass", "watchevery", "daznboxing", "dazn boxing"]
     assert game_state.BIG_PLAY_WORDS == ["takeaway", "interception", "intercepted", "fumble", "sack", "red card",
                                          "carton rouge", "penalty kick"]
     assert game_state.REPLAY_WORDS == ["replay", "instant replay", "action replay", "slo-mo", "slow motion", "ralenti", "reprise", "reprise vidéo",

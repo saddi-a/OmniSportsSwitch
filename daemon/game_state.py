@@ -52,7 +52,11 @@ KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long aft
 # Phrases a streaming player shows during an ad break (matched inside a longer text item, lower case).
 # Seen live: "COMMERCIAL BREAK IN PROGRESS", "PUBLICITARIA EN CURSO", "INTERVALO COMERCIAL", "PUBLICITE".
 AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire", "publicidade", "pausa comercial",
-              "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn"]
+              "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn",
+              "event break", "evento em intervalo", "interrupcion del evento", "interrupción del evento"]
+# Promo screens a service shows between games (DAZN: tiles with no game in them). They count as an ad ONLY with no scoreboard on screen: a live game
+# frame carries "This programme contains US advertising..." or a Game Pass logo beside its scorebug. Matched inside a longer text item, lower case.
+PROMO_PHRASES = ["advertising", "on dazn", "nfl game pass", "watchevery", "daznboxing", "dazn boxing"]
 # Banners the broadcast flashes for a big play. A text item counts only if it is (nearly) just that phrase, so
 # sentences and stat labels ("TURNOVERS") do not. Seen live: "TAKEAWAY!" after an interception.
 BIG_PLAY_WORDS = ["takeaway", "interception", "intercepted", "fumble", "sack", "red card", "carton rouge", "penalty kick"]
@@ -321,7 +325,8 @@ class GameTracker:
         lone_clock = bool(clocks) and bool(texts) and not scoreboard and not self._continues_game_clock(now, clocks)
         if scoreboard and clocks and (m := re.fullmatch(r"(\d{1,3}):(\d{2})", clocks[0].strip())):
             self._game_clock = (int(m.group(1)) * 60 + int(m.group(2)), now)
-        self._ad_hits = self._ad_hits + 1 if lone_clock or any(p in t for t in lowered for p in AD_PHRASES) else 0
+        promo = not scoreboard and any(p in t for t in lowered for p in PROMO_PHRASES)   # a promo screen with no game on it
+        self._ad_hits = self._ad_hits + 1 if lone_clock or promo or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
             self._board_since_ad = 0
