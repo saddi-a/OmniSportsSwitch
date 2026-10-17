@@ -13,6 +13,11 @@ if ($listener) {
     Write-Host "Daemon was not running."
 }
 
+# the daemon runs in a -NoExit PowerShell window that stays open after the daemon dies: close those windows too, so restarts do not pile them up
+Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+    Where-Object { $_.CommandLine -like "*scripts\start_daemon.ps1*" -and $_.ProcessId -ne $PID } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 if ($Edge) {
     # only the Edge that uses the test profile folder; your normal Edge is not touched
     $testEdge = Get-CimInstance Win32_Process -Filter "Name = 'msedge.exe'" |
