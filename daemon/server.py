@@ -42,6 +42,7 @@ from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score_geo
 from daemon.sport_detect import SportDetector
+from daemon.rapid_reader import RapidReader, needs_rescue
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
 from daemon.buildup import BuildUp, is_soccer, moves_main
@@ -83,7 +84,7 @@ def leveling_gain(baseline: float | None, target: float, max_gain: float) -> flo
 
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None,
-                 speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None):
+                 speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None, rapid_reader=None):
         self.scorer = scorer or Scorer()
         self.scorer.sport_of = self._tab_sport   # per-sport settings overrides: the scorer asks which sport a stream is
         self.scorer.tile_sport_of = self.scoring_sport   # ...and, in a multiview, which sport each tile is
@@ -100,6 +101,9 @@ class Server:
         self.ui_clients = set()   # sockets of the popup: they get settings replies, not arrange commands
         self.classifier = classifier
         self.screen_reader = screen_reader
+        self.rapid_reader = rapid_reader   # RapidReader or None: the second OCR reader (tests pass None)
+        self.rapid_try_at: dict[tuple[int, int], float] = {}   # (tab, video) -> when the second reader last looked
+        self.rapid_found: set[tuple[int, int]] = set()          # tiles where the second reader currently completes the reading
         self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
         self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
         self.favourites: list[dict] = []            # user's favourite teams [{name, mult}]
@@ -797,6 +801,25 @@ class Server:
                         items, texts = items + extra, texts + [it["text"] for it in extra]
                     else:
                         self.digit_found.discard(key)
+            if self.rapid_reader is not None and self.scorer.config.ocr_assist > 0 and self.rapid_reader.available and needs_rescue(items):
+                # A scorebug is on screen but the score or the clock is missing: the second reader (PaddleOCR, CPU) adds its own text and the
+                # two score digits read slot by slot. Not on every pass when nothing is found (it costs CPU time).
+                key, now_s = (tab_id, index), time.monotonic()
+                if now_s - self.rapid_try_at.get(key, float("-inf")) >= self.scorer.config.ocr_assist_retry_s or key in self.rapid_found:
+                    self.rapid_try_at[key] = now_s
+                    try:
+                        merged = self.rapid_reader.rescue(image, items)
+                    except Exception:   # the second reader must never break the OCR pass: keep the first reader's items
+                        log.exception("second OCR reader failed on tab %s tile %s", tab_id, index)
+                        merged = items
+                    if find_score_geo(merged, find_clocks([it["text"] for it in merged])) is not None:
+                        if key not in self.rapid_found:
+                            log.info("second reader tab %s tile %s: score found", tab_id, index)
+                        self.rapid_found.add(key)
+                    else:
+                        self.rapid_found.discard(key)
+                    if len(find_clocks([it["text"] for it in merged])) > len(find_clocks(texts)) or key in self.rapid_found:
+                        items, texts = merged, [it["text"] for it in merged]
             results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts), "items": items}
         return results
 
@@ -1171,6 +1194,9 @@ if __name__ == "__main__":
     log.info("audio classifier ready on %s", classifier.device)
     screen_reader = ScreenReader()
     log.info("screen reader ready")
+    rapid_reader = RapidReader() if settings.scoring.ocr_assist > 0 else None   # the second OCR reader: fail-safe, None engine when the package is missing
+    if rapid_reader is not None:
+        log.info("second OCR reader %s", "ready (cpu)" if rapid_reader.available else "not available (rapidocr-onnxruntime missing?); continuing without it")
     speech = None
     if settings.scoring.speech_interval_s > 0:   # the commentary listener is optional (measuring only)
         try:
@@ -1193,6 +1219,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
                            focuser=TileFocuser(settings.focus), settings=settings, speech=speech, semantic=semantic,
-                           recorder=recorder).run())
+                           recorder=recorder, rapid_reader=rapid_reader).run())
     except KeyboardInterrupt:
         pass

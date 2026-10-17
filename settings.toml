@@ -31,6 +31,8 @@ speech_cue_cooldown_s = 20.0  # the same spoken cue on the same stream is logged
 speech_cue_factor = 1.0       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
 classifier_max_gain = 8.0     # ...by at most this factor up or down
 feed_mode = 0           # outside game data (ESPN): 0 = local only, nothing starts; 1 = record only (measuring, changes no score); needs a daemon restart
+ocr_assist = 1         # 1 = a second OCR reader (PaddleOCR through rapidocr-onnxruntime, CPU) fills in a score or clock the first reader missed on a tile whose scorebug is on screen, 0 = off
+ocr_assist_retry_s = 3.0   # ...and looks again this often on a tile where it found nothing
 dataset_mode = 1        # 1 = record one row per stream every 2 s (and the events) to logs/dataset/ for later learning, 0 = off; takes effect at once
 log_archive_days = 90   # rotated log files are copied (gzip) to logs/archive/<date>/ and kept this many days (0 = forever)
 log_archive_max_mb = 50000  # ...and the archive never grows beyond this many MB, the oldest files go first (0 = no cap)

@@ -70,11 +70,13 @@ if (Test-Path $venvPython) {
     elseif ($CheckOnly) { Todo "Install the packages from requirements.txt." }
     else {
         # panns-inference is installed without its dependencies: they would replace the GPU PyTorch with a CPU one.
-        $lines = Get-Content (Join-Path $root "requirements.txt") | Where-Object { $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' -and $_ -notmatch 'panns-inference' }
+        $lines = Get-Content (Join-Path $root "requirements.txt") | Where-Object { $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' -and $_ -notmatch 'panns-inference' -and $_ -notmatch 'rapidocr-onnxruntime' }
         $temp = Join-Path $env:TEMP "oss-requirements.txt"
         Set-Content $temp ($lines | ForEach-Object { ($_ -split '#')[0].Trim() })
         & $venvPython -m pip install -r $temp
         & $venvPython -m pip install --no-deps panns-inference
+        # the second OCR reader: without its dependencies (opencv-python would clash with easyocr's opencv-python-headless)
+        & $venvPython -m pip install --no-deps rapidocr-onnxruntime==1.4.4
         & $venvPython -c "import torch; assert torch.cuda.is_available(), 'the GPU build of PyTorch was replaced'"
         if ($LASTEXITCODE -eq 0) { Ok "packages installed, PyTorch still sees the GPU" } else { Todo "A package replaced the GPU PyTorch: run the PyTorch step again (delete .venv and rerun)." }
     }
