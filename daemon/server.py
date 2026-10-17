@@ -51,7 +51,8 @@ from daemon.scoring import SHOUT_CLASSES, Scorer, Swap
 
 HOST, PORT = "127.0.0.1", 8765
 DECIDE_INTERVAL_S = 0.25
-SCORE_LOG_INTERVAL_S = 2.0
+SCORE_LOG_INTERVAL_S = 2.0   # the scoring tick: cue checks, build-up, surge rise (they count readings, so this pace is part of their tuning)
+SNAPSHOT_INTERVAL_S = 1.0    # the score lines of daemon.log and the dataset rows (logging only, changes no decision)
 MAINTENANCE_INTERVAL_S = 3600.0   # the log archive is completed and pruned this often (and once at the start)
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
@@ -356,6 +357,20 @@ class Server:
             else:
                 log.info("post-goal replay over tab %s after %.0f s", tab_id, secs)
         for tab_id in self.scorer.streams:
+            c = self.scorer.components(tab_id, now)
+            if c is None:
+                continue
+            cfg = self.scorer.config
+            self.goal_watch.surge_min, self.goal_watch.window_s = cfg.goal_phrase_surge, cfg.goal_phrase_window_s
+            if self.goal_watch.surge(tab_id, c["surge"], now):
+                log.info("goal phrase + surge would fire tab %s (measuring only)", tab_id)
+            self._check_surge_rise(tab_id, c, now)
+            taken = taken or self._check_buildup(tab_id, c, now)
+        return taken
+
+    def _log_snapshot(self, now: float) -> None:
+        """The score line of every stream (daemon.log) and the dataset rows, every `SNAPSHOT_INTERVAL_S`. Logging only: no decision uses them."""
+        for tab_id in self.scorer.streams:
             tag = "MAIN " if tab_id == self.scorer.main else ""
             c = self.scorer.components(tab_id, now)
             if c is None:
@@ -369,14 +384,7 @@ class Server:
             if probs is not None:
                 text += " top=" + ",".join(f"{n}:{p:.2f}" for n, p in self.classifier.top(probs, 3))
             log.info("  %s", text)
-            cfg = self.scorer.config
-            self.goal_watch.surge_min, self.goal_watch.window_s = cfg.goal_phrase_surge, cfg.goal_phrase_window_s
-            if self.goal_watch.surge(tab_id, c["surge"], now):
-                log.info("goal phrase + surge would fire tab %s (measuring only)", tab_id)
-            self._check_surge_rise(tab_id, c, now)
-            taken = taken or self._check_buildup(tab_id, c, now)
         self._record_rows(now)
-        return taken
 
     def _check_surge_rise(self, tab_id: int, c: dict, now: float) -> bool:
         """Soccer: the loudness of a live stream rises fast over a few seconds (voted over consecutive readings, with a cooldown): a medium
@@ -1100,7 +1108,7 @@ class Server:
             self.scorer.main = tab
 
     async def _decide_loop(self) -> None:
-        last_log = last_fix = 0.0
+        last_log = last_fix = last_snap = 0.0
         while True:
             await asyncio.sleep(DECIDE_INTERVAL_S)
             now = time.monotonic()
@@ -1108,6 +1116,9 @@ class Server:
             if now - last_log >= SCORE_LOG_INTERVAL_S:
                 taken = self._log_scores(now)
                 last_log = now
+            if now - last_snap >= SNAPSHOT_INTERVAL_S:
+                self._log_snapshot(now)
+                last_snap = now
             self._ensure_main()
             swap = taken or self.scorer.evict_main(now) or self._next_swap(now)
             if not swap and now - last_fix >= FIX_INTERVAL_S and (moves := plan_fix(self.roles, self.limits)):

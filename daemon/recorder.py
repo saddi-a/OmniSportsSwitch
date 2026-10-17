@@ -1,6 +1,6 @@
 """Learning-data recorder: what the daemon sees and does, written down for later (nothing here changes a score or a swap).
 
-logs/dataset/<YYYY-MM-DD>.jsonl         one row per stream (tab) every ~2 s (`snapshot_rows`, called from `Server._log_scores`)
+logs/dataset/<YYYY-MM-DD>.jsonl         one row per stream (tab) every ~1 s since 2026-10-17, ~2 s before (`snapshot_rows`, called from `Server._log_snapshot`)
 logs/dataset/<YYYY-MM-DD>.events.jsonl  one line per event: swap, score change, goal banner, big play, banner cue, speech cue (with its text),
                                         game state change, build-up decision, feed goal (`Server._rec_event`)
 

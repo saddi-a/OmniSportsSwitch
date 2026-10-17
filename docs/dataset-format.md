@@ -6,7 +6,7 @@ added, never renamed (a rename gets `v` = 2).
 
 Files, one per local day, append-only, one JSON object per line, UTF-8, compact:
 
-* `logs/dataset/<YYYY-MM-DD>.jsonl` one ROW per stream (tab) every ~2 s (the cadence of the `MAIN <tab>: live ...` score line).
+* `logs/dataset/<YYYY-MM-DD>.jsonl` one ROW per stream (tab) every ~1 s since 2026-10-17 (~2 s before; `SNAPSHOT_INTERVAL_S` in `daemon/server.py`, the cadence of the `MAIN <tab>: live ...` score line). Rows of the older days are ~2 s apart: readers search by time, never by row count.
 * `logs/dataset/<YYYY-MM-DD>.events.jsonl` one line per EVENT.
 
 Size, 4 streams: about 7200 rows/hour, about 1.1 KB each = about 8 MB/hour (about 70 MB for a 9-hour day); events add well under 1 MB/hour.

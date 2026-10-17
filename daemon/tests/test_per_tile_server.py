@@ -143,6 +143,7 @@ def test_build_up_lines_say_tile_and_sport_and_the_backtest_reads_them(caplog):
     server.buildup.note((2, 1), now - 2, 0.2, "free kick")
     with caplog.at_level(logging.INFO, logger="daemon"):
         server._log_scores(now)
+        server._log_snapshot(now)
     lines = [r.getMessage() for r in caplog.records if "buildup would take MAIN" in r.getMessage()]
     assert lines and lines[0].startswith("buildup would take MAIN tab 2 tile 1 (football): level")
     stamped = [f"2026-10-14 12:00:00,000 {line}" for line in lines]

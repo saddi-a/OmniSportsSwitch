@@ -2,7 +2,7 @@
 scripts/backtest.py).
 
 The goal of the daemon is to put a stream in MAIN BEFORE its goal, not after the scoreboard confirms it. The logs hold what we need to
-measure that: every 2 s the score of each stream (`live fav=... score=...` lines of daemon.log), the goals (`score change tab ...` lines of
+measure that: every 1 s (2 s before 2026-10-17) the score of each stream (`live fav=... score=...` lines of daemon.log), the goals (`score change tab ...` lines of
 events.log, the scoreboard confirmation) and, when the feed knew the game, how far the picture lagged the feed (`feed confirmed ... feed lag`).
 For each goal this module answers: what was the score of the scoring stream (and of the best other stream) 30 / 20 / 10 / 5 seconds before,
 was the stream already MAIN, and WHEN would the swap rule (min_score, threshold, min_gap, confirm_s) first have taken MAIN for it.
@@ -148,7 +148,7 @@ def parse_feed_lags(lines) -> list[tuple[datetime.datetime, int, int]]:
 
 
 class Series:
-    """The readings of one log, searched by time. Readings are about 2 s apart per stream."""
+    """The readings of one log, searched by time. Readings are about 1 s apart per stream (2 s in logs before 2026-10-17)."""
 
     def __init__(self, readings: list[Reading]):
         self.by_tab: dict[int, list[Reading]] = {}

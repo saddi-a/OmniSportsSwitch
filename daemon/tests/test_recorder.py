@@ -41,6 +41,7 @@ def test_a_server_tick_writes_one_documented_row_per_stream(tmp_path):
     server.buildup.note(2, now - 5, 0.3, "free kick")
     server.buildup.note(2, now - 2, 0.1, "surge_note")
     server._log_scores(now)
+    server._log_snapshot(now)
     server._rec_event("speech_cue", 2, cue="chance", text="quelle occasion")
     recorder.close()
     rows = _lines(next((tmp_path / "dataset").glob("????-??-??.jsonl")))
@@ -91,6 +92,7 @@ def test_mode_zero_writes_nothing(tmp_path):
     now = time.monotonic()
     _register(server, 1, now)
     server._log_scores(now)
+    server._log_snapshot(now)
     server._rec_event("swap", 1)
     recorder.close()
     assert not (tmp_path / "dataset").exists() and recorder._thread is None and recorder.queue.empty()
@@ -102,8 +104,10 @@ def test_mode_can_be_switched_live(tmp_path):
     _register(server, 1, now)
     server.scorer.config.dataset_mode = 0.0
     server._log_scores(now)
+    server._log_snapshot(now)
     server.scorer.config.dataset_mode = 1.0
     server._log_scores(now + 2)
+    server._log_snapshot(now + 2)
     recorder.close()
     assert len(_lines(next((tmp_path / "dataset").glob("????-??-??.jsonl")))) == 1
 
@@ -198,3 +202,16 @@ def test_recorded_hot_left_and_blocked_follow_the_hot_game_hold(tmp_path):
     assert 35.0 < hot["hot_left"] <= 40.0 and "MAIN is hot" in (hot["blocked"] or "")
     assert _buildup_part(server, 1, server.scorer.components(1, now), now)["hot_left"] == hot["hot_left"]
     recorder.close()
+
+
+def test_rows_come_from_the_snapshot_step_not_the_scoring_tick(tmp_path):
+    from daemon import server as srv
+    assert srv.SNAPSHOT_INTERVAL_S <= srv.SCORE_LOG_INTERVAL_S
+    server, recorder = _server(tmp_path, buildup_live=0.0)
+    now = time.monotonic()
+    _register(server, 1, now)
+    server._log_scores(now)                      # the scoring tick writes no row
+    server._log_snapshot(now)
+    server._log_snapshot(now + 1)                # one row per snapshot
+    recorder.close()
+    assert len(_lines(next((tmp_path / "dataset").glob("????-??-??.jsonl")))) == 2
