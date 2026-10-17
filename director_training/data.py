@@ -48,7 +48,7 @@ def read_rows(path) -> list[dict]:
 def latest_rows_path(logs_dir, runs_dir) -> pathlib.Path:
     """The rows file to fit on by default: the newest finished `build` run's rows.jsonl, else logs/dataset_built/rows.jsonl."""
     from . import runs
-    for num, cmd, path in reversed(runs.list_run_dirs(runs_dir)):
+    for _, cmd, path in reversed(runs.list_run_dirs(runs_dir)):
         if cmd == "build" and (path / "rows.jsonl").exists() and (path / "metrics.json").exists():
             return path / "rows.jsonl"
     return pathlib.Path(logs_dir) / "dataset_built" / "rows.jsonl"

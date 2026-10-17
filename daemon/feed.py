@@ -486,7 +486,7 @@ class FeedSession:
             if now < self.summary_at.get(s.game_id, 0.0):
                 continue
             self.summary_at[s.game_id] = now + max(interval, 5.0)
-            status, data = self.fetch(summary_url(s.league, s.game_id))
+            _, data = self.fetch(summary_url(s.league, s.game_id))
             if data is None:
                 continue
             first = s.game_id not in self.summary_done

@@ -8,7 +8,7 @@ import pytest
 from daemon import game_state, settings
 from daemon.cues import speech_cue_weight
 from daemon.leverage import leverage
-from daemon.scoring import OVERRIDABLE_SCORING, Config, Scorer, Weights, sport_key
+from daemon.scoring import OVERRIDABLE_SCORING, Config, sport_key
 from daemon.server import Server
 from daemon.settings import SETTINGS_PATH, apply_changes, load_settings, reset_all
 from daemon.tests.test_scoring import make, roar, steady, warm_up

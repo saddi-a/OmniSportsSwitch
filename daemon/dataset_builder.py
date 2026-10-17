@@ -459,7 +459,6 @@ def label_rows(rows: list[dict], events: list[dict], games: dict, cues: list[dic
     cues_by_tab: dict = collections.defaultdict(list)
     for c in cues:
         cues_by_tab[c["tab"]].append(c)
-    snaps = {}                       # the feed's snapshot times per game come in through `games`
     for r in rows:
         r["sport_used"] = r.get("sport") or sports.get(r["tab"])
         for k in ("aligned", "y_goal_30", "y_t12_60", "y_t12_60_feed", "y_t1_60", "next_event_kind", "secs_to_next_event", "label_quality", "label_jitter_s",

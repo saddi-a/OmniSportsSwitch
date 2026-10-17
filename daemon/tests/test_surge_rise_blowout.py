@@ -4,7 +4,7 @@ import logging
 import pytest
 
 from daemon.cues import SurgeRiseWatch, surge_rise_weight
-from daemon.scoring import Config, Scorer, Weights
+from daemon.scoring import Config, Weights
 from daemon.server import Server
 from daemon.tests.test_scoring import make, quiet_play, warm_up
 

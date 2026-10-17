@@ -2,8 +2,6 @@ import json
 import threading
 import time
 
-import numpy as np
-
 from daemon.recorder import DatasetRecorder, snapshot_rows
 from daemon.scoring import Config, Scorer
 from daemon.server import Server

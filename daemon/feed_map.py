@@ -76,10 +76,6 @@ def _hits(texts: list[str], team: feed.Team) -> set:
     return found
 
 
-def shows_team(texts: list[str], team: feed.Team) -> bool:
-    return bool(_hits(texts, team))
-
-
 def shows_game(texts: list[str], snap: feed.Snapshot) -> bool:
     """Both teams are in the texts of one reading. A candidate code (REAL, MSU, OM...) may stand for either team, but one token
     never stands for both: the other team needs a different name or code."""

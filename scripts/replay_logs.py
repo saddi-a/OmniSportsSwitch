@@ -48,7 +48,7 @@ def boxes(logdir: pathlib.Path):
 
 def coverage(logdir):
     stats = collections.defaultdict(collections.Counter)
-    for when, tab, tile, items in boxes(logdir):
+    for _, tab, tile, items in boxes(logdir):
         texts = [i["text"] for i in items]
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             continue

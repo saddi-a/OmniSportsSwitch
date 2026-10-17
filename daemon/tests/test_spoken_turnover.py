@@ -5,7 +5,7 @@ import pytest
 from daemon.cues import speech_cue_weight
 from daemon.scoring import Config, Scorer, Weights
 
-from .test_scoring import quiet_play, roar, warm_up
+from .test_scoring import roar
 
 
 def test_a_spoken_interception_weighs_the_high_tier_in_american_football():

@@ -43,10 +43,6 @@ def clock(t: float) -> str:
     return time.strftime("%H:%M:%S", time.localtime(t))
 
 
-def _day_of(t: float) -> str:
-    return time.strftime("%Y-%m-%d", time.localtime(t))
-
-
 # ---------------------------------------------------------------- reading the logs
 
 def _read_lines(path: pathlib.Path) -> list[str]:

@@ -1,6 +1,5 @@
 """A goal candidate (the first reading of a higher score, before the 3-of-5 vote confirms it) backs the music exemption
 (`audio_ad_goal_s`) when a loud moment came just before. It lapses by itself when the vote never confirms it."""
-from daemon.scoring import Config, Scorer
 
 from .test_goal_music import make, music
 from .test_scoring import ad, roar, warm_up

@@ -5,9 +5,8 @@ import random
 
 import pytest
 
-from daemon.scoring import Config, Scorer
 from daemon.tests.golden_single_tile import FIXTURE, run
-from daemon.tests.test_scoring import make, roar, steady, warm_up
+from daemon.tests.test_scoring import make, roar, warm_up
 
 NFL, SOCCER = "american football", "football"
 

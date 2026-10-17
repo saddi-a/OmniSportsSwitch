@@ -98,7 +98,7 @@ def cmd_build(ctx) -> int:
     inputs = data.load_inputs(ctx["logs"], args.days)
     run = _new_run(ctx, "build", _params(args), inputs=inputs["files"])
     if not inputs["rows"]:
-        line = run.finish({"headline": {}}, "# Build\n\nNo recorded rows for " + (", ".join(inputs["days"]) or "any day") + ".\n", status="insufficient-data",
+        run.finish({"headline": {}}, "# Build\n\nNo recorded rows for " + (", ".join(inputs["days"]) or "any day") + ".\n", status="insufficient-data",
                           summary="no dataset rows")
         out(f"{run.name}: no dataset rows")
         return 0

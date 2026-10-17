@@ -3,8 +3,6 @@ import json
 import pathlib
 import re
 
-import pytest
-
 from daemon import feed, team_names as table
 from daemon.feed_map import FeedMapper, shows_game, team_names
 

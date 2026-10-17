@@ -1,7 +1,5 @@
 import itertools
 
-import pytest
-
 from daemon.sport_choice import SOURCES, choose_sport, sport_from_feed
 from daemon.sport_detect import BASKETBALL, FOOTBALL, SOCCER
 

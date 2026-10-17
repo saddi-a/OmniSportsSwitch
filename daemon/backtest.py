@@ -19,7 +19,6 @@ SIGNAL_LINE = re.compile(
     TS + r"\s+(MAIN )?(\d+): (live|break) fav=(-?[\d.]+) score=(-?[\d.]+) surge=(-?[\d.]+) crowd=(-?[\d.]+) speech=(-?[\d.]+)")
 GOAL_LINE = re.compile(TS + r" score change tab (\d+) tile (\d+):")
 CUE_LINE = re.compile(TS + r" anticipation (.+?) tab (\d+)(?: tile (\d+))?(?: \(spoken\))?(?: weight ([\d.]+))?\s*$")
-BANNER_LINE = re.compile(TS + r" goal banner tab (\d+) tile (\d+): (.*)$")
 SPORT_LINE = re.compile(TS + r" sport detected tab (\d+) tile (\d+): (.+?)\s*$")
 BUILDUP_LINE = re.compile(TS + r" buildup would take MAIN tab (\d+)(?: tile (\d+))?(?: \([^)]*\))?:")   # a multiview line: "tab 7 tile 1 (football):"
 FEED_LAG_LINE = re.compile(TS + r" feed confirmed tab (\d+) tile (\d+) .*feed lag (-?\d+) s")

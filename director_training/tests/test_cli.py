@@ -4,7 +4,7 @@ import json
 from daemon.tests import test_dataset_builder as tdb
 from director_training import cli, runs
 
-from .synth import T0, built_rows, signal_rows, write_jsonl
+from .synth import built_rows, signal_rows, write_jsonl
 
 
 def iso(t):
