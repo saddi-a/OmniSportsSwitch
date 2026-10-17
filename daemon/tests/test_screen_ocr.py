@@ -112,3 +112,8 @@ def test_merge_zoom_keeps_what_is_outside_the_crop():
     items = [_item("HEADLINE", 0, 0, 100, 20), _item("TEX", 300, 100, 340, 120), _item("OKL", 360, 100, 400, 120)]
     merged = merge_zoom(items, (280, 90, 420, 130), [_item("TEX", 300, 100, 340, 120), _item("7", 345, 100, 358, 120)])
     assert sorted(it["text"] for it in merged) == ["7", "HEADLINE", "TEX"]
+
+
+def test_the_video_players_position_over_length_is_not_a_game_clock():
+    assert find_clocks(["71:27", "11:16/14:06"]) == ["71:27"]
+    assert find_clocks(["11:16 / 14:06"]) == []

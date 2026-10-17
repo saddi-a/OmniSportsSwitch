@@ -12,6 +12,7 @@ import numpy as np
 from daemon.game_state import DOWN_RE
 
 MODEL_DIR = pathlib.Path(__file__).resolve().parent.parent / "models" / "easyocr"
+PLAYER_TIME_RE = re.compile(r"\d+\s?[:.]\s?\d{2}\s?/\s?\d+\s?[:.]\s?\d{2}")   # the player bar's 'position/length'
 CLOCK_RE = re.compile(r"\b\d{1,3}\s?[:.,]\s?\d{2}\b")
 COLON_AS_DIGIT_RE = re.compile(r"(\d{2})[38](\d{2})")   # a clock whose colon was read as a 3 or an 8: 12853 = 12:53
 ZOOM_SPAN = 14   # the zoom pass looks this many text heights left and right of the clock / down-and-distance text...
@@ -241,6 +242,8 @@ def find_clocks(texts: list[str]) -> list[str]:
     """Game-clock-looking strings such as '32:19' or '3:08' in the OCR output."""
     clocks = []
     for text in texts:
+        if PLAYER_TIME_RE.search(text):
+            continue   # '11:16/14:06' is the video player's position, not the game clock
         found = [re.sub(r"[.,]", ":", m.replace(" ", "")) for m in CLOCK_RE.findall(text)]
         glued = COLON_AS_DIGIT_RE.fullmatch(text.strip())
         if not found and glued and int(glued[2]) < 60:
