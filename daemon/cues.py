@@ -32,7 +32,7 @@ _RED_CARD_RE = re.compile(r"red card|carton rouge|sent off|sending off|dismissed
 
 SPEECH_SCORING = {"free kick": "free_kick", "chance": "chance", "post": "chance", "penalty": "chance", "goal": "chance",
                   "penalty awarded": "penalty_awarded", "post area": "mid"}   # spoken cues that feed the score (soccer)
-SPEECH_SCORING_AMERICAN = frozenset({"interception"})   # spoken cues that feed the score in American football (interception, fumble, sack)
+SPEECH_SCORING_AMERICAN = {"interception": "high", "field goal": "chance"}   # spoken cues that feed the score in American football: a turnover call, a field goal being kicked
 
 
 def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> float | None:
@@ -40,7 +40,8 @@ def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> fl
     calls in soccer (or an unknown sport), and an interception / fumble / sack call in American football, at `factor` of the banner weight.
     Corners, fouls and offsides stay log-only."""
     if cue in SPEECH_SCORING_AMERICAN and factor > 0 and _is_american_football(sport):
-        return weights.cue_review_high * factor   # a turnover called by the commentators: the high tier, like a banner naming an interception
+        # a turnover called by the commentators: the high tier, like a banner naming an interception; a field goal being kicked: a chance
+        return (weights.cue_review_high if SPEECH_SCORING_AMERICAN[cue] == "high" else weights.cue_chance) * factor
     kind = SPEECH_SCORING.get(cue)
     if kind is None or factor <= 0 or (sport or "").strip().lower() not in ("football", ""):
         return None

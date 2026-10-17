@@ -22,11 +22,11 @@ CUES = {
     "touchdown": [r"touch ?downs?", r"touché ?!"],   # plain "touché" is French for "touched" ("on a touché", "touché le ballon")
     "red zone": [r"red ?zone", r"zone rouge"],
     "goal line": [r"goal ?line", r"ligne de but"],
-    "field goal": [r"field goal", r"coup de pied de placement"],
+    "field goal": [r"field goal", r"coup de pied de placement", r"\bthis from \d{2} yards\b"],   # "this from 49 yards" = the kick being announced
     "fourth down": [r"fourth down", r"4th down", r"quatrième essai"],
     "flag": [r"\bflag\b", r"\bpenalty flag\b", r"drapeau jaune"],
     "review": [r"\breview\b", r"challenge", r"vidéo ?review", r"assistance vidéo"],
-    "interception": [r"intercept", r"fumble", r"\bsack\b"],
+    "interception": [r"intercept", r"fumble", r"\bsacked\b", r"\bsack (?:by|on|for)\b"],   # not a bare "sack": "and not take that sack" is a miss
     "penalty": [r"\bpenalt(y|ies|i)\b", r"pénalty", r"point de penalty"],
     # a penalty GIVEN (not a mention of an old one): the strongest build-up sign in football, so it has its own cue (see cues.SPEECH_SCORING)
     "penalty awarded": [r"p[ée]nalty (sifflé|accordé|accordée|pour)\b", r"(siffle|accorde|donne|accordent) (un |le )?p[ée]nalty",
