@@ -11,7 +11,7 @@ matplotlib
 panns-inference  # install with --no-deps; the daemon only imports its model definition
 # The second OCR reader (PaddleOCR models through ONNX Runtime, CPU only; the models are inside the package, nothing else downloads).
 # rapidocr-onnxruntime is installed with --no-deps: it asks for opencv-python, which would clash with easyocr's opencv-python-headless.
-onnxruntime==1.31.0
+onnxruntime-directml==1.24.4   # replaces onnxruntime (same module, adds the GPU provider the second OCR reader uses; the CPU still works)
 shapely==2.2.0
 pyclipper==1.4.0
 pyyaml==6.0.3

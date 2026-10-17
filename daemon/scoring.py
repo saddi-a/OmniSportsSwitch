@@ -146,6 +146,7 @@ class Config:
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
     feed_mode: float = 0.0          # outside game data (ESPN): 0 = local only (nothing starts), 1 = record only (measuring, changes no score); needs a restart
     ocr_assist: float = 1.0          # 1 = a second OCR reader (PaddleOCR via rapidocr-onnxruntime, CPU) fills in a missing score or clock on a tile whose scorebug is on screen, 0 = off
+    ocr_assist_gpu: float = 1.0      # 1 = the second reader runs on the GPU (DirectML; needs onnxruntime-directml instead of onnxruntime, falls back to the CPU when missing), 0 = CPU
     ocr_assist_retry_s: float = 3.0  # ...and looks again this often on a tile where it found nothing (it is read on every pass once it finds a score)
     dataset_mode: float = 1.0       # 1 = record one row per stream every 2 s (and the events) to logs/dataset/<date>.jsonl for later learning, 0 = off; read live
     log_archive_days: float = 90.0  # rotated log files are copied (gzip) to logs/archive/<date>/ and kept this many days (0 = forever)

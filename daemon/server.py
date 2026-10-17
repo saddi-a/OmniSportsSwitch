@@ -1194,9 +1194,9 @@ if __name__ == "__main__":
     log.info("audio classifier ready on %s", classifier.device)
     screen_reader = ScreenReader()
     log.info("screen reader ready")
-    rapid_reader = RapidReader() if settings.scoring.ocr_assist > 0 else None   # the second OCR reader: fail-safe, None engine when the package is missing
+    rapid_reader = RapidReader(gpu=settings.scoring.ocr_assist_gpu > 0) if settings.scoring.ocr_assist > 0 else None   # the second OCR reader: fail-safe, None engine when the package is missing
     if rapid_reader is not None:
-        log.info("second OCR reader %s", "ready (cpu)" if rapid_reader.available else "not available (rapidocr-onnxruntime missing?); continuing without it")
+        log.info("second OCR reader %s", f"ready ({rapid_reader.device})" if rapid_reader.available else "not available (rapidocr-onnxruntime missing?); continuing without it")
     speech = None
     if settings.scoring.speech_interval_s > 0:   # the commentary listener is optional (measuring only)
         try:

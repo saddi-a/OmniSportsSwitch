@@ -31,11 +31,24 @@ NUMBER_RE = re.compile(r"^\d{1,3}$")
 DOWN_RE = re.compile(r"\b(1st|2nd|3rd|4th|ist|isr|2no|2wd|znd|3r0|ath)\b|&\s?(goal|\d+)|\bdown\b", re.IGNORECASE)
 
 
-def _load_engine():
+def engine_options(gpu: bool, providers: list[str]) -> dict:
+    """RapidOCR keyword arguments: DirectML on the GPU when asked for AND the installed onnxruntime offers it, else the CPU."""
+    if gpu and "DmlExecutionProvider" in providers:
+        return {"det_use_dml": True, "cls_use_dml": True, "rec_use_dml": True}
+    return {}
+
+
+def _load_engine(gpu: bool = False):
     """The PaddleOCR engine, or None when the package is not installed (the daemon then runs on EasyOCR alone)."""
     try:
+        import onnxruntime
         from rapidocr_onnxruntime import RapidOCR
-        return RapidOCR()
+        options = engine_options(gpu, onnxruntime.get_available_providers())
+        if gpu and not options:
+            log.warning("second OCR reader: GPU asked for but onnxruntime has no DirectML (pip install onnxruntime-directml instead of onnxruntime); using the CPU")
+        engine = RapidOCR(**options)
+        engine.device = "gpu" if options else "cpu"
+        return engine
     except Exception as error:   # missing package, missing model file, onnxruntime failing to start
         log.warning("second OCR reader (rapidocr-onnxruntime) not available: %s", error)
         return None
@@ -114,9 +127,13 @@ def slot_items(left: dict, right: dict, left_score: int, right_score: int, conf:
 
 
 class RapidReader:
-    def __init__(self, engine=None):
-        self.engine = engine if engine is not None else _load_engine()
+    def __init__(self, engine=None, gpu: bool = False):
+        self.engine = engine if engine is not None else _load_engine(gpu)
         self.errors = 0
+
+    @property
+    def device(self) -> str:
+        return getattr(self.engine, "device", "cpu")
 
     @property
     def available(self) -> bool:

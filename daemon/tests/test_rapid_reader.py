@@ -101,7 +101,7 @@ def test_a_failing_engine_never_raises_and_is_switched_off_after_a_few_errors():
 
 
 def test_a_missing_package_means_no_second_reader_and_no_crash(monkeypatch):
-    monkeypatch.setattr(rapid_reader, "_load_engine", lambda: None)
+    monkeypatch.setattr(rapid_reader, "_load_engine", lambda gpu=False: None)
     reader = RapidReader()
     assert not reader.available
     items = [item("ARIZONA ST", 0, 0, 150, 24)]
@@ -120,3 +120,19 @@ def test_the_rescue_adds_the_missing_score_digits_between_the_team_names():
     texts = [i["text"] for i in rescued]
     assert "17" in texts and "43" in texts
     assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) == (17, 43)
+
+
+# ---- CPU or GPU --------------------------------------------------------------------------------------------------------------------
+
+def test_the_gpu_is_used_only_when_asked_for_and_directml_is_installed():
+    assert rapid_reader.engine_options(True, ["DmlExecutionProvider", "CPUExecutionProvider"])["rec_use_dml"] is True
+    assert rapid_reader.engine_options(True, ["CPUExecutionProvider"]) == {}      # not installed: the CPU
+    assert rapid_reader.engine_options(False, ["DmlExecutionProvider"]) == {}     # not asked for: the CPU
+
+
+def test_the_reader_passes_the_gpu_choice_to_the_loader(monkeypatch):
+    seen = []
+    monkeypatch.setattr(rapid_reader, "_load_engine", lambda gpu=False: seen.append(gpu))
+    RapidReader(gpu=True)
+    assert seen == [True]
+    assert RapidReader(engine=FakeEngine({})).device == "cpu"
