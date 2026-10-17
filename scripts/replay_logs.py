@@ -1,4 +1,4 @@
-"""Replays the saved OCR logs through the real score reader and game tracker (offline, no daemon needed).
+r"""Replays the saved OCR logs through the real score reader and game tracker (offline, no daemon needed).
 
 Usage (from the repository root, with the main folder's logs):
   .venv\Scripts\python.exe scripts\replay_logs.py coverage [LOGDIR]
