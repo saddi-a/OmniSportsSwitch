@@ -65,3 +65,21 @@ def test_the_dazn_carousel_cards_are_ads_even_with_loose_numbers_on_them(texts):
 def test_a_live_game_is_not_an_ad_because_of_these_phrases():
     g = readings(["SEC NETWORK", "MISSOURI", "5-1", "21", "3rd & 6", "2:13", "9 OLE MISS", "3RD QTR"], clocks=["2:13"], n=6)
     assert not g.on_ad
+
+
+# ---- scoring-bugs-65: a frame the OCR read as empty must not break the 2-readings-in-a-row rule (DAZN tile 1, 23:53-23:54) ----
+
+def test_an_empty_reading_between_two_ad_readings_does_not_reset_them():
+    g = GameTracker("American football")
+    g.update(0.0, ["Follow", "DA", "ZN", "on", "Now", "@daznboxing"], [])
+    g.update(3.0, [], [])                                    # the OCR read nothing on this frame
+    g.update(6.0, ["NFVJ", "GP", "NFL GAME PASS", "Iatchevery gameonly on DAZN"], [])
+    assert g.on_ad
+
+
+def test_another_card_between_two_ad_readings_still_resets_them():
+    g = GameTracker("American football")
+    g.update(0.0, ["Follow", "DA", "ZN", "on", "Now", "@daznboxing"], [])
+    g.update(3.0, ["RETURN", "OF THE", "KING"], [])         # a real reading with no ad wording: not an ad on 2 in a row
+    g.update(6.0, ["NFVJ", "GP", "NFL GAME PASS", "Iatchevery gameonly on DAZN"], [])
+    assert not g.on_ad

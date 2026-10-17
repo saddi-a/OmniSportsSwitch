@@ -326,7 +326,8 @@ class GameTracker:
         if scoreboard and clocks and (m := re.fullmatch(r"(\d{1,3}):(\d{2})", clocks[0].strip())):
             self._game_clock = (int(m.group(1)) * 60 + int(m.group(2)), now)
         promo = not scoreboard and any(p in t for t in lowered for p in PROMO_PHRASES)   # a promo screen with no game on it
-        self._ad_hits = self._ad_hits + 1 if lone_clock or promo or any(p in t for t in lowered for p in AD_PHRASES) else 0
+        if texts or clocks:   # a frame the OCR read as completely empty says nothing: it must not reset the 2-in-a-row count (a DAZN carousel is read empty every other frame)
+            self._ad_hits = self._ad_hits + 1 if lone_clock or promo or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
             self._board_since_ad = 0
