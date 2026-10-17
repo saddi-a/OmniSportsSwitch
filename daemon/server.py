@@ -137,6 +137,7 @@ class Server:
         self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
+        self.expand_retried: set[int] = set()   # tabs whose last expand failed and was already asked again once
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
@@ -1047,7 +1048,13 @@ class Server:
         elif audible == main or time.monotonic() > deadline:
             del self.pending_expand[tab_id]
             if audible == main:
+                self.expand_retried.discard(tab_id)
                 self._expand_swap(tab_id, rects, target)
+            else:
+                log.warning("expand of tab %s tile %s did not happen: no tile took the big slot within %s s", tab_id, target, EXPAND_CHECK_S)
+                if tab_id not in self.expand_retried:   # ask once more: the dwell is lifted for this tab, the focuser decides again
+                    self.expand_retried.add(tab_id)
+                    self.focuser._last_change.pop(tab_id, None)
 
     def _expand_swap(self, tab_id: int, rects: list[dict], target: int) -> None:
         """DAZN's expand moves the clicked stream into the big main slot and the old main stream into the

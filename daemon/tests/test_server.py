@@ -907,3 +907,28 @@ def test_arsenal_build_up_does_not_beat_a_barcelona_goal_read_just_before_the_go
     assert server.scorer.decide(60.0) is None                    # confirmation
     swap = server.scorer.decide(62.5)
     assert swap is not None and swap.promote == 3 and server.scorer.main == 3
+
+
+def test_an_expand_that_times_out_warns_and_is_asked_once_more(caplog):
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.focuser._last_change[20] = time.monotonic()
+    server.pending_expand[20] = (2, time.monotonic() - 1)   # deadline passed
+    with caplog.at_level(logging.WARNING):
+        _report(server, 20, audible=1)                      # neither the big slot nor the clicked tile
+    assert "did not happen: no tile took the big slot" in caplog.text
+    assert 20 not in server.pending_expand and 20 in server.expand_retried
+    assert 20 not in server.focuser._last_change            # the dwell is lifted: the focuser can ask again
+    server.focuser._last_change[20] = time.monotonic()
+    server.pending_expand[20] = (2, time.monotonic() - 1)
+    _report(server, 20, audible=1)                          # second failure: no third try
+    assert 20 in server.focuser._last_change
+
+
+def test_a_confirmed_expand_clears_the_retry_mark():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.expand_retried.add(20)
+    server.pending_expand[20] = (2, time.monotonic() + 8)
+    _report(server, 20, audible=0)
+    assert 20 not in server.expand_retried

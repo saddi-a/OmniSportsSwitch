@@ -153,7 +153,10 @@ async function expandTile(tabId, index) {
     },
     args: [index],
   });
-  if (!center) return;
+  if (!center) {
+    console.warn("expand: video " + index + " not found in tab " + tabId);
+    return;
+  }
   const [x, y] = center;
   const target = { tabId };
   await chrome.debugger.attach(target, "1.3");
