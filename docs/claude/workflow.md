@@ -6,7 +6,7 @@
 
 ## Design questions
 - Ask before architecture or design decisions: give options with pros and cons and a recommendation. Implementation details are yours.
-- Do NOT implement an open decision without asking (see the "open decisions" in `PLAN.md` section 0).
+- Do NOT implement an open decision without asking (see the open items in the newest state paragraphs of `PLAN.md` section 0: the 2026-10-17 entries and "State at the end of the 2026-10-14 session"; the old 2026-10-13 list is only history in `docs/history/plan-section0-archive.md`).
 
 ## Main chat versus agents (user, 2026-10-13)
 - The main chat is for planning, decisions and logging the user's feedback; agents do the work.

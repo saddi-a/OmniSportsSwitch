@@ -1,6 +1,6 @@
 """Offline check: how long before a scoreboard change does the audio react, and how often does it react for nothing?
 
-Reads logs/daemon.log (the per-stream score lines written every ~2 s) and logs/events.log (score changes and big
+Reads logs/daemon.log (the per-stream score lines written every ~1 s, every 2 s before 2026-10-17) and logs/events.log (score changes and big
 plays). For every event it looks at the same tab in the 30 s before the event and reports when the crowd or surge
 signal first crossed a threshold. It also counts threshold crossings that no event follows (false alarms).
 

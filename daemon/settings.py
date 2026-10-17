@@ -204,7 +204,7 @@ LAYOUT = [
         ("scoring.ad_penalty", "Ad penalty", "An ad in the picture scores minus this (music-only ads: half of it)."),
     ]),
     ("Logs and learning data", [
-        ("scoring.dataset_mode", "Record learning data (1 = on, 0 = off)", "1 = one row per stream every 2 s plus the events (swaps, goals, cues) are written to logs/dataset/ (local only, never committed) for later learning. 0 = nothing is written. Takes effect at once."),
+        ("scoring.dataset_mode", "Record learning data (1 = on, 0 = off)", "1 = one row per stream every second plus the events (swaps, goals, cues) are written to logs/dataset/ (local only, never committed) for later learning. 0 = nothing is written. Takes effect at once."),
         ("scoring.log_archive_days", "Keep archived logs (days, 0 = forever)", "Rotated log files are compressed into logs/archive/ and kept this many days. The learning data in logs/dataset/ is never deleted."),
         ("scoring.log_archive_max_mb", "Archive size cap (MB, 0 = no cap)", "If the archive grows beyond this, the oldest archived files are deleted first (even if younger than the days above)."),
     ]),

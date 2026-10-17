@@ -1,6 +1,6 @@
 """Shadow evaluation: replay the recorded rows with candidate weights and judge the swap sequence with the dataset builder's own metric code.
 
-The recorded rows hold every signal of every stream every ~2 s. `features.score_from_row` recomputes each stream's score under any weights with the
+The recorded rows hold every signal of every stream every ~1 s (2 s before 2026-10-17). `features.score_from_row` recomputes each stream's score under any weights with the
 formula of `Scorer.components`; `simulate` then applies a SIMPLIFIED swap rule (`Scorer.decide`) to produce the swap sequence the candidate would have
 made; `judge_sequence` runs `dataset_builder.judge_swaps / judge_events / summarise` on it (regret, miss, lead). Three sequences are judged on the
 same rows: the RECORDED swaps (what really happened), the SIMULATION WITH TODAY'S SETTINGS and the SIMULATION WITH THE CANDIDATE. The honest comparison

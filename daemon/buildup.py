@@ -10,7 +10,7 @@ log can be compared with the real goals (scripts/backtest.py). It changes no sco
 """
 import dataclasses
 
-CROWD_NOTE_READINGS = 3   # consecutive score readings of a loud crowd that note a sign: 3 at the 1 s scoring tick = the 2 s hold it had at the old 2 s tick (2 readings)
+CROWD_NOTE_READINGS = 3   # consecutive score readings of a loud crowd that note a sign (3 at the 1 s tick = a 2 s hold)
 
 
 def is_soccer(sport: str | None) -> bool:
