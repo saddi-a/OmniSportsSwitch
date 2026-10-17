@@ -34,4 +34,4 @@ Plain links on purpose (not `@` imports), so a file loads only when needed.
 | [docs/director-training.md](docs/director-training.md), [docs/dataset-format.md](docs/dataset-format.md), [docs/per-tile-sport.md](docs/per-tile-sport.md) | the learned-weights plan, its dataset format and tools, per-tile sport detection |
 | [director_training/README.md](director_training/README.md) | Director Training: fitting, shadow evaluation and shipping per-sport weights offline (`scripts/director_training.py`, runs in `logs/director_training/`) |
 | [docs/api-plan.md](docs/api-plan.md) | the ESPN feed (measuring only) |
-| [docs/history/plan-section0-archive.md](docs/history/plan-section0-archive.md) | a fact about the 2026-10-11 to 2026-10-14 work or the old 2026-10-13 open decisions is needed |
+| [docs/history/plan-section0-archive.md](docs/history/plan-section0-archive.md) | a fact about the 2026-10-11 to 2026-10-18 work (finished scoring-bugs branches, per-tile sport stages, old state paragraphs) or the old 2026-10-13 open decisions is needed |
