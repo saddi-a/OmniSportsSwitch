@@ -53,7 +53,7 @@ KEYWORD_MEMORY_S = 120.0  # a FINAL / HALF TIME caption counts for this long aft
 # Seen live: "COMMERCIAL BREAK IN PROGRESS", "PUBLICITARIA EN CURSO", "INTERVALO COMERCIAL", "PUBLICITE".
 AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire", "publicidade", "pausa comercial",
               "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn",
-              "event break", "evento em intervalo", "interrupcion del evento", "interrupción del evento"]
+              "event break", "evento em intervalo", "interrupcion del evento", "interrupción del evento", "stream live matches", "schedule for availability"]
 # Promo screens a service shows between games (DAZN: tiles with no game in them). They count as an ad ONLY with no scoreboard on screen: a live game
 # frame carries "This programme contains US advertising..." or a Game Pass logo beside its scorebug. Matched inside a longer text item, lower case.
 PROMO_PHRASES = ["advertising", "on dazn", "nfl game pass", "watchevery", "daznboxing", "dazn boxing"]
