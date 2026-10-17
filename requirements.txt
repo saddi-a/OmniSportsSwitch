@@ -12,6 +12,10 @@ panns-inference  # install with --no-deps; the daemon only imports its model def
 # The second OCR reader (PaddleOCR models through ONNX Runtime, CPU only; the models are inside the package, nothing else downloads).
 # rapidocr-onnxruntime is installed with --no-deps: it asks for opencv-python, which would clash with easyocr's opencv-python-headless.
 onnxruntime==1.31.0
+shapely==2.2.0
+pyclipper==1.4.0
+pyyaml==6.0.3
+six==1.17.0
 rapidocr-onnxruntime==1.4.4  # install with --no-deps
 # The commentary listener (measuring only; the daemon runs without it): local speech recognition on the GPU. Its CUDA libraries
 # come as pip packages. Neither depends on torch, so they cannot replace the GPU build. The model (about 460 MB) downloads into
