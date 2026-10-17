@@ -29,7 +29,7 @@ SPORT_KEYS = ("football", "american football", "basketball")   # same keys as th
 # can be overridden. An override of any other key is ignored with a warning (daemon/settings.py).
 OVERRIDABLE_SCORING = frozenset({
     "min_score", "threshold", "min_gap", "confirm_s", "hold_break_score",          # a challenger against MAIN: the CHALLENGER's sport
-    "surge_cap", "anticipation_s", "cue_alone_cap", "cue_support", "cue_leverage_gain", "leverage_weight", "replay_dampen",
+    "surge_cap", "audio_ad_goal_s", "anticipation_s", "cue_alone_cap", "cue_support", "cue_leverage_gain", "leverage_weight", "replay_dampen",
     "big_play_strength", "goal_banner_strength", "cue_zone_near_yd", "cue_zone_far_yd",
     "speech_cue_factor", "speech_cue_cooldown_s",
     "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
@@ -91,6 +91,7 @@ class Config:
     big_play_strength: float = 0.7  # a big play (interception, fumble, sack...) counts this much of a goal
     ad_penalty: float = 0.5   # a stream showing an ad scores -ad_penalty (picture) or half of it (music only)
     audio_ad_memory_s: float = 12.0  # a stream that sounded like an ad stays flagged this long (music flickers)
+    audio_ad_goal_s: float = 20.0    # music within this long of a goal signal (score change, GOAL banner, feed goal, either order) is the celebration, not an ad (0 = off)
     manual_hold_s: float = 60.0    # "Make Main" from the popup holds the stream on MAIN this long
     hold_over_s: float = 60.0      # a held stream whose game has looked over for this long loses the hold
     hold_break_score: float = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
@@ -438,8 +439,13 @@ class Scorer:
             stream.music_hits.append(music >= self.config.idle_music and crowd < 0.1
                                          and music - speech >= self.config.audio_ad_margin)
             del stream.music_hits[: -int(self.config.audio_ad_window)]
-            if sum(stream.music_hits) >= self.config.audio_ad_votes:
+            if sum(stream.music_hits) >= self.config.audio_ad_votes and not self._goal_music(tab_id, stream, now):
                 stream.audio_ad_at = stream.ad_at = now
+
+    def _goal_music(self, tab_id: int, stream: _Stream, now: float) -> bool:
+        """The music is the celebration of a goal, not an ad: a goal signal (`goal_at`) is within `audio_ad_goal_s` before it."""
+        window = self.cfg_for(tab_id).audio_ad_goal_s
+        return window > 0 and 0 <= now - self._last_goal(stream) <= window
 
     def set_can_main(self, tab_id: int, can_main: bool) -> None:
         if tab_id in self.streams:
@@ -539,6 +545,12 @@ class Scorer:
             if goal:   # a score change or a goal banner: starts the post-goal replay hold (real time, whatever the strength)
                 rec.goal_at = max(rec.goal_at, now)
                 self._hot_trigger(rec, now, self.tile_cfg(tab_id, tile))
+                stream = self.streams[tab_id]
+                window = self.cfg_for(tab_id).audio_ad_goal_s
+                if window > 0 and now - stream.audio_ad_at <= window:   # the music came first: the goal confirmed late is what it celebrates
+                    if stream.ad_at == stream.audio_ad_at:
+                        stream.ad_at = float("-inf")
+                    stream.audio_ad_at = float("-inf")
 
     def set_status(self, tab_id: int, override: str | None) -> None:
         if tab_id in self.streams:
