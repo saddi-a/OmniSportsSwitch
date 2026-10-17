@@ -39,7 +39,7 @@ def test_the_daemons_own_loader_reads_the_patch_back(tmp_path):
     from daemon.settings import load_settings
     s = load_settings(tmp_path / "v" / "settings.toml").scoring
     assert s.sport_weights["football"] == {"crowd": 1.25, "speech": -0.4} and s.sport_scoring["football"]["min_score"] == 0.42
-    assert s.for_sport("football").weights.crowd == 1.25 and s.for_sport("basketball").weights.crowd == Config().weights.crowd
+    assert s.for_sport("football").weights.crowd == 1.25 and s.for_sport("american football").weights.crowd == Config().weights.crowd
 
 
 def test_a_sport_with_a_space_gets_a_quoted_table_and_existing_keys_are_updated_in_place():

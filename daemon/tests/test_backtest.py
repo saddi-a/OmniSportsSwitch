@@ -106,7 +106,7 @@ def test_summary_counts_and_handles_no_goals():
 
 def test_sport_of_a_goal_is_the_last_detection_before_it_and_metrics_are_split_per_sport():
     sports = bt.parse_sports([f"{stamp(at(-100))} sport detected tab 2 tile 0: American football", f"{stamp(at(10))} sport detected tab 2 tile 0: Football",
-                              f"{stamp(at(10))} sport detected tab 3 tile 0: Basketball"])
+                              f"{stamp(at(10))} sport detected tab 3 tile 0: Hockey"])
     lines = []
     for s in range(0, 62, 2):
         lines += [signal_line(at(s), 2, 0.50 if s >= 30 else 0.10), signal_line(at(s), 1, 0.10, main=True)]

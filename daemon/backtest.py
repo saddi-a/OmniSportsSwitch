@@ -78,7 +78,7 @@ class Lead:
     best_other_before: dict       # seconds before -> best score of the other streams (None = none)
     swap_lead_s: float | None     # seconds before the goal that the swap rule first qualified (None = never in SEARCH_S)
     first_cue: tuple | None       # (seconds before the goal, kind) of the earliest cue in SEARCH_S
-    sport: str                    # "Football", "American football", "Basketball"... as detected on the tab ("unknown" when never detected)
+    sport: str                    # "Football", "American football"... as detected on the tab ("unknown" when never detected)
     buildup_lead_s: float | None  # seconds before the goal of the earliest "buildup would take MAIN" line in SEARCH_S (None = none)
     feed_lag_s: int | None        # the feed's lead over the picture, when the log knows it
 
@@ -262,7 +262,7 @@ def summarise(leads: list[Lead], detail: bool = True) -> str:
 # and both are compared as they are. Checked on Coventry-Newcastle 2026-10-12: feed score 2-0 -> 2-1 at 22:28:15, OCR change 22:28:22.
 MAP_LINE = re.compile(TS + r" feed map tab (\d+) tile (\d+) -> (\S+) (\S+) \(")
 DROP_LINE = re.compile(TS + r" feed map tab (\d+) tile (\d+) dropped (\S+) (\S+):")
-SPORT_NAMES = {"soccer": "Football", "american football": "American football", "basketball": "Basketball"}   # feed sport -> the daemon's name
+SPORT_NAMES = {"soccer": "Football", "american football": "American football"}   # feed sport -> the daemon's name
 GOAL_KINDS = {"Football": ("goal", "penalty goal", "own goal"), "American football": ("touchdown", "field goal good")}
 BUILDUP_KINDS = ("yellow card", "red card", "penalty", "interception", "fumble", "big play")
 FEED_DEDUP_S = 120.0          # the feed repeats an event (the clock moves by a second, the key changes): same game, kind, team within this = one
@@ -338,7 +338,7 @@ def _score_rises(rows: list[dict]) -> dict[str, list[datetime.datetime]]:
 
 
 def parse_feed_events(rows: list[dict]) -> tuple[list[FeedGoal], list[FeedNonGoal]]:
-    """The goal-like events (soccer goal / penalty goal / own goal, American football touchdown / field goal good; basketball has none) and
+    """The goal-like events (soccer goal / penalty goal / own goal, American football touchdown / field goal good) and
     the build-up events (cards, penalty, interception, fumble, big play), repeats removed. A goal's time is the first moment the feed knew:
     the latest snapshot score rise in the SNAP_BEFORE_S before the event row, else the event row."""
     events = sorted((r for r in rows if r.get("type") == "event" and r.get("league") and r.get("game")), key=lambda r: r["t"])

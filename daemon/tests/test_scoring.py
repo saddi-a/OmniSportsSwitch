@@ -532,7 +532,7 @@ def test_nothing_is_evicted_while_frozen_or_when_main_is_allowed():
     assert s.evict_main(t) is None
 
 
-# ---- music-only "ads" must be sustained (found in the live log: three basketball/football streams took turns
+# ---- music-only "ads" must be sustained (found in the live log: three streams took turns
 # ---- being flagged AD from single music readings, so MAIN changed hands every 20 s) --------------------------
 
 def test_one_music_blip_does_not_flag_an_ad():

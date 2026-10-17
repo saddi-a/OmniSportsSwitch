@@ -47,9 +47,9 @@ import time
 from daemon.espn_history import tier2_group
 
 GOAL_LAG_S = 12.0                      # same value as daemon.backtest.GOAL_LAG_S (OCR confirms a goal this long after the picture)
-SPORT_OF_FEED = {"soccer": "football", "american football": "american football", "basketball": "basketball"}
+SPORT_OF_FEED = {"soccer": "football", "american football": "american football"}
 GOAL_KINDS = {"football": ("goal", "penalty goal", "own goal"), "american football": ("touchdown", "field goal good")}
-# Event tiers v1 (docs/director-training.md section 3). A kind not listed is tier 3 (note only). Basketball is parked: no tiers.
+# Event tiers v1 (docs/director-training.md section 3). A kind not listed is tier 3 (note only).
 FEED_TIER = {
     "football": {"goal": 1, "penalty goal": 1, "own goal": 1, "red card": 1, "penalty": 1, "yellow card": 3},
     "american football": {"touchdown": 1, "field goal good": 1, "safety": 1, "score": 1, "interception": 2, "fumble": 2, "field goal": 2,

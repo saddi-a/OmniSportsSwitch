@@ -548,7 +548,7 @@ def test_the_extra_point_window_is_a_setting():
 
 
 def test_other_sports_and_unknown_sports_keep_full_events():
-    for sport in ("football", "basketball", None):
+    for sport in ("football", "hockey", None):
         w = settled(score=(1, 0), sport=sport)
         events = show(w, (1, 3), 20, sport=sport)   # +3 means a field goal only in American football
         assert len(events) == 1 and events[0][1] == 1.0, sport

@@ -47,7 +47,7 @@ def test_filter_is_soccer_only_and_skips_review_cues():
 @pytest.mark.parametrize("text", ["Rodoli et le contre-pied !", "Akliouche dans la surface de réparation", "he is in the box", "dans la surface"])
 def test_new_football_chance_phrases(text):
     assert find_speech_cues(text, SOCCER) == ["chance"]
-    assert "chance" not in find_speech_cues(text, "basketball")
+    assert "chance" not in find_speech_cues(text, "hockey")
     assert "chance" not in find_speech_cues(text, AMERICAN)
 
 
@@ -60,7 +60,7 @@ def test_new_football_chance_phrases(text):
 def test_positional_post_is_a_post_area_cue_not_a_post(text):
     cues = find_speech_cues(text, SOCCER)
     assert "post area" in cues and "post" not in cues
-    assert "post area" not in find_speech_cues(text, AMERICAN) and "post area" not in find_speech_cues(text, "basketball")
+    assert "post area" not in find_speech_cues(text, AMERICAN) and "post area" not in find_speech_cues(text, "hockey")
 
 
 @pytest.mark.parametrize("text", [

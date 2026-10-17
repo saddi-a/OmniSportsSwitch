@@ -40,9 +40,7 @@ def test_overtime_counts_as_the_latest_moment():
     assert leverage("american football", (27, 27), 5, None, CFG) == pytest.approx(1.0)
 
 
-def test_basketball_and_soccer_use_their_own_scales():
-    assert leverage("basketball", (88, 90), 4, None, CFG) == pytest.approx(1.0)
-    assert leverage("basketball", (60, 95), 4, None, CFG) == pytest.approx(-1.0)
+def test_soccer_uses_its_own_scale():
     assert leverage("football", (1, 1), None, 85, CFG) > 0.8                 # soccer by the minute
     assert leverage("football", (0, 4), None, 85, CFG) < -0.8
     assert leverage("football", (1, 1), None, 10, CFG) < 0.5

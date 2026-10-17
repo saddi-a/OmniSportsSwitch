@@ -37,7 +37,7 @@ def test_tile_sport_is_the_choose_sport_result_and_the_popup_wins():
     server = _server()
     server.sport_choice_seen[(1, 0)] = ("American football", "feed")   # the feed league, no hard cue
     assert server.tile_sport(1, 0) == "american football"
-    server.sport_seen[(1, 0)] = "Basketball"                          # the plain detection alone would say otherwise
+    server.sport_seen[(1, 0)] = "Football"                          # the plain detection alone would say otherwise
     assert server.tile_sport(1, 0) == "american football"
     server.sports[1] = "Football"                                     # the popup beats all
     assert server.tile_sport(1, 0) == "football"
@@ -55,7 +55,7 @@ def test_single_tile_tab_sport_uses_sources_beyond_the_hard_detection():
 
 def test_single_tile_tab_golden_same_as_the_hard_detection_alone():
     """Where the hard detection already gave the sport (or the popup did), the tab sport is exactly what it was."""
-    for popup, hard in ((None, "Football"), (None, "American football"), ("Basketball", None), ("Football", "American football"), (None, None)):
+    for popup, hard in ((None, "Football"), (None, "American football"), ("American football", None), ("Football", "American football"), (None, None)):
         server = _server()
         _report(server, 0, n=1)
         server.sports[1] = popup
@@ -93,10 +93,10 @@ def test_unknown_audible_tile_of_a_multiview_counts_as_football_but_a_single_vid
 
 def test_popup_sport_keeps_winning_on_every_tile_of_a_mixed_tab():
     server = _mixed()
-    server.sports[1] = "Basketball"
+    server.sports[1] = "American football"
     for audible in (0, 1):
         _report(server, audible)
-        assert server._tab_sport(1) == "basketball"
+        assert server._tab_sport(1) == "american football"
 
 
 def test_audible_change_clears_audio_buffers_marks_tags_stale_and_logs(caplog):

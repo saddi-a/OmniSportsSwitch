@@ -89,7 +89,6 @@ def test_clock_helpers():
     assert clock_seconds("84'") is None and clock_seconds(None) is None and clock_seconds("") is None
     assert game_elapsed_s("soccer", 2, 3164.0) == 3164.0
     assert game_elapsed_s("american football", 2, 741.0) == 900 + (900 - 741)
-    assert game_elapsed_s("basketball", 4, 0.0) == 3 * 720 + 720
     assert game_elapsed_s("american football", None, 100.0) is None and game_elapsed_s("soccer", 1, None) is None
     assert game_elapsed_s("tennis", 1, 5.0) is None
 

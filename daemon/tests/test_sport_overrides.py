@@ -32,7 +32,7 @@ def load(tmp_path, toml: str):
 
 def test_without_overrides_every_sport_gets_the_config_itself():
     cfg = Config()
-    for sport in (None, "", "football", "American football", "basketball", "generic", "cricket"):
+    for sport in (None, "", "football", "American football", "generic", "cricket"):
         assert cfg.for_sport(sport) is cfg
 
 
@@ -67,7 +67,7 @@ def test_an_override_applies_only_to_its_sport_and_the_rest_follow_the_shared_va
     assert cfg.for_sport("football").buildup_min == 0.5 and cfg.for_sport("Football ").weights.crowd == 3.0
     assert cfg.for_sport("football").buildup_gap == cfg.buildup_gap          # not overridden: shared
     assert cfg.for_sport("football").weights.surge == cfg.weights.surge
-    for other in ("american football", "basketball", "generic", None):
+    for other in ("american football", "generic", None):
         assert cfg.for_sport(other).buildup_min == cfg.buildup_min and cfg.for_sport(other).weights.crowd == 1.0
 
 
@@ -75,10 +75,10 @@ def test_a_shared_edit_reaches_other_sports_at_once_and_does_not_clobber_an_over
     cfg = Config()
     cfg.sport_scoring["football"] = {"buildup_min": 0.5}
     cfg.sport_weights["football"] = {"crowd": 3.0}
-    football, basketball = cfg.for_sport("football"), cfg.for_sport("basketball")   # views taken BEFORE the edits stay live
+    football, american = cfg.for_sport("football"), cfg.for_sport("american football")   # views taken BEFORE the edits stay live
     cfg.buildup_min, cfg.buildup_gap = 0.9, 0.2
     cfg.weights.crowd, cfg.weights.surge = 2.0, 0.6
-    assert basketball.buildup_min == 0.9 and basketball.weights.crowd == 2.0
+    assert american.buildup_min == 0.9 and american.weights.crowd == 2.0
     assert football.buildup_min == 0.5 and football.weights.crowd == 3.0          # override kept
     assert football.buildup_gap == 0.2 and football.weights.surge == 0.6           # a shared value it does not override: new value
 
@@ -86,7 +86,7 @@ def test_a_shared_edit_reaches_other_sports_at_once_and_does_not_clobber_an_over
 def test_the_popup_edit_path_keeps_overrides_and_reset_all_leaves_them_alone(tmp_path):
     s = load(tmp_path, "[scoring.football]\nmin_score = 0.9\n[weights.football]\ncrowd = 3\n")
     assert apply_changes(s, {"scoring.min_score": 0.5, "weights.crowd": 2.0}) == {}
-    assert s.scoring.for_sport("basketball").min_score == 0.5 and s.scoring.for_sport("basketball").weights.crowd == 2.0
+    assert s.scoring.for_sport("american football").min_score == 0.5 and s.scoring.for_sport("american football").weights.crowd == 2.0
     assert s.scoring.for_sport("football").min_score == 0.9 and s.scoring.for_sport("football").weights.crowd == 3.0
     reset_all(s)
     assert s.scoring.min_score == Config().min_score and s.scoring.weights.crowd == 1.0
@@ -99,9 +99,9 @@ def test_the_popup_edit_path_keeps_overrides_and_reset_all_leaves_them_alone(tmp
 
 def test_a_sport_table_is_read_with_quoted_names_and_collapsed_spaces(tmp_path):
     s = load(tmp_path, '[scoring.football]\nbuildup_min = 0.5\n[scoring."American  Football"]\ncue_alone_cap = 0.2\n'
-                       '[weights.basketball]\nmusic = -1\n[scoring]\nmin_gap = 0.2\n')
+                       '[weights."american football"]\nmusic = -1\n[scoring]\nmin_gap = 0.2\n')
     assert s.scoring.sport_scoring == {"football": {"buildup_min": 0.5}, "american football": {"cue_alone_cap": 0.2}}
-    assert s.scoring.sport_weights == {"basketball": {"music": -1.0}}
+    assert s.scoring.sport_weights == {"american football": {"music": -1.0}}
     assert s.scoring.min_gap == 0.2 and s.scoring.buildup_min == Config().buildup_min   # the shared values are untouched
 
 
@@ -137,17 +137,17 @@ def _crowd_scorer(sport_of):
 
 
 def test_the_stream_score_uses_the_weights_of_its_own_sport():
-    s = _crowd_scorer(lambda tab: {2: "football", 3: "basketball"}.get(tab))
+    s = _crowd_scorer(lambda tab: {2: "football", 3: "american football"}.get(tab))
     s.config.sport_weights["football"] = {"crowd": 2.0}
     now = warm_up(s)
     roar(s, 2, now)
     now = roar(s, 3, now)
-    football, basketball = s.components(2, now), s.components(3, now)
-    assert football["score"] > basketball["score"] * 1.5 and football["crowd"] == basketball["crowd"]
+    football, american = s.components(2, now), s.components(3, now)
+    assert football["score"] > american["score"] * 1.5 and football["crowd"] == american["crowd"]
 
 
 def test_a_challenger_is_judged_by_its_own_sports_min_score():
-    for sport, swaps in (("football", False), ("basketball", True), (None, True)):
+    for sport, swaps in (("football", False), ("american football", True), (None, True)):
         s = _crowd_scorer(lambda tab, sport=sport: sport if tab == 2 else None)
         s.config.sport_scoring["football"] = {"min_score": 5.0}
         now = warm_up(s)
@@ -191,7 +191,7 @@ def test_spoken_cue_weights_follow_the_sports_factor_and_weights():
     cfg.sport_weights["football"] = {"cue_chance": 0.4}
     view = cfg.for_sport("football")
     assert speech_cue_weight("chance", "football", view.weights, view.speech_cue_factor) == pytest.approx(0.2)
-    shared = cfg.for_sport("basketball")
+    shared = cfg.for_sport("american football")
     assert speech_cue_weight("chance", "football", shared.weights, shared.speech_cue_factor) == pytest.approx(0.25)
 
 
@@ -200,7 +200,7 @@ def test_the_leverage_limits_come_from_the_sport_of_the_game():
     cfg.sport_scoring["football"] = {"lev_soccer_close": 3.0, "lev_soccer_blowout": 6.0}
     assert leverage("football", (2, 0), 1, 85, cfg) == pytest.approx(1.0)     # two goals apart is close for this override
     assert leverage("football", (2, 0), 1, 85, Config()) < 1.0
-    assert leverage("basketball", (80, 79), 4, None, cfg) == leverage("basketball", (80, 79), 4, None, Config())
+    assert leverage("american football", (80, 79), 4, None, cfg) == leverage("american football", (80, 79), 4, None, Config())
 
 
 def _buildup_server(sport, level=0.46):
@@ -224,7 +224,7 @@ def test_the_buildup_tracker_uses_the_build_up_level_of_the_streams_sport():
         taken[override] = server._check_buildup(2, c, 60.0) is not None
     assert taken == {None: True, 0.9: False}
     server = _buildup_server("football")
-    server.scorer.config.sport_scoring["basketball"] = {"buildup_min": 0.9}       # another sport's override changes nothing
+    server.scorer.config.sport_scoring["american football"] = {"buildup_min": 0.9}       # another sport's override changes nothing
     assert server._check_buildup(2, server.scorer.components(2, 60.0), 60.0) is not None
 
 

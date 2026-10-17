@@ -4,7 +4,7 @@ An automated "live broadcast director" for people who watch several sports strea
 
 You open your streams in separate Edge windows (one per screen slot). OmniSportsSwitch listens to every stream, reads the scoreboards on screen, and automatically moves the most exciting game into the big centre window (Main). Everything runs locally on your PC: no accounts, no cloud, no API keys.
 
-> Status: personal project, working and under live testing (about 800 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football, basketball and soccer). Expect rough edges.
+> Status: personal project, working and under live testing (about 800 automated tests). It was built and tested on one specific setup (Windows 11, three monitors, NVIDIA GPU, DAZN and similar streaming sites, college and pro football and soccer). Expect rough edges.
 
 ## How it works
 
@@ -28,7 +28,7 @@ What the daemon looks at:
 - **What the page says**: the extension also sends the page's own words about the game (the title, the browser's media-session data, the visible player header). CANAL+ publishes the match there ("New Orleans Saints / Minnesota Vikings"), so the game is matched to its data by itself and you do not have to type the teams. Only short text strings leave the page, and only to the daemon on your PC.
 - **Your preferences**: favourite teams (kept on Main unless something exciting happens elsewhere), per-sport weights, per-tab weights, and windows a team or tab may or may not use.
 
-Goals are also announced by a GOAL banner (soccer) and a few commentator phrases. Scorebugs with a logo or a pale panel between the scores get a second, zoomed reading of the strip between the team codes. A stats table, a play clock or a team record is never read as a score. The sport of a stream is learned from the scoreboard, from league words on screen (NFL, NBA, Ligue 1...), and from the last sport seen on that tab (remembered in `logs/sports.json`), so a restart does not slow the first break detection. A full-screen score card (two numbers and the quarter, no team names) is read as a score when the scorebug is hidden and the numbers fit the last score.
+Goals are also announced by a GOAL banner (soccer) and a few commentator phrases. Scorebugs with a logo or a pale panel between the scores get a second, zoomed reading of the strip between the team codes. A stats table, a play clock or a team record is never read as a score. The sport of a stream is learned from the scoreboard, from league words on screen (NFL, Ligue 1...), and from the last sport seen on that tab (remembered in `logs/sports.json`), so a restart does not slow the first break detection. A full-screen score card (two numbers and the quarter, no team names) is read as a score when the scorebug is hidden and the numbers fit the last score.
 
 Other features: freeze Main with a hotkey, **Make Main** to force a stream there for a while, DAZN multiview support (it clicks the right tile), window names remembered across restarts, sport detected from the picture, close and late games valued above blowouts, every setting editable in the popup, permanent logs.
 
@@ -178,7 +178,7 @@ If a shortcut does nothing, check `edge://extensions/shortcuts`.
 By default every sport uses the same weights and thresholds. To tune one sport without touching the others, add a table for it in `settings.toml` and list ONLY the values that differ:
 
 ```toml
-[scoring.football]            # football = soccer; the others are "american football" and basketball
+[scoring.football]            # football = soccer; the others are "american football"
 buildup_min = 0.40            # build-up level to take Main, for football only
 [weights."american football"] # a sport name with a space needs quotes
 cue_chance = 0.30
@@ -241,10 +241,10 @@ Not committed: `.venv\`, `models\`, `logs\`, `samples\`, `dist\`, `build\`.
 ## Limits worth knowing
 
 - Windows 11 and Edge only, and an NVIDIA GPU. The streams are read from the screen, so no window may cover them and hardware acceleration must stay off.
-- Tested mostly with DAZN, a few other sites, and American football, college football, basketball and soccer scoreboards, in English and French. Other layouts may need tuning of the scoreboard reader. Known weak spots: a scoreboard layout with a logo read as a digit (one expected-failure test), boards whose big digits OCR cannot read at all (the fallback covers some), and overtime scoreboards.
+- Tested mostly with DAZN, a few other sites, and American football, college football and soccer scoreboards, in English and French. Other layouts may need tuning of the scoreboard reader. Known weak spots: a scoreboard layout with a logo read as a digit (one expected-failure test), boards whose big digits OCR cannot read at all (the fallback covers some), and overtime scoreboards.
 - The screen layout (one main window and up to four others) is built in.
 - Audio capture ends whenever a page reloads; the tab then needs tracking again with `Ctrl+Shift+Y`.
-- Closeness and time left only count when the score and the quarter (or the soccer minute) can be read and the sport is known (American football, basketball, soccer); otherwise a game gets no bonus or penalty.
+- Closeness and time left only count when the score and the quarter (or the soccer minute) can be read and the sport is known (American football, soccer); otherwise a game gets no bonus or penalty.
 - The first 20 seconds after the daemon starts, nothing swaps on sound (every stream is warming up); a certain ad on Main is still replaced.
 - Several things are only checked on the author's machine: a fresh `setup.ps1` run and the tray launcher's Start and Restart.
 

@@ -76,7 +76,7 @@ def test_weight_is_soccer_only_and_zero_is_off():
     w = Weights()
     assert surge_rise_weight("football", w) == w.cue_surge_rise == 0.20 == w.cue_review_mid     # a medium cue
     assert surge_rise_weight(None, w) == 0.20 and surge_rise_weight("", w) == 0.20
-    for sport in ("american football", "basketball", "generic"):
+    for sport in ("american football", "generic"):
         assert surge_rise_weight(sport, w) is None
     assert surge_rise_weight("football", Weights(cue_surge_rise=0.0)) is None
 
@@ -125,7 +125,7 @@ def test_the_rise_cue_is_recorded_for_director_training():
     assert events[0][2]["weight"] == 0.2 and events[0][2]["surge"] == 0.9 and "crowd" in events[0][2] and "level" in events[0][2]
 
 
-@pytest.mark.parametrize("sport", ["american football", "basketball", "generic"])
+@pytest.mark.parametrize("sport", ["american football", "generic"])
 def test_other_sports_get_no_rise_cue(sport):
     server = _server(sport)
     assert not any(_rise(server))
@@ -222,7 +222,7 @@ def test_bonus_is_read_per_sport():
     s.sport_of = lambda tab: "football" if tab == 2 else None
     s.config.sport_scoring = {"football": {"blowout_goal_bonus": 0.5}}
     assert s.blowout_goal_bonus(2, s.components(2, now), now) == 0.5
-    s.sport_of = lambda tab: "basketball" if tab == 2 else None
+    s.sport_of = lambda tab: "american football" if tab == 2 else None
     assert s.blowout_goal_bonus(2, s.components(2, now), now) == 0.0
 
 

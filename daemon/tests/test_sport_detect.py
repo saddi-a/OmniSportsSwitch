@@ -1,4 +1,4 @@
-from daemon.sport_detect import BASKETBALL, FOOTBALL, SOCCER, SportDetector
+from daemon.sport_detect import FOOTBALL, SOCCER, SportDetector
 
 
 def run(readings):
@@ -34,13 +34,6 @@ def test_american_football_is_recognised_from_down_and_distance():
     assert run(AMERICAN_LIVE) == FOOTBALL
 
 
-def test_basketball_is_recognised_from_quarters_and_a_short_countdown_clock():
-    readings = [(["LAL", "98", "BOS", "101", "Q4", "FOULS", "2:31"], ["2:31"]),
-                (["LAL", "98", "BOS", "101", "Q4", "BONUS", "2:27"], ["2:27"]),
-                (["LAL", "100", "BOS", "101", "Q4", "2:20"], ["2:20"])]
-    assert run(readings) == BASKETBALL
-
-
 def test_stoppage_time_means_soccer_even_early_in_the_second_half():
     assert run([(["PSG", "2", "LMFC", "1", "+4", "45+2"], ["45:00"]),
                 (["45+3", "PSG"], [])]) == SOCCER
@@ -57,7 +50,7 @@ def test_nothing_recognisable_gives_no_answer():
 def test_mixed_evidence_without_a_clear_winner_gives_no_answer():
     d = SportDetector()
     d.update(["2nd & 10"], [])      # football +3
-    d.update(["Q4"], [])            # basketball +2
+    d.update(["45+2"], [])         # soccer +4
     assert d.sport is None
 
 
@@ -86,13 +79,6 @@ def test_a_running_clock_beyond_twenty_minutes_is_soccer():
     assert d.sport == SOCCER
 
 
-def test_a_lone_ot_or_one_stray_quarter_is_not_basketball():
-    d = SportDetector()
-    d.update(["OT"], [])
-    d.update(["Q4"], [])
-    assert d.sport is None
-
-
 # ---- league words on the screen: weak evidence, a separate answer (`weak_sport`), never the hard `sport` --------------------------------
 # Header and scorebug of the Eagles-Jaguars tab (daemon.log 17:41): 'NFL' and 'NFL - 5e journee' are on screen from the first frame.
 NFL_BREAK = ["JACKSONVILLE JAGUARS / PHILADELPHIA EAGLES", "NFL", "5e journée", "bein spoets", "LIVE", "TOUTES LES CHAINES"]
@@ -113,7 +99,7 @@ def test_league_words_give_a_weak_guess_after_a_few_readings():
 
 
 def test_league_words_in_french_english_and_the_other_sports():
-    assert weak([["NBA", "bein"]] * 4).weak_sport == BASKETBALL
+    assert weak([["NBA", "bein"]] * 4).weak_sport is None            # not a supported sport
     assert weak([["Premier League", "2026/27"]] * 4).weak_sport == SOCCER
     assert weak([["LIGUE 1 McDonald's"]] * 4).weak_sport == SOCCER
     assert weak([["Premier Lcague"]] * 4).weak_sport == SOCCER      # OCR mangle seen in the logs
@@ -127,7 +113,7 @@ def test_words_inside_other_words_do_not_count():
 
 
 def test_two_leagues_at_once_give_no_guess():
-    assert weak([["NFL", "NBA"]] * 6).weak_sport is None
+    assert weak([["NFL", "Premier League"]] * 6).weak_sport is None
 
 
 def test_a_hard_cue_is_not_overridden_by_league_words():
@@ -148,11 +134,11 @@ def test_sport_from_title():
     assert sport_from_title("NFL - 5e journée") == FOOTBALL
     assert sport_from_title("Liverpool v Manchester City | Premier League | DAZN") == SOCCER
     assert sport_from_title("Ligue 1 : PSG - OM en direct") == SOCCER
-    assert sport_from_title("Lakers - Celtics | NBA") == BASKETBALL
+    assert sport_from_title("Lakers - Celtics | NBA") is None
     assert sport_from_title("NCAA Football: Ohio State at Penn State") == FOOTBALL
 
 
 def test_a_title_with_no_league_word_or_with_two_sports_gives_none():
     from daemon.sport_detect import sport_from_title
-    for title in ("DAZN", "Prime Video", "", None, "bein SPORTS 1", "NFL and NBA highlights", "INFLATION report"):
+    for title in ("DAZN", "Prime Video", "", None, "bein SPORTS 1", "NFL and Premier League highlights", "INFLATION report"):
         assert sport_from_title(title) is None, title

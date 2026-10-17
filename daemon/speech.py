@@ -61,18 +61,17 @@ CUES = {
                r"\blets fly\b", r"\bfires at goal\b",
                # shot wrong-footed the keeper; the ball is in the box (measured on 6253 transcript lines 2026-10-12: 2, 27, 0 and 1 lines)
                r"\bcontre-?pied\b", r"\bdans la surface\b", r"\bin the (box|area)\b"],
-    "free throw": [r"free throws?", r"lancers? francs?"],
     "timeout": [r"time ?out", r"temps mort"],
 }
-# cue -> the sports it is valid for (sport names as in Server._tab_sport: "football" = soccer, "american football", "basketball").
+# cue -> the sports it is valid for (sport names as in Server._tab_sport: "football" = soccer, "american football").
 # None = every sport. One place to read the classification; a cue outside its sports is dropped when the sport is known
 # ("sortent de la zone rouge" = relegation zone, said on a soccer stream, is not the American football red zone).
-_SOCCER, _AMERICAN, _BASKETBALL = "football", "american football", "basketball"
+_SOCCER, _AMERICAN = "football", "american football"
 CUE_SPORTS = {
     "touchdown": frozenset({_AMERICAN}),
     "red zone": frozenset({_AMERICAN}),
     "goal line": frozenset({_AMERICAN}),        # soccer: goal-line technology / clearances, not a cue
-    "field goal": frozenset({_AMERICAN}),       # basketball "field goal %" is a statistic
+    "field goal": frozenset({_AMERICAN}),
     "fourth down": frozenset({_AMERICAN}),
     "flag": frozenset({_AMERICAN}),             # soccer: the linesman's flag, already the "offside" cue
     "interception": frozenset({_AMERICAN}),     # also fumble, sack; soccer "intercepts the pass" is routine
@@ -80,17 +79,16 @@ CUE_SPORTS = {
     "penalty": frozenset({_SOCCER, _AMERICAN}), # soccer: penalty kick; American football: a flag (cues.py grades it per sport)
     "penalty awarded": frozenset({_SOCCER}),
     "free kick": frozenset({_SOCCER}),          # cues.FREE_KICK_CUES: soccer weight only
-    "corner": frozenset({_SOCCER}),             # basketball "corner three" is not a cue
+    "corner": frozenset({_SOCCER}),
     "offside": frozenset({_SOCCER, _AMERICAN}), # American football: offside is a defensive penalty
     "var": frozenset({_SOCCER}),
     "card": frozenset({_SOCCER}),               # cues.speech_tiers: soccer only
     "replay": None,
-    "foul": None,                               # soccer, basketball, American football all have fouls (cues.py: mid tier)
+    "foul": None,                               # soccer and American football both have fouls (cues.py: mid tier)
     "goal": frozenset({_SOCCER}),               # goal calls ("he scores", "takes the lead") are soccer-scored only
-    "post": frozenset({_SOCCER}),               # "the post" / "la barre" in basketball is a position or a bar
+    "post": frozenset({_SOCCER}),               # "the post" / "la barre" is a position or a bar
     "post area": frozenset({_SOCCER}),          # near/far post: a cross is coming
     "chance": frozenset({_SOCCER}),
-    "free throw": frozenset({_BASKETBALL}),
     "timeout": None,                            # every sport with timeouts
 }
 assert set(CUE_SPORTS) == set(CUES), "every cue needs a sports entry"

@@ -238,7 +238,7 @@ class FeedGate:
                 continue
             stream = _elapsed(p.sport, clock_s, period)
             if stream is None:
-                continue                                 # football/basketball without a read period: hold
+                continue                                 # football without a read period: hold
             if self._waiting_for(tile_key, p):
                 continue                                 # an OCR change is waiting for exactly this event: `confirmations` takes it
             gap = p.elapsed - stream                     # > 0: the event is still ahead of the picture

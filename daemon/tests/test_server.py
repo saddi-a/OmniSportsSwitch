@@ -212,10 +212,10 @@ def test_sport_is_detected_from_the_scoreboard_and_sets_the_break_rules():
 def test_a_sport_chosen_in_the_popup_wins_over_the_detected_one():
     from daemon.game_state import profile_for
     server = Server()
-    server.handle_message({"type": "register", "tab_id": 8, "sport": "Basketball"})
+    server.handle_message({"type": "register", "tab_id": 8, "sport": "Football"})
     for i in range(3):
         server._update_game_states({(8, 0): {"texts": ["HOUSTON", "0", "K-STATE", "0", "1ST & GOAL"], "clocks": ["10:45"]}}, 100.0 + i * 3)
-    assert server.trackers[(8, 0)].profile == profile_for("Basketball")
+    assert server.trackers[(8, 0)].profile == profile_for("Football")
 
 
 def test_a_tab_whose_player_shows_the_ad_placeholder_gets_a_negative_score():
@@ -695,7 +695,7 @@ def test_buildup_takes_main_once_for_football_and_the_cooldown_stops_a_second_sw
     assert server.scorer.take_main_block(1, 62.0) == "dwell"
 
 
-@pytest.mark.parametrize("sport", ["American football", "basketball", None])
+@pytest.mark.parametrize("sport", ["American football", "hockey", None])
 def test_buildup_never_moves_main_for_other_or_undetected_sports(sport, caplog):
     server = _buildup_server(sport)
     with caplog.at_level(logging.INFO):

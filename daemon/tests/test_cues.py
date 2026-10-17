@@ -12,7 +12,7 @@ AF, SOCCER = "american football", "football"
 def test_cue_groups():
     for cue in ("review", "under review", "var", "var check", "challenge", "révision", "assistance vidéo"):
         assert group_of(cue, AF) == "review"
-    for cue in ("red zone", "goal to go", "yard line", "field goal", "field goal attempt", "free throw", "buzzer beater", "penalty shootout", "tirs au but"):
+    for cue in ("red zone", "goal to go", "yard line", "field goal", "field goal attempt", "penalty shootout", "tirs au but"):
         assert group_of(cue, AF) == "chance"
     for cue in ("corner", "flag", "4th down", "big gain", "added time", "timeout", "free kick", "drapeau", "coup franc"):
         assert group_of(cue, SOCCER) == "minor"
@@ -234,7 +234,7 @@ def test_other_spoken_cues_and_other_sports_stay_log_only():
     for cue in ("corner", "foul", "offside", "card", "replay", "flag", "touchdown"):
         assert speech_cue_weight(cue, "football", w, 0.7) is None
     assert speech_cue_weight("penalty", "american football", w, 0.7) is None   # a flag there
-    assert speech_cue_weight("goal", "basketball", w, 0.7) is None
+    assert speech_cue_weight("goal", "hockey", w, 0.7) is None
     assert speech_cue_weight("free kick", "football", w, 0.0) is None          # the setting turns it off
 
 
@@ -249,7 +249,7 @@ def test_a_penalty_given_is_a_strong_spoken_cue_in_football_only():
     assert is_strong_cue(W.cue_review_top, "football", W) and is_strong_cue(W.cue_review_top, None, W)
     assert not is_strong_cue(W.cue_chance, "football", W)
     assert not is_strong_cue(W.cue_review_top, "american football", W)
-    assert not is_strong_cue(W.cue_review_top, "basketball", W)
+    assert not is_strong_cue(W.cue_review_top, "hockey", W)
 
 
 def test_a_strong_cue_swaps_without_another_sign_but_a_normal_cue_does_not():
@@ -273,7 +273,7 @@ def test_tracker_note_weight_corner_only_in_football():
     from daemon.cues import tracker_note_weight
     w = Weights()
     assert tracker_note_weight("corner", "football", w, 0.7) == pytest.approx(w.cue_minor * 0.7)
-    for sport in ("american football", "basketball", None, ""):
+    for sport in ("american football", "hockey", None, ""):
         assert tracker_note_weight("corner", sport, w, 0.7) is None
     assert tracker_note_weight("corner", "football", w, 0) is None
     for cue in ("foul", "offside", "chance", "free kick", "goal", "penalty"):

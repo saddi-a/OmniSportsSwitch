@@ -8,11 +8,11 @@ import logging
 import os
 import pathlib
 
-from daemon.sport_detect import BASKETBALL, FOOTBALL, SOCCER
+from daemon.sport_detect import FOOTBALL, SOCCER
 
 log = logging.getLogger("sport_memory")
 
-KNOWN = {FOOTBALL, SOCCER, BASKETBALL}
+KNOWN = {FOOTBALL, SOCCER}
 MAX_AGE_S = 12 * 3600.0      # tab ids last as long as the browser session; an old memory is not trusted
 REFRESH_S = 600.0            # the same answer again only rewrites the file this often
 

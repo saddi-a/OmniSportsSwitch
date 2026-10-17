@@ -22,7 +22,7 @@ SOUND_LEVEL = 0.02        # a sample at least this loud is real sound
 STATUS_MULT = {"live": 1.0, "break": 0.25, "over": 0.0}  # how much a stream counts in each game state
 
 # Per-sport overrides (settings.toml `[scoring.football]`, `[weights."american football"]`...): see `Config.for_sport`.
-SPORT_KEYS = ("football", "american football", "basketball")   # same keys as the [sports.*] sections; anything else is "generic"
+SPORT_KEYS = ("football", "american football")   # same keys as the [sports.*] sections; anything else is "generic"
 # The `scoring` values a sport may override: only those read where the stream's sport is known (per stream, or the challenger's).
 # Everything else (server-wide intervals, models, feed, window_s/baseline_s, warmup/stale, ad detection, dwell, manual holds, event_s,
 # the field goal / extra point rules of the score watcher, the game-state rules of the tracker) stays shared. Every `weights` value
@@ -32,7 +32,7 @@ OVERRIDABLE_SCORING = frozenset({
     "surge_cap", "audio_ad_goal_s", "goal_pending_s", "goal_pending_surge", "goal_pending_crowd", "anticipation_s", "cue_alone_cap", "cue_support", "cue_leverage_gain", "leverage_weight", "replay_dampen",
     "big_play_strength", "goal_banner_strength", "cue_zone_near_yd", "cue_zone_far_yd",
     "speech_cue_factor", "speech_cue_cooldown_s",
-    "lev_us_football_close", "lev_us_football_blowout", "lev_basketball_close", "lev_basketball_blowout",
+    "lev_us_football_close", "lev_us_football_blowout",
     "lev_soccer_close", "lev_soccer_blowout",
     "goal_hold_s", "goal_hold_extend_s", "goal_hold_max_s",                          # the hold of the stream that scored: ITS sport
     "goal_hold_break", "goal_hold_break_event", "goal_hold_break_level", "goal_hold_break_cue_s", "goal_yield_s", "goal_bypass_dwell", "hot_game_s", "hot_game_max_s", "hot_game_margin",   # ...and what breaks it: the challenger's sport
@@ -64,7 +64,7 @@ class Weights:
     cue_review_high: float = 0.35   # ...of an interception, fumble or turnover
     cue_review_mid: float = 0.20    # ...of offside, pass interference or a foul
     cue_review_low: float = 0.10    # ...with no subject known
-    cue_chance: float = 0.25        # red zone, goal to go, field goal attempt, free throws, penalty kick (soccer)
+    cue_chance: float = 0.25        # red zone, goal to go, field goal attempt, penalty kick (soccer)
     cue_minor: float = 0.10         # corner, flag, 4th down, big gain, added time, timeout...
     cue_free_kick: float = 0.25     # a free kick (soccer): the user finds minor (0.10) too low
     cue_surge_rise: float = 0.20    # soccer: the crowd noise is rising fast (a medium cue, heard BEFORE the commentator's words); 0 = off
@@ -103,8 +103,6 @@ class Config:
     leverage_weight: float = 0.3      # closeness / time left: a late close game adds up to this to its score, a late blowout takes it away
     lev_us_football_close: float = 8.0      # points apart that still count as close (one score)...
     lev_us_football_blowout: float = 28.0   # ...and as a blowout (more than three touchdowns)
-    lev_basketball_close: float = 6.0
-    lev_basketball_blowout: float = 20.0
     lev_soccer_close: float = 1.0
     lev_soccer_blowout: float = 4.0
     field_goal_strength: float = 0.6  # American football: a field goal or safety counts this much of a touchdown

@@ -16,7 +16,7 @@ def test_a_spoken_interception_weighs_the_high_tier_in_american_football():
 
 def test_it_does_not_count_in_other_sports_or_when_the_sport_is_unknown_or_switched_off():
     w = Weights()
-    for sport in ("football", "basketball", None, ""):
+    for sport in ("football", "hockey", None, ""):
         assert speech_cue_weight("interception", sport, w, 1.0) is None
     assert speech_cue_weight("interception", "american football", w, 0.0) is None
 
@@ -66,7 +66,6 @@ def test_a_spoken_field_goal_call_weighs_a_chance_in_american_football():
     w = Weights()
     assert speech_cue_weight("field goal", "american football", w, 1.0) == pytest.approx(w.cue_chance)
     assert speech_cue_weight("field goal", "football", w, 1.0) is None          # not a soccer cue
-    assert speech_cue_weight("field goal", "basketball", w, 1.0) is None        # "field goal %" is a statistic
     assert speech_cue_weight("field goal", "american football", w, 0.0) is None
 
 
