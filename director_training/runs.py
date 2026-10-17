@@ -152,14 +152,6 @@ class Run:
         return line
 
 
-def append_log(runs_dir, line: dict) -> None:
-    """An extra experiment-log line for an action that is not a run of its own (a rollback)."""
-    runs_dir = pathlib.Path(runs_dir)
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    with open(runs_dir / LOG_NAME, "a", encoding="utf-8", newline="\n") as f:
-        f.write(json.dumps(line, ensure_ascii=False, default=str) + "\n")
-
-
 def status_table(runs_dir) -> tuple[list[dict], dict]:
     """(log lines, latest headline per (command, sport)). Only the latest non-error line of each pair counts."""
     lines = read_log(runs_dir)
