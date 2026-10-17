@@ -195,6 +195,7 @@ LAYOUT = [
         ("scoring.held_change_s", "Keep a score change in a break (s, 0 = drop)", "A score change read while the game looked like a break (a wrong break reading right after a touchdown) is kept this long and counts if the game is live again. Results tickers stay ignored."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
+        ("scoring.audio_ad_goal_s", "Goal music is no ad (s, 0 = off)", "Music within this long of a goal (a confirmed score change, GOAL banner or feed goal, in either order) is the celebration, not an ad."),
         ("scoring.ad_penalty", "Ad penalty", "An ad in the picture scores minus this (music-only ads: half of it)."),
     ]),
     ("Logs and learning data", [
