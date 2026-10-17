@@ -13,7 +13,6 @@ import numpy as np
 MODEL_DIR = pathlib.Path(__file__).resolve().parent.parent / "models" / "whisper"
 MODEL_SIZE = "small"
 SAMPLE_RATE = 32000          # what the daemon buffers
-WHISPER_RATE = 16000         # what the model wants
 MIN_RMS = 0.002              # quieter than this is silence: not worth a transcription
 
 # cue -> regular expressions on the lower-cased transcript (English and French; the transcript is often misspelt,
