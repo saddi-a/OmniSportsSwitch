@@ -751,7 +751,8 @@ class Server:
         results = {}
         for tab_id, index, rect in jobs:
             image = grab(rect)
-            if image.shape[1] < OCR_MIN_WIDTH:
+            small_tile = image.shape[1] < OCR_MIN_WIDTH
+            if small_tile:
                 factor = OCR_MIN_WIDTH / image.shape[1]
                 size = (OCR_MIN_WIDTH, int(image.shape[0] * factor))
                 image = np.asarray(Image.fromarray(image).resize(size, Image.LANCZOS))
@@ -803,7 +804,7 @@ class Server:
                         items, texts = items + extra, texts + [it["text"] for it in extra]
                     else:
                         self.digit_found.discard(key)
-            if self.rapid_reader is not None and self.scorer.config.ocr_assist > 0 and self.rapid_reader.available and needs_rescue(items):
+            if self.rapid_reader is not None and self.scorer.config.ocr_assist > 0 and self.rapid_reader.available and needs_rescue(items, small_tile):
                 # A scorebug is on screen but the score or the clock is missing: the second reader (PaddleOCR, CPU) adds its own text and the
                 # two score digits read slot by slot. Not on every pass when nothing is found (it costs CPU time).
                 key, now_s = (tab_id, index), time.monotonic()

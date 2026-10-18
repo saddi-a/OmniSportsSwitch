@@ -158,3 +158,16 @@ def test_a_code_alone_or_a_digit_far_from_it_is_no_anchor():
     assert not has_scorebug_anchor([item("FOX", 10, 10, 60, 30)])
     assert not has_scorebug_anchor([item("SUN", 256, 48, 330, 80), item("5", 900, 400, 930, 440)])    # another row, far away
     assert not has_scorebug_anchor([item("NFL", 256, 48, 330, 80), item("3", 340, 48, 360, 80, conf=0.3)])   # an unsure digit
+
+
+def test_a_small_tile_with_nothing_read_still_gets_the_second_reader():
+    # a DAZN multiview tile 467 px wide: the first reader read nothing, so there is no anchor, but the scorebug is probably there
+    assert not needs_rescue([])
+    assert not needs_rescue([item("FOLLOWNFLONDAZN", 405, 479, 600, 499)])
+    assert needs_rescue([], small_tile=True)
+    assert needs_rescue([item("FOLLOWNFLONDAZN", 405, 479, 600, 499)], small_tile=True)
+
+
+def test_a_small_tile_whose_score_and_clock_are_read_needs_no_second_reader():
+    items = [item("TCU", 100, 40, 140, 60), item("7", 150, 36, 170, 62), item("3", 190, 36, 210, 62), item("BAY", 220, 40, 260, 60), item("3:27", 150, 70, 190, 84)]
+    assert not needs_rescue(items, small_tile=True)

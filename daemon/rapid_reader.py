@@ -127,9 +127,11 @@ def has_scorebug_anchor(items: list[dict]) -> bool:
     return code_beside_digit(items)
 
 
-def needs_rescue(items: list[dict]) -> bool:
-    """True when a scorebug is on screen but the first reader gave no score or no clock."""
-    if not has_scorebug_anchor(items):
+def needs_rescue(items: list[dict], small_tile: bool = False) -> bool:
+    """True when a scorebug is on screen but the first reader gave no score or no clock. On a small multiview tile (the video is drawn
+    narrower than `OCR_MIN_WIDTH` pixels) the first reader often reads nothing at all, so no anchor can show: the second reader then looks
+    anyway (measured on frames shrunk to 467 px: EasyOCR read 0 of 24 scores, the second reader 6 to 7 and 16 of 24 clocks)."""
+    if not small_tile and not has_scorebug_anchor(items):
         return False
     clocks = find_clocks([it["text"] for it in items])
     return not clocks or find_score_geo(items, clocks) is None
