@@ -21,11 +21,18 @@ function el(tag, props = {}, ...children) {
 async function showFreeze() {
   const { frozen = false } = await chrome.storage.local.get("frozen");
   $("freeze").classList.toggle("on", frozen);
-  $("freeze").textContent = frozen ? "FROZEN - click to resume (Ctrl+Shift+P)" : "Freeze MAIN (Ctrl+Shift+P)";
+  $("freeze").textContent = frozen ? "FROZEN - click to resume (Ctrl+Shift+P)" : "Freeze Main (Ctrl+Shift+P)";
+}
+
+async function showFreeze2() {
+  const { frozen2 = false } = await chrome.storage.local.get("frozen2");
+  $("freeze2").classList.toggle("on", frozen2);
+  $("freeze2").textContent = frozen2 ? "WINDOW 2 FROZEN - click to resume (Ctrl+Shift+L)" : "Freeze Window 2 (Ctrl+Shift+L)";
 }
 
 async function load() {
   showFreeze();
+  showFreeze2();
   const { tracked = {}, weights = {}, windowRoles = {}, priorities = DEFAULT_PRIORITIES } =
     await chrome.storage.local.get();
   const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -101,6 +108,13 @@ async function load() {
       const send = () => settingsSend({ type: "force_main", tab_id: Number(tabId) });
       if (settingsSocket.readyState === WebSocket.OPEN) send(); else settingsSocket.addEventListener("open", send, { once: true });
     };
+    const makeWindow2 = el("button", { textContent: role === "LEFT" ? "Hold on Window 2" : "Make Window 2",
+      title: "Put this stream in Window 2 and keep it there for a while: no swap moves Window 2 meanwhile (the hold time is in Settings)" });
+    makeWindow2.onclick = () => {
+      connectSettings();
+      const send = () => settingsSend({ type: "force_window2", tab_id: Number(tabId) });
+      if (settingsSocket.readyState === WebSocket.OPEN) send(); else settingsSocket.addEventListener("open", send, { once: true });
+    };
     const untrack = el("button", { textContent: "Untrack" });
     untrack.onclick = () => {
       chrome.runtime.sendMessage({ type: "untrack", tabId: Number(tabId) });
@@ -109,7 +123,7 @@ async function load() {
 
     const title = el("span", { className: "title grow", textContent: info.title, title: info.title });
     const block = el("div", { className: "tab" },
-      el("div", { className: "row" }, title, el("span", { className: "role", textContent: ROLE_NAMES[role] || "-" }), status, makeMain, untrack),
+      el("div", { className: "row" }, title, el("span", { className: "role", textContent: ROLE_NAMES[role] || "-" }), status, makeMain, makeWindow2, untrack),
       el("div", { className: "row" }, sport, teams, weight),
       slotRow);
     list.append(block);
@@ -168,6 +182,11 @@ $("freeze").onclick = async () => {
   setTimeout(showFreeze, 300);
 };
 
+$("freeze2").onclick = async () => {
+  chrome.runtime.sendMessage({ type: "toggle_freeze2" });
+  setTimeout(showFreeze2, 300);
+};
+
 $("reload").onclick = () => chrome.runtime.reload();
 
 // ---- Settings: the daemon describes every setting; this page only draws the form and sends edits. ----
@@ -185,12 +204,14 @@ function connectSettings() {
   settingsSocket = new WebSocket("ws://127.0.0.1:8765");
   settingsSocket.onopen = () => {
     settingsSend({ type: "get_hold" });
+    settingsSend({ type: "get_hold2" });
     if ($("settingsBox").open) settingsSend({ type: "get_settings" });
   };
   settingsSocket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "settings") drawSettings(msg);
     if (msg.type === "hold") drawHold(msg);
+    if (msg.type === "hold2") drawHold(msg, "hold2", "Window 2");
   };
   settingsSocket.onclose = () => {
     $("settingsStatus").textContent = "The daemon is not running (start it with scripts\\start_all.ps1), or it just stopped.";
@@ -247,38 +268,39 @@ $("settingsBox").ontoggle = () => {
   else connectSettings();
 };
 
-// ---- Make Main: put a stream on Main and hold it there for a while ----
-let holdEnds = 0, holdTimer = null;
+// ---- Make Main / Make Window 2: put a stream there and hold it for a while (one status bar each) ----
+const holdTimers = {};
 
-function drawHold(msg) {
-  const box = $("holdStatus");
-  clearInterval(holdTimer);
+function drawHold(msg, prefix = "hold", where = "Main") {
+  const box = $(prefix + "Status"), text = $(prefix + "Text"), release = $(prefix + "Release");
+  clearInterval(holdTimers[prefix]);
   box.classList.toggle("error", !!msg.error);
   if (msg.error) {
-    $("holdText").textContent = msg.error;
-    $("holdRelease").hidden = true;
+    text.textContent = msg.error;
+    release.hidden = true;
     box.hidden = false;
     setTimeout(() => { if (box.classList.contains("error")) box.hidden = true; }, 5000);
     return;
   }
-  $("holdRelease").hidden = false;
+  release.hidden = false;
   if (msg.tab_id == null || msg.left_s <= 0) {
     box.hidden = true;
     return;
   }
-  holdEnds = Date.now() + msg.left_s * 1000;
+  const ends = Date.now() + msg.left_s * 1000;
   const name = trackedTitles[msg.tab_id] ?? "a stream";
   const show = () => {
-    const left = Math.max(0, Math.round((holdEnds - Date.now()) / 1000));
-    if (left === 0) { box.hidden = true; clearInterval(holdTimer); return; }
-    $("holdText").textContent = `Main is held on "${name}" for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} more.`;
+    const left = Math.max(0, Math.round((ends - Date.now()) / 1000));
+    if (left === 0) { box.hidden = true; clearInterval(holdTimers[prefix]); return; }
+    text.textContent = `${where} is held on "${name}" for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} more.`;
   };
   show();
   box.hidden = false;
-  holdTimer = setInterval(show, 1000);
+  holdTimers[prefix] = setInterval(show, 1000);
 }
 
 $("holdRelease").onclick = () => settingsSend({ type: "release_hold" });
+$("hold2Release").onclick = () => settingsSend({ type: "release_hold2" });
 $("settingsReset").onclick = () => {
   if ($("settingsReset").dataset.sure === "1") {
     settingsSend({ type: "reset_settings" });

@@ -122,7 +122,8 @@ lev_us_football_blowout = 28.0  # ...and as a blowout (more than three touchdown
 lev_soccer_close = 1.0
 lev_soccer_blowout = 4.0
 manual_hold_s = 60.0    # "Make Main" in the popup holds the stream on MAIN this long (seconds)
-hold_over_s = 60.0     # a held stream whose game has looked over for this long loses the hold
+manual_hold2_s = 60.0   # "Make Window 2" in the popup holds the stream in Window 2 (internal LEFT) this long (seconds); no swap moves Window 2 meanwhile
+hold_over_s = 60.0    # a held stream whose game has looked over for this long loses the hold
 hold_break_score = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
 
 [weights]

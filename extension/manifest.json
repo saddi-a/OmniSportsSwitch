@@ -13,7 +13,11 @@
     },
     "toggle-freeze": {
       "suggested_key": { "default": "Ctrl+Shift+P" },
-      "description": "Freeze or unfreeze MAIN (stops automatic swaps and tile changes)"
+      "description": "Freeze or unfreeze Main (stops automatic swaps and tile changes)"
+    },
+    "toggle-freeze-window2": {
+      "suggested_key": { "default": "Ctrl+Shift+L" },
+      "description": "Freeze or unfreeze Window 2 (no swap moves its stream)"
     }
   }
 }

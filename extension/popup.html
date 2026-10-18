@@ -12,8 +12,8 @@
   input[type=number] { width: 56px; }
   input[type=text] { min-width: 0; }
   button { cursor: pointer; }
-  #track, #freeze { width: 100%; margin-bottom: 8px; }
-  #freeze.on { background: #c62828; color: #fff; }
+  #track, #freeze, #freeze2 { width: 100%; margin-bottom: 8px; }
+  #freeze.on, #freeze2.on { background: #c62828; color: #fff; }
   .hint { color: #666; margin-top: 6px; }
   .slots { flex-wrap: wrap; font-size: 11px; gap: 8px; }
   .slots label { white-space: nowrap; }
@@ -31,8 +31,10 @@
 </style>
 <h1>OmniSportsSwitch</h1>
 <div class="row"><span>This window is</span><select id="windowRole"></select></div>
-<button id="freeze">Freeze MAIN (Ctrl+Shift+P)</button>
+<button id="freeze">Freeze Main (Ctrl+Shift+P)</button>
+<button id="freeze2">Freeze Window 2 (Ctrl+Shift+L)</button>
 <div id="holdStatus" class="hold" hidden><span id="holdText"></span> <button id="holdRelease">Release</button></div>
+<div id="hold2Status" class="hold" hidden><span id="hold2Text"></span> <button id="hold2Release">Release</button></div>
 <button id="track" hidden>Track this tab</button>
 <div id="list"></div>
 

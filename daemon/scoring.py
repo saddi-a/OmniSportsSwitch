@@ -98,6 +98,7 @@ class Config:
     goal_pending_crowd: float = 0.3  # ...this crowd-like within audio_ad_goal_s before it (a lone misread in a quiet game or an ad changes nothing)
     audio_ad_goal_s: float = 20.0    # music within this long of a goal signal (score change, GOAL banner, feed goal, either order) is the celebration, not an ad (0 = off)
     manual_hold_s: float = 60.0    # "Make Main" from the popup holds the stream on MAIN this long
+    manual_hold2_s: float = 60.0   # "Make Window 2" from the popup holds the stream in Window 2 (internal LEFT) this long
     hold_over_s: float = 60.0      # a held stream whose game has looked over for this long loses the hold
     hold_break_score: float = 1.2  # a challenger scoring at least this still takes MAIN from a held stream
     leverage_weight: float = 0.3      # closeness / time left: a late close game adds up to this to its score, a late blowout takes it away
@@ -293,6 +294,10 @@ class Scorer:
         self.hold_tab: int | None = None     # the stream the user forced onto MAIN
         self.hold_until = float("-inf")      # ...and until when it is held there
         self._hold_over_since: float | None = None   # since when the held game has looked over
+        self.frozen2 = False                 # Window 2 (LEFT) is frozen: its stream stays where it is
+        self.hold2_tab: int | None = None    # the stream the user put into Window 2 ("Make Window 2")
+        self.hold2_until = float("-inf")     # ...and until when it is held there
+        self.fixed_tabs: frozenset[int] = frozenset()   # streams that sit in a fixed Window 2 right now (the server refreshes it): never a challenger
         self._candidate: tuple[int, int, float] | None = None  # (replaced, challenger, since when it has qualified)
         self._previous_main: int | None = None  # MAIN before a tab registered as MAIN: comes back if that tab leaves
         self.sport_of = None   # callable tab id -> sport name (the server sets it): picks the per-sport overrides of a stream
@@ -710,7 +715,7 @@ class Scorer:
         def pick(hold_off: bool):
             best_id, best_c = None, None
             for tab_id in self.streams:
-                if tab_id in (self.main, replaced) or not self.streams[tab_id].can_main or (goal_only is not None and tab_id not in goal_only):
+                if tab_id in (self.main, replaced) or tab_id in self.fixed_tabs or not self.streams[tab_id].can_main or (goal_only is not None and tab_id not in goal_only):
                     continue
                 c = self.components(tab_id, now, warmup=not warming)
                 if c is None:
@@ -876,6 +881,8 @@ class Scorer:
             return "already MAIN"
         if self.frozen:
             return "MAIN is frozen"
+        if tab_id in self.fixed_tabs:
+            return "Window 2 is held or frozen"
         if now - self._last_swap < cfg.min_dwell_s:
             return "dwell"
         if not stream.can_main:
@@ -973,6 +980,49 @@ class Scorer:
             self._hold_over_since = None
         return left
 
+    # ---- Window 2: the same two controls as MAIN (Make Window 2 = a timed hold, Freeze Window 2) -----------------------------
+    def force_window2(self, tab_id: int, now: float, occupant: int | None) -> Swap | None:
+        """The user wants this stream in Window 2 (internal LEFT) and held there for `manual_hold2_s`. `occupant` is the stream
+        that sits in Window 2 now. Starts the hold. A stream that is MAIN trades places with the occupant, once: returns that
+        swap (MAIN goes to the occupant). Raises ValueError with a message for the user if it cannot be."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            raise ValueError("the daemon does not track this tab: press Ctrl+Shift+Y in its window, then try again")
+        swap = None
+        if tab_id == self.main:
+            if self.frozen:
+                raise ValueError("Main is frozen: unfreeze it first")
+            if occupant is None or occupant == tab_id or occupant not in self.streams:
+                raise ValueError("Window 2 has no stream that could take Main")
+            if not self.streams[occupant].can_main:
+                raise ValueError("the stream in Window 2 is not allowed in Main (its slot rules)")
+            swap = Swap(promote=occupant, demote=tab_id, reason="Window 2 forced by the user (Main trades places with it)")
+            self._set_main(occupant)
+            self._last_swap = now
+        self.hold2_tab, self.hold2_until = tab_id, now + self.config.manual_hold2_s
+        return swap
+
+    def release_hold2(self) -> None:
+        self.hold2_tab, self.hold2_until = None, float("-inf")
+
+    def hold2_left(self, now: float, window2_tab: int | None) -> float:
+        """Seconds the stream the user put into Window 2 is still held there (0 if there is no hold). `window2_tab` is the stream
+        that sits in Window 2 now: the hold ends when it times out, when the stream is gone, or when something else sits there."""
+        tab = self.hold2_tab
+        if tab is None:
+            return 0.0
+        left = self.hold2_until - now
+        if tab not in self.streams or left <= 0 or window2_tab != tab:
+            self.release_hold2()
+            return 0.0
+        return left
+
+    def window2_fixed(self, now: float, window2_tab: int | None) -> bool:
+        """Window 2 must not move: frozen, or its stream is held there."""
+        if window2_tab is None:
+            return False
+        return self.frozen2 or self.hold2_left(now, window2_tab) > 0
+
     def evict_main(self, now: float) -> Swap | None:
         """MAIN holds a stream that may not be there (a rule changed): hand MAIN to the best stream that may.
         No dwell or margin applies, but a refused attempt is only retried every few seconds."""
@@ -982,7 +1032,7 @@ class Scorer:
             return None
         best_id, best_score = None, 0.0
         for tab_id, stream in self.streams.items():
-            if tab_id == self.main or not stream.can_main:
+            if tab_id == self.main or tab_id in self.fixed_tabs or not stream.can_main:
                 continue
             c = self.components(tab_id, now)
             score = -9.0 if c is None else c["score"]

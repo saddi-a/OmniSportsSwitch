@@ -12,6 +12,7 @@ const captures = new Map(); // tabId -> { stream, gain, node }
 let state = { roles: {}, weights: {}, labels: {}, favourites: [] }; // pushed by the service worker
 let socket = null;
 let frozen = false;
+let frozen2 = false;   // Window 2 frozen
 
 function send(obj) {
   if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(obj));
@@ -60,6 +61,7 @@ function connect() {
     // After a reconnect the daemon has forgotten us, so register every active tab again.
     for (const tabId of captures.keys()) register(tabId);
     if (frozen) send({ type: "freeze", value: true });
+    if (frozen2) send({ type: "freeze2", value: true });
   };
   socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -129,6 +131,10 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === "freeze") {
     frozen = !!m.value;
     send({ type: "freeze", value: frozen });
+  }
+  if (m.type === "freeze2") {
+    frozen2 = !!m.value;
+    send({ type: "freeze2", value: frozen2 });
   }
   if (m.type === "resync") for (const tabId of captures.keys()) register(tabId);
   if (m.type === "state") {
