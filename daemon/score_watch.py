@@ -330,7 +330,8 @@ def find_score_geo(items: list[dict], clocks: list[str], sport: str | None = Non
 
     teams = [it for it in live if (TEAM_RE.match(it["text"].strip()) or RANKED_TEAM_RE.match(it["text"].strip())
                                    or (profile.glued_rank_names and GLUED_RANK_RE.match(it["text"].strip())))
-             and len(it["text"].strip()) >= 3 and not ORDINAL_RE.match(it["text"].strip())]
+             and len(it["text"].strip()) >= 3 and not ORDINAL_RE.match(it["text"].strip())
+             and it["text"].strip().casefold() not in profile.not_team_words]
 
     def teams_near(line_cy, line_h, x0, x1) -> int:
         reach = 4 * line_h
@@ -418,7 +419,7 @@ def find_score_geo(items: list[dict], clocks: list[str], sport: str | None = Non
                           and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
             pairs.append((min(ha, hb), between, near, left, right, name_left(left, right, line_h)))
     # two numbers stacked in a column, each right beside its own team (ATM 2 / RMA 1)
-    for i, a in enumerate(numbers):
+    for i, a in enumerate(numbers if profile.stacked_scores else []):
         for b in numbers[i + 1:]:
             top, bottom = (a, b) if cy(a) <= cy(b) else (b, a)
             ha, hb = height(top), height(bottom)

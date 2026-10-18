@@ -18,11 +18,15 @@ class ScoreboardProfile:
     glued_rank_names: bool = False       # a ranking read glued to the name ("24KENTUCKY", "18USC") is still a team name (college football)
     trim_overlapping_digits: bool = False   # a number box that starts inside the box of the number before it ("23" + "342") lost its first digit(s) to that neighbour
     down_text_marks_sport: bool = False   # a down-and-distance text ("1ST & 10") on screen proves the sport when none is given
+    stacked_scores: bool = True          # two scores stacked in a column are a scoreboard (LaLiga bug); American football has none: a stacked pair is the corner ticker of other games (CBS)
+    not_team_words: frozenset = frozenset()   # lowercase words that are a network logo, never a team name ("TNF" beside the centre panel was taken for a team)
 
 
 GENERIC = ScoreboardProfile("generic")
 SOCCER = ScoreboardProfile("soccer")
-AMERICAN_FOOTBALL = ScoreboardProfile("american football", glued_rank_names=True, trim_overlapping_digits=True, down_text_marks_sport=True)
+AMERICAN_FOOTBALL = ScoreboardProfile("american football", glued_rank_names=True, trim_overlapping_digits=True, down_text_marks_sport=True,
+                                      stacked_scores=False,
+                                      not_team_words=frozenset({"tnf", "snf", "mnf", "nfl", "prime"}))
 
 PROFILES: dict[str, ScoreboardProfile] = {
     "generic": GENERIC,
