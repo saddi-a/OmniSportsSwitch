@@ -219,6 +219,21 @@ def _wide_pair_halves(it: dict) -> list[dict]:
     return [dict(it, text=text[0], x1=it["x0"] + w), dict(it, text=text[1], x0=it["x1"] - w)]
 
 
+WIDE_CODE_VS_NATURAL = 1.35   # a code + two digits item this many times wider than its characters has a crest between its digits
+
+
+def _wide_code_scores(it: dict) -> list[dict]:
+    """"MCI10" over 183 px at 44 px tall (Man City-Sunderland: 1, the crest, 0): five characters take about 132 px, so the item holds a code and TWO
+    one-digit scores, not the score ten. Any other item comes back alone."""
+    m = re.fullmatch(r"([A-Za-z]{2,4})(\d)(\d)", it["text"].strip())
+    h = it["y1"] - it["y0"]
+    if not m or h <= 0 or it["x1"] - it["x0"] < WIDE_CODE_VS_NATURAL * 0.6 * h * len(it["text"].strip()):
+        return [it]
+    w = 0.6 * h
+    code_x1 = it["x0"] + 0.6 * h * len(m.group(1))
+    return [dict(it, text=m.group(1), x1=code_x1), dict(it, text=m.group(2), x0=code_x1, x1=code_x1 + w), dict(it, text=m.group(3), x0=it["x1"] - w)]
+
+
 def _without_glued_crest(it: dict) -> dict:
     """A score never starts with a zero: "04" is a real 0 with the crest beside it read as a 4 ("0" + Premier League crest, Liverpool-City
     bug). Keep the first digit and cut the box to its share of the item."""
@@ -236,6 +251,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     """
     skip = set(clocks)
     items = [dict(it, text=m.group(1)) if (m := DIGIT_WITH_MARKS_RE.match(it["text"].strip())) else it for it in items]
+    items = [part for it in items for part in _wide_code_scores(it)]
     items = [half for it in items for half in _wide_pair_halves(it)]
     items = [_without_glued_crest(it) for it in items]
     split = []

@@ -714,3 +714,26 @@ def test_a_play_clock_right_of_the_game_clock_is_still_not_a_score():
              {"text": "9:34", "x0": 215, "y0": 60, "x1": 270, "y1": 84}, {"text": "25", "x0": 280, "y0": 60, "x1": 312, "y1": 84},
              {"text": "3", "x0": 330, "y0": 40, "x1": 360, "y1": 100}, {"text": "K-STATE", "x0": 370, "y0": 60, "x1": 490, "y1": 84}]
     assert find_score_geo(board, ["9:34"]) == (7, 3)
+
+
+# ---- a code and two scores read as ONE wide item with a crest between the digits (Man City-Sunderland, "MCI10") -------------
+
+MCI_SUN_FINAL = [   # the real items after the second reader: it returned "MCI10" over the whole strip (183 px wide, 44 px tall) next to the real 1 and 0
+    {"text": "MCI10", "x0": 59, "y0": 38, "x1": 242, "y1": 82}, {"text": "McI", "x0": 62, "y0": 48, "x1": 128, "y1": 80},
+    {"text": "1", "x0": 130, "y0": 40, "x1": 155, "y1": 88}, {"text": "0", "x0": 208, "y0": 44, "x1": 240, "y1": 80},
+    {"text": "0", "x0": 229, "y0": 40, "x1": 254, "y1": 88}, {"text": "SUN", "x0": 256, "y0": 48, "x1": 330, "y1": 80},
+    {"text": "09:31", "x0": 165, "y0": 80, "x1": 220, "y1": 99}]
+
+
+def test_a_code_with_two_digits_spread_over_a_crest_is_not_a_code_and_a_two_digit_score():
+    from daemon.score_watch import find_score_geo
+    assert find_score_geo(MCI_SUN_FINAL, ["09:31"]) == (1, 0)          # was (1, 10): "MCI10" was taken as the code MCI and the score ten
+
+
+def test_a_code_and_digits_item_of_its_natural_width_is_left_alone():
+    from daemon.score_watch import _wide_code_scores
+    item = {"text": "MCI10", "x0": 59, "y0": 38, "x1": 191, "y1": 82}     # 132 px = 5 characters of 0.6 x 44 px
+    assert _wide_code_scores(item) == [item]
+    wide = dict(item, x1=242)
+    parts = _wide_code_scores(wide)
+    assert [p["text"] for p in parts] == ["MCI", "1", "0"] and parts[1]["x1"] <= parts[2]["x0"]

@@ -13,7 +13,7 @@ from collections import Counter
 NUMBER_RE = re.compile(r"^\d{1,3}$")
 MIN_CONFIDENCE = 0.8                  # a window's reading counts only when the recogniser is this sure (ScoreSight's 80-90% rule)
 OFFSETS = (0.0, 0.4, 0.8, 1.2, 1.6)   # window starts, in name heights, moving away from the name the slot belongs to
-WIDTHS = (1.6, 2.0, 2.4)              # window widths, in name heights
+WIDTHS = (0.8, 1.2, 1.6, 2.0, 2.4)        # window widths, in name heights (the narrow ones read one digit beside a crest)
 SLOT_REACH = 0.2                      # the first window starts this far (name heights) inside the name's edge
 MID_SLACK = 0.3                       # a window may cross the midpoint by this much (name heights)
 BAND = 1.0                            # a window covers this many name heights above and below the names' centre line

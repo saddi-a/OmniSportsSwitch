@@ -92,3 +92,12 @@ def test_a_slot_the_readers_already_found_is_not_read_again():
     assert read_stacked(STACK_IMAGE, TOP, BOTTOM, rec, known=(None, 0)) == (1, 0)
     assert read_stacked(STACK_IMAGE, TOP, BOTTOM, answers(("", 0.0)), known=(None, 0)) is None     # the missing slot is still needed
     assert read_stacked(STACK_IMAGE, TOP, BOTTOM, answers(("", 0.0)), known=(2, 0)) == (2, 0)       # both known: nothing to read
+
+
+def test_the_sweep_includes_windows_as_narrow_as_one_digit():
+    # Man City-Sunderland: "1 [crest] 0" between the names; a window wide enough for two digits takes in half the crest and reads nothing sure,
+    # a window of about one digit reads the 1 (0.99) and the 0
+    h = 40
+    widths = {round((x1 - x0) / h, 2) for x0, x1 in windows(LEFT, RIGHT, "left")}
+    assert min(widths) <= 1.0 and max(widths) >= 2.0
+    assert {round((x1 - x0) / 15, 2) for x0, x1 in stacked_windows(TOP)} >= {0.8, 2.4}
