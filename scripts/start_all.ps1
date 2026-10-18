@@ -45,7 +45,7 @@ if ($NoEdge) {
 $capture = Join-Path (Split-Path $root -Parent) "OmniSportsSwitch-capture\capture_loop.py"
 if (Test-Path $capture) {
     Start-Process (Join-Path $root ".venv\Scripts\python.exe") -WindowStyle Hidden -WorkingDirectory (Split-Path $capture -Parent) -ArgumentList $capture
-    Write-Host "Recorder: started (OmniSportsSwitch-capture, one frame per tracked tile every 30 s)."
+    Write-Host "Recorder: started (OmniSportsSwitch-capture, one frame per tracked tile every 2 min)."
 }
 
 Write-Host ""
