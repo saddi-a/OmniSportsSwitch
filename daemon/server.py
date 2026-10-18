@@ -682,6 +682,7 @@ class Server:
             try:
                 self.feed_map.set_games(self.feed.games())
                 self.feed_gate.sport_of.update({s.game_id: s.sport for s in self.feed.games()})
+                self.feed_gate.set_feed_clocks(self.feed.games())
                 for game_id, situations in self.feed.situations().items():
                     self.feed_gate.set_situations(game_id, situations)
             except Exception as e:   # mapping is measuring only too
@@ -1085,6 +1086,7 @@ class Server:
             mapped = self.feed_map.mapping(tab_id, index)
             self.feed_gate.lead_s = self.scorer.config.feed_lead_s
             self.feed_gate.confirm_s = self.scorer.config.feed_confirm_s
+            self.feed_gate.rewind_high_slack_s = self.scorer.config.rewind_high_slack_s
             self.feed_gate.field_goal_strength = self.scorer.config.field_goal_strength
             self.feed_gate.big_play_strength = self.scorer.config.big_play_strength
             clock_now = parse_clock_s(r["clocks"])

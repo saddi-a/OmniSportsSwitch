@@ -116,6 +116,7 @@ replay_dampen = 0.3     # during a replay inside a live game, crowd noise and lo
 recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)
 new_game_readings = 3   # multiplex tabs (flagged in the popup): a different pair of team codes read this many times in a row is a new game and resets that video's score, clock, game state and goal memory
 held_change_s = 30.0   # a score change read while the game looked like a break is kept this long and counts if the game is live again (0 = drop it at once)
+rewind_high_slack_s = 120.0   # a stream cannot be ahead of the feed clock: a rewind high point (or reading) more than this many seconds above the feed's current game time is a scrub/misread and is dropped (0 = no cap; no fresh feed clock = no cap)
 rewind_ignores_score = 1.0   # 1 = a score change on a tile whose stream is replaying its past (feed rewind) makes no event, goal hold or swap bonus unless the feed shows that score at the stream clock (0 = old behaviour: counted)
 ad_sticky_s = 120.0        # a picture ad break stays an ad this long unless the scoreboard is read again (0 = only the short 8 s memory)
 ad_exit_readings = 3       # ...this many scoreboard readings (down/quarter, clock with a team code, two team codes) end it

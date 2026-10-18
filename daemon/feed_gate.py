@@ -123,6 +123,8 @@ class FeedGate:
         self.sport_of: dict[str, str] = {}           # game id -> sport (set by the server)
         self.stream: dict[tuple, tuple] = {}         # (tab, tile) -> (clock_s, period, when) of the last readable stream clock
         self.rewind: dict[tuple, _Rewind] = {}
+        self.rewind_high_slack_s = 120.0             # scoring.rewind_high_slack_s: readings/high points this far above the feed clock are dropped (0 = off)
+        self.feed_now: dict[str, float] = {}         # game id -> the feed's current game time (live games only, game_elapsed_s scale)
         self.claimed: set[tuple] = set()             # (tab, tile, event key) already used to confirm an OCR change
         self.waiting: dict[tuple, list] = {}         # (tab, tile) -> _Wait: OCR changes the feed has not confirmed yet
         self.messages: list[str] = []                # log lines from `confirmations`
@@ -194,6 +196,14 @@ class FeedGate:
         key = ("score", snap.game_id, snap.home_score, snap.away_score)
         event = feed.FeedEvent(snap.game_id, key, kind, snap.period, snap.clock_s, snap.display, "", "score change")
         self._append(snap.game_id, _Pending(event, snap.sport, snap.league, snap.label, elapsed, key, now, True))
+
+    def set_feed_clocks(self, snaps) -> None:
+        """The feed's current game time per live game (the rewind detector's ceiling for the stream clock)."""
+        self.feed_now = {}
+        for s in snaps:
+            e = feed.game_elapsed_s(s.sport, s.period, s.clock_s) if s.state == "in" else None
+            if e is not None:
+                self.feed_now[s.game_id] = e
 
     def set_situations(self, game_id: str, situations: tuple) -> None:
         self.situations[game_id] = situations
@@ -325,6 +335,18 @@ class FeedGate:
         cur = _elapsed(sport, clock_s, period) if sport else None
         if cur is None:
             return []
+        feed_now = self.feed_now.get(game_id) if game_id in self.fresh else None
+        if self.rewind_high_slack_s > 0 and feed_now is not None:
+            cap = feed_now + self.rewind_high_slack_s
+            if cur > cap:
+                return []                                # ahead of the feed: a scrubbed or misread clock, not a high point
+            if st.high > cap:                            # a stale high point (scrubbed ahead earlier): restart it from this reading
+                was_active = st.active
+                st.high, st.low_n, st.active = cur, 0, False
+                if was_active:
+                    return [f"feed rewind dropped tab {tab_id} tile {tile}: the high point was above the feed clock "
+                            f"({_clock_text(feed_now)}), the stream is at {_clock_text(clock_s)}"]
+                return []
         if st.active:
             if cur >= st.high - 5.0 or now - st.since > REWIND_MAX_S:
                 st.high = max(st.high, cur) if cur >= st.high - 5.0 else cur

@@ -28,7 +28,7 @@ Short hand-over (cleaned up 2026-10-18 evening, refreshed 2026-10-18 late). The 
 * The ESPN feed stays measuring-only (logging, debug, feedback), never a live swap signal.
 * `main` push: not yet. GPU 7.3-7.5 of 10 GB and 1 s log rows: leave as is; if live tests cause trouble, stop the daemon during them. STR-PSG replay comparison: not for now.
 * Aim: move Main BEFORE the goal (build-up), per sport.
-* Rewind (2026-10-18): a score change on a rewinding tile no longer creates an event/swap (`scoring.rewind_ignores_score`), also not via 'counted late', unless the feed shows that score at the stream clock (stale rewind flag, e.g. high point inflated by scrubbing). Open: the high point is not capped by the feed's game clock (option).
+* Rewind (2026-10-18): a score change on a rewinding tile no longer creates an event/swap (`scoring.rewind_ignores_score`), also not via 'counted late', unless the feed shows that score at the stream clock (stale rewind flag, e.g. high point inflated by scrubbing). Fixed 2026-10-18: the high point is capped by the feed's game clock + `scoring.rewind_high_slack_s` (120 s, 0 = off); readings above it are ignored, a stale high restarts, an active rewind with such a high ends (PAR-REN scrub case).
 
 **C. Open items, in order.**
 1. Live checks on game days: `jingle heard` vs goals on the CANAL+ tab (set `jingle_cue` 0 if it misfires, tune `jingle_min_score`); `new game on tab` lines on the multiplex tabs; the spoken-touchdown cue count; the NFL templates and clocks on live games and the share of unread Fox clocks; DAZN expand on small tiles (no `did not happen` / `expand ... failed in the extension` lines), the new break rule on a real medical timeout or review, `second reader ... score found` on stacked LaLiga/Ligue 1 bugs.
