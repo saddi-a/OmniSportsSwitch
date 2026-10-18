@@ -463,3 +463,18 @@ def test_the_false_score_change_of_18_56_13_is_gone():
     w = ScoreWatcher()
     texts = [i["text"] for i in FALSE_1856]
     assert [w.update(texts, ["1:59"], 1000.0 + 3 * n, FALSE_1856, sport="american football") for n in range(8)] == [False] * 8
+
+
+# FRA 0-0 BEL (TF1) with the real boxes of the frame (the first reader lost the right team code): the geometry reader reads it too
+FRA_BEL_REAL = [{"text": "UER", "x0": 63, "y0": 21, "x1": 100, "y1": 39}, {"text": "NSLEAGUE", "x0": 161, "y0": 22, "x1": 264, "y1": 38},
+                {"text": "21.10", "x0": 74, "y0": 46, "x1": 144, "y1": 72}, {"text": "FRA 0-0", "x0": 188, "y0": 44, "x1": 302, "y1": 74}]
+
+
+def test_a_team_code_and_its_pair_in_one_item_is_read_by_the_geometry_reader():
+    assert find_score_geo(FRA_BEL_REAL, find_clocks([i["text"] for i in FRA_BEL_REAL])) == (0, 0)
+
+
+def test_the_one_item_pair_still_needs_a_real_code_and_a_small_pair():
+    for text in ("FRA 12-3", "Fra 0-0", "SET 6-4", "FRA 12", "POSSESSION 5-4"):
+        items = [dict(i, text=text) if i["text"] == "FRA 0-0" else i for i in FRA_BEL_REAL]
+        assert find_score_geo(items, find_clocks([i["text"] for i in items])) is None, text

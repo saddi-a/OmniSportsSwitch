@@ -192,3 +192,27 @@ def test_the_stacked_rescue_keeps_a_digit_the_full_read_already_found():
     reader = RapidReader(engine=FakeEngine({}, rec_answers=["1"] * n_top + ["7"] * 40))      # a bottom-slot sweep would say 7: it must not run
     rescued = reader.rescue(image, items)
     assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) == (1, 0)
+
+
+# Barcelona-Getafe on a small DAZN tile (real boxes): BAR above GET with the clock left of them, the "0" read, the "1" not. The ad boards
+# (read as "TOVELO") look like team names to the side-by-side rule, which used to take the rescue's only turn and read no slot.
+BAR_GET_ITEMS = [item("BAR", 95, 37, 121, 51, 0.98), item("TCVELO", 475, 47, 568, 80, 0.85), item("05:11", 54, 65, 89, 78, 0.97),
+                 item("GET", 97, 64, 116, 77, 1.0), item("0", 134, 63, 145, 79, 0.89), item("VEL", 4, 67, 53, 93, 0.95),
+                 item("TOVELO", 231, 61, 332, 90, 0.83), item("TONELO", 651, 69, 681, 89, 0.91)]
+
+
+def test_a_stacked_scorebug_is_read_even_when_ad_boards_look_like_a_side_by_side_pair(monkeypatch):
+    from daemon.score_slots import stacked_windows
+    monkeypatch.setattr(rapid_reader, "read_slots", lambda *args, **kwargs: None)   # the sweep between BAR and the board reads no digits
+    image = np.zeros((200, 900, 3), dtype=np.uint8)
+    n_top = len(stacked_windows(BAR_GET_ITEMS[0]))
+    reader = RapidReader(engine=FakeEngine({}, rec_answers=["1"] * n_top + ["9"] * 80))   # the known "0" is kept, so the 9s must never be used
+    rescued = reader.rescue(image, BAR_GET_ITEMS)
+    assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) == (1, 0)
+
+
+def test_the_same_scorebug_with_an_unsure_top_slot_still_gives_no_score():
+    image = np.zeros((200, 900, 3), dtype=np.uint8)
+    reader = RapidReader(engine=FakeEngine({}, rec_answers=[]))   # the recogniser says nothing for any window
+    rescued = reader.rescue(image, BAR_GET_ITEMS)
+    assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) is None

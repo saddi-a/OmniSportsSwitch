@@ -232,11 +232,10 @@ class RapidReader:
         if find_score_geo(merged, clocks) is None:
             named = [dict(it, conf=max(it["conf"], 0.55), text=_as_code(it["text"])) for it in merged]
             pair = find_name_pair(named)
-            if pair is not None:
-                scores = read_slots(image, pair[0], pair[1], self.rec)
-                if scores is not None:
-                    merged = merge_items(merged, slot_items(pair[0], pair[1], scores[0], scores[1]))
-            elif (stacked := find_stacked_pair(named)) is not None:   # two names one above the other: the score is right of each
+            scores = read_slots(image, pair[0], pair[1], self.rec) if pair is not None else None
+            if scores is not None:
+                merged = merge_items(merged, slot_items(pair[0], pair[1], scores[0], scores[1]))
+            elif (stacked := find_stacked_pair(named)) is not None:   # two names one above the other (or no side-by-side slots read): the score is right of each
                 scores = read_stacked(image, stacked[0], stacked[1], self.rec, known=(known_digit(stacked[0], merged), known_digit(stacked[1], merged)))
                 if scores is not None:
                     merged = merge_items(merged, stacked_slot_items(stacked[0], stacked[1], scores[0], scores[1]))

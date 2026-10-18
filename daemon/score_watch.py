@@ -406,6 +406,14 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
         key = (size, near)
         if best_key is None or key > best_key:
             best, best_key = (int(left["text"]), int(right["text"])), key
+    if best is None:
+        # one item holds a team code and the score pair ("FRA 0-0": a crest-less TF1 bug whose second code was lost); the same rule as the
+        # text reader's, so the passes that wait for a geometry score do not run on a board that is already read
+        for it in live:
+            m = TEAM_PAIR_ITEM_RE.match(it["text"].strip())
+            if (m and m.group(1).isupper() and m.group(1).casefold() not in NOT_A_TEAM and max(int(m.group(2)), int(m.group(3))) <= MAX_PAIR_VALUE
+                    and not STAT_GRAPHIC_RE.search(it["text"])):
+                return int(m.group(2)), int(m.group(3))
     return best
 
 
