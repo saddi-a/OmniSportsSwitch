@@ -491,6 +491,10 @@ class ScoreWatcher:
         self._clock: tuple[int, float] | None = None   # last plausible game clock and when it was read
         self._alt: tuple[int, float] | None = None     # an implausible clock seen once, waiting for confirmation
 
+    def new_game(self) -> None:
+        """A different game is on this video (multiplex): forget everything about the old one (score, ceiling, announced goal, clock, touchdown memory), so the new game's first score is a baseline, never a change."""
+        self.__init__(self.config)
+
     @property
     def score(self) -> tuple[int, int] | None:
         """The score the watcher currently believes (voted over several readings), or None."""

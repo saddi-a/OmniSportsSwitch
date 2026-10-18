@@ -28,7 +28,7 @@ Short hand-over, cleaned up 2026-10-18 evening. The old sections 1 to 8 (overvie
 3. The per-tile-sport live checklist (`docs/per-tile-sport.md` section 8) needs a mixed soccer + American football DAZN multiview (its text 'the audible tile is not known' is outdated: rects now carry `audible`).
 4. Director Training `build` on hold (see B).
 5. Launcher tray start/restart still untested live.
-6. Premier League games are on a multiplex channel (one stream, several games, one tab = several games): NOT supported for now, keep in mind. Tonight the user probably watches NFL RedZone (one channel jumping between games): the scoring session captures frames with the recorder and notes which templates fail and how scores jump.
+6. Multiplex channels (NFL RedZone, a Premier League multiplex: one video, several games of ONE sport). Built 2026-10-18 (user option C, branch `scoring-bugs-93`): `daemon/game_identity.py` + `Server._on_new_game`, only on a tab flagged `multiplex` (register field, daemon side done; the popup checkbox 'Multiplex (several games on this stream)' is still to add in `extension/`). Open: needs live captures of RedZone (studio shots, name-only scorebugs have no codes so no detection), a mixed-sport channel is not covered. Tonight the user probably watches NFL RedZone (one channel jumping between games): the scoring session captures frames with the recorder and notes which templates fail and how scores jump.
 7. External data API: `docs/api-plan.md` section 14 (everything measuring-only or shadow, `feed_event_weight` 0).
 
 **D. The two Claude sessions (the user starts them fresh; start prompts below).**

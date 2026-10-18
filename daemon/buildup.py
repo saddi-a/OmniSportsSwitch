@@ -56,6 +56,11 @@ class BuildUp:
             for key in [k for k in store if k == tab_id or (isinstance(k, tuple) and k[0] == tab_id)]:
                 del store[key]
 
+    def reset(self, key) -> None:
+        """Forget exactly one stream key (a tab id, or `(tab id, video index)`): a different game came on that video."""
+        for store in self._stores():
+            store.pop(key, None)
+
     def swap(self, a, b) -> None:
         """Two streams change places (DAZN's expand moves the clicked video into the big slot): their cues and cooldowns follow."""
         for store in self._stores():

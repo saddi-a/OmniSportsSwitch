@@ -223,6 +223,13 @@ class GameTracker:
         self.big_play = ""   # set on the one reading where a new big-play banner appears (else "")
         self._big_play_at = float("-inf")
 
+    def new_game(self) -> None:
+        """A different game is on this video (multiplex): the old game's FINAL / HALF TIME memory, frozen clock, period votes, down, clock
+        filter and replay memory are dropped, and its clock and codes are accepted at once. The player's ad state is not the game's, it stays."""
+        keep = (self._ad_seen, self.on_ad, self._ad_hits, self._board_since_ad, self._loud_at)
+        self.__init__(self.sport, self.config)
+        self._ad_seen, self.on_ad, self._ad_hits, self._board_since_ad, self._loud_at = keep
+
     def set_sport(self, sport: str | None) -> None:
         self.sport = (sport or "").strip().lower()
         self.profile = profile_for(sport)
