@@ -30,7 +30,7 @@ BOXES_LOG_BYTES, BOXES_LOG_BACKUPS = 20_000_000, 5
 FORMAT = "%(asctime)s %(message)s"
 EVENT_WORDS = ("score change", "big play", "goal banner", "would fire", "sport detected", "swap:", "arrange:", "swap refused", "focus tile", "game state", "new game on tab", "scorebug ", "replay by clock", "anticipation ", "speech cue", "feed ", "semantic high", "semantic mid", "semantic matcher", "commentary listener", "freeze",
                "audio classifier ready", "screen reader ready", "listening on", "extension connected",
-               "extension disconnected")
+               "extension disconnected", "jingle heard")
 
 log = logging.getLogger("daemon.logsetup")
 _failed: set[str] = set()   # kinds of failure already reported (each once)

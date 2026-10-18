@@ -278,3 +278,10 @@ def test_unregister_drops_the_tab_state(matcher):
     play(server, 1, with_sting(10))
     server.handle_message({"type": "unregister", "tab_id": 1})
     assert 1 not in server.jingle_buffers and 1 not in server.jingle_watch and 1 not in server.jingle_at
+
+
+def test_jingle_hit_reaches_events_log():
+    import logging
+    from daemon.logsetup import EventFilter
+    record = logging.LogRecord("daemon", logging.INFO, "", 0, "jingle heard tab 7 (score 0.88)", None, None)
+    assert EventFilter().filter(record)
