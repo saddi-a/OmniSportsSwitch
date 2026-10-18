@@ -140,6 +140,13 @@ class FeedMapper:
         for key in [k for k in self.tiles if k[0] == tab_id]:
             del self.tiles[key]
 
+    def drop_lock(self, tab_id: int, tile: int) -> None:
+        """A different game came on this tile (multiplex): the lock and the readings that built it belong to the old game."""
+        t = self.tiles.get((tab_id, tile))
+        if t is not None:
+            t.lock, t.bad, t.ambiguous = None, 0, False
+            t.window.clear()
+
     def mapping(self, tab_id: int, tile: int) -> Mapping | None:
         t = self.tiles.get((tab_id, tile))
         return t.lock if t else None

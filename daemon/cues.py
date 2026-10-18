@@ -134,6 +134,10 @@ class SpeechMemory:
         for key in [k for k in self._heard if k == tab_id or (isinstance(k, tuple) and k[0] == tab_id)]:
             del self._heard[key]
 
+    def reset(self, key) -> None:
+        """A different game came on this video: what was heard about the old one is dropped."""
+        self._heard.pop(key, None)
+
     def swap(self, a, b) -> None:
         """Two streams change places (DAZN's expand): what was heard follows its video."""
         moved_a, moved_b = self._heard.pop(a, None), self._heard.pop(b, None)

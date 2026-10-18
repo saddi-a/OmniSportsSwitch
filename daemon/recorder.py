@@ -20,6 +20,8 @@ import queue
 import threading
 import time
 
+from daemon.game_identity import key_text
+
 log = logging.getLogger("daemon.recorder")
 
 SCHEMA_VERSION = 1
@@ -181,6 +183,7 @@ def _tile_rows(server, tab_id: int, now: float, c: dict | None = None) -> list[d
             "home": score[0] if score else None,
             "away": score[1] if score else None,
             "audible": audible.get(index),
+            "game_key": key_text(identity.key) if (identity := server.identities.get(key)) is not None else None,   # the two team codes of the scorebug, sorted (the game this video shows; a multiplex jumps between several)
             "game_id": mapping.game_id if mapping else None,
             "league": mapping.league if mapping else None,
             "mapped_ok": mapping.verified if mapping else None,

@@ -1,6 +1,6 @@
 # daemon/ (guide for Claude)
 
-The Python daemon: one asyncio process (`python -m daemon.server`, started by `scripts\start_all.ps1`) that listens on `ws://127.0.0.1:8765`, receives audio and reports from the extension, scores each stream, and sends back "arrange" (move tabs) and "focus_tile" (DAZN multiview) commands. Read `PLAN.md` sections 3, 5 and 6 for the rules these files implement.
+The Python daemon: one asyncio process (`python -m daemon.server`, started by `scripts\start_all.ps1`) that listens on `ws://127.0.0.1:8765`, receives audio and reports from the extension, scores each stream, and sends back "arrange" (move tabs) and "focus_tile" (DAZN multiview) commands. Read the README ("How it works", "How a swap is decided"), the key facts in the root `CLAUDE.md` and the scoring rules reference in `docs/scoring-rules.md` for the rules these files implement.
 
 ## Files
 
@@ -11,6 +11,7 @@ The Python daemon: one asyncio process (`python -m daemon.server`, started by `s
 | `game_state.py` | `GameTracker`: live / break / over, commercial placeholders, big-play banners, per sport profile. Pure logic. |
 | `score_watch.py` | `ScoreWatcher`: finds the score on a scoreboard from OCR items (team-anchored, geometry), votes over readings, detects a goal. |
 | `scoreboard_profiles.py` / `scoreboard_templates.py` | Per-SPORT reader rules (profiles) and per network / league scorebug layouts (templates) used by `find_score_geo`; see `docs/scoreboard-profiles.md`. |
+| `game_identity.py` | `team_pair` + `GameIdentity`: the game a video shows, from the scorebug's two team codes; a new pair read `scoring.new_game_readings` times in a row is a new game. `Server._on_new_game` resets the tile only on a tab flagged `multiplex` (register field). |
 | `sport_detect.py` | Guesses the sport from scoreboard cues, with accumulated evidence. |
 | `favourites.py` | Matches favourite teams (`match_multiplier`) and team slot rules (`match_slots`) against text. |
 | `team_names.py` + `team_tables/` | Team-name table, one hand-edited text file per sport (`football.txt` = soccer incl. UEFA clubs, `nfl.txt`, `cfb.txt` = FBS; a new sport = a new file): per club the ESPN code and displayName plus broadcast aliases (MAN U, PSG, BAMA, TXAM...). `[ambiguous ...]` lines (REAL, FCB, MSU, OSU, GEORGIA, MUN...) and 2-letter codes (OM, OL, ND, KC...) are CANDIDATE tokens: no club gets them as an alias, every club they may mean accepts them, only as whole word (2-letter ones in upper case). `feed_map.shows_game` needs both teams of the game and one token never stands for both (REAL alone = no lock; MUN is Bayern AND Man United, the opposing team decides, then the score/clock fit; two fitting games stay ambiguous). `x?` = doubtful, unused. The table is added AFTER the hand-written `feed_map.ALIASES` (override layer, never reduced). Tests: `test_team_names.py`, code fixture `fixtures/espn_team_abbrs.json`. |
