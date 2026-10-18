@@ -12,6 +12,7 @@ down-and-distance. So:
   * if the game clock jumps by more than the elapsed time allows (a different game moved into this video
     slot, or a rewind), the baseline is thrown away, so numbers of two different games are never compared.
 """
+import datetime
 import re
 from collections import Counter, deque
 
@@ -34,6 +35,18 @@ SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores mer
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
 STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b|\btop ?\d\b|statistics?|statistiques?|ballons|\btirs?\b|\bshots?\b", re.I)   # overlays full of numbers
+HISTORIC_DATE_RE = re.compile(
+    r"\b(?:JAN|FEB|F[E\u00c9]V|MAR|APR|AVR|MAI|MAY|JUN|JUIN|JUL|JUIL|AUG|AO[U\u00db]|SEP|OCT|NOV|D[E\u00c9]C)[A-Z\u00c9\u00db]{0,6}\.?\s*(?:\d{1,2}\s*,?\s*)?((?:19|20)\d\d)\b", re.I)   # "SEPTEMBER 23,2001", "23 SEPTEMBRE 2001"
+
+
+def historic_graphic(texts: list[str], year: int | None = None) -> bool:
+    """A flashback / history graphic: a month name followed by a year BEFORE this one ("SEPTEMBER 23,2001": live 2026-10-18 20:11 on a Jets-Patriots
+    broadcast, a 2001 box score 10-3 was read as the score and swapped Main). Its numbers are never the score. The pieces may be separate items.
+    A season text ("Premier League 2026/27"), a date of this year and a year with no month beside it are not flashbacks."""
+    year = year or datetime.date.today().year
+    return any(int(m.group(1)) < year for m in HISTORIC_DATE_RE.finditer(" ".join(texts)))
+
+
 RANKED_TEAM_RE = re.compile(r"^\d{1,2}\s+[^\W\d_]{3,}(?:[ .'\-][^\W\d_]+)*$")   # "2 Georgia", "6 ALABAMA": a ranking and a name
 DIGIT_WITH_MARKS_RE = re.compile(r"^(\d{1,3})\s?[:=;|!]+$")   # the score digit read together with the dashes drawn beside it ("0 =")
 MERGED_PAIR_RE = re.compile(r"^(\d{1,3})\s+(\d{1,3})$")   # two scores read as ONE item ("28 9", "10 24")
@@ -577,8 +590,8 @@ class ScoreWatcher:
             self._recent_clock = (read[0], now)
         if now is not None and not replay and self._clock_jumped(game_clocks, now) and not self._quarter_ends(game_clocks, sport):   # a replay's clock is an old moment's: no jump
             self._reset(now)
-        if any(STAT_GRAPHIC_RE.search(t) for t in texts):
-            return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
+        if any(STAT_GRAPHIC_RE.search(t) for t in texts) or historic_graphic(texts):
+            return False   # a stat graphic, halftime banner or flashback (a past date): its numbers are not the score, and must not become the baseline
         score = find_score_geo(items, clocks, sport) if items else None
         if score is None:
             score = find_score(texts, clocks, anchored_only=bool(items))

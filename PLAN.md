@@ -30,6 +30,7 @@ Short hand-over (cleaned up 2026-10-18 evening, refreshed 2026-10-18 late). The 
 * Aim: move Main BEFORE the goal (build-up), per sport.
 * 'MAIN idle' swaps are wanted (user, 2026-10-18, after the 18:59:19 swap to the PL tab): if Main is idle, any other stream with something going on should take it. Keep that rule as it is when tuning thresholds.
 * Director Training replay (`scoring-bugs-108`): `features.apply_cue_rules` replays the touchdown pair rule on raw rows (also pre-98 rows), `evaluate` calls it; the goal jingle is already a recorded strong cue (needs no rule); the fit uses the recorded `cue_part` (both included).
+* Flashback graphics (`scoring-bugs-108`, found live 20:11 Jets-Patriots): a month name + a past 4-digit year (`SEPTEMBER 23,2001`) marks a history graphic, `score_watch.historic_graphic`; `ScoreWatcher.update` skips the frame. Evidence in `docs/scoring-rules.md`. Takes effect after a daemon restart.
 * Rewind (2026-10-18): a score change on a rewinding tile no longer creates an event/swap (`scoring.rewind_ignores_score`), also not via 'counted late', unless the feed shows that score at the stream clock (stale rewind flag, e.g. high point inflated by scrubbing). Fixed 2026-10-18: the high point is capped by the feed's game clock + `scoring.rewind_high_slack_s` (120 s, 0 = off); readings above it are ignored, a stale high restarts, an active rewind with such a high ends (PAR-REN scrub case).
 
 **C. Open items, in order.**
