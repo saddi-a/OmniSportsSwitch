@@ -172,7 +172,7 @@ If a shortcut does nothing, check `edge://extensions/shortcuts`.
 ### The popup
 
 - Name of the current window (Main, Window 2...), the two freeze buttons (Main, Window 2), and a hold bar for each window that has a held stream.
-- Per tracked tab: sport, teams, weight, status (Auto, Live, Break, Over), which windows it may use, **Make Main**, **Make Window 2**, Untrack.
+- Per tracked tab: sport, teams, weight, status (Auto, Live, Break, Over), which windows it may use, **Multiplex** (see below), **Make Main**, **Make Window 2**, Untrack.
 - Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running). Changed values are shown in bold, the arrow button puts one back to its default, and "Reset all" restores everything. The values are kept in `settings.local.json` (not committed), layered on top of the defaults in `settings.toml`.
 - Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed windows per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
 
@@ -192,6 +192,10 @@ Any other or unknown sport uses the shared values. Only values that make sense p
 ### Mixed multiview tabs
 
 A DAZN multiview can show tiles of different sports (for example an NFL game and a football match). The daemon reads each tile with its own sport: its own weights and thresholds, its own cue lists, its own post-goal hold and its own build-up. The tab competes for Main with the score of its best tile, and the commentary, crowd and loudness count for the tile that has the sound only. The tile that has the sound follows the best tile (at most one change every 30 s). A tile whose sport is not known yet is read as football. A tab with a single video behaves as it always did.
+
+### Multiplex channels
+
+Some channels jump between several games of one sport on a single video (NFL RedZone, a Premier League multiplex). Tick **Multiplex** on that tab in the popup (then re-track it if the page was reloaded). The daemon then watches the two team codes on the scoreboard and, when a new pair is read three times in a row, forgets the old game's score, state and cues for that stream, so the change of game is not read as a goal. Teams you type in the popup still count. Limits: a scoreboard with logos but no team codes (RedZone's own) gives no game change; this is still being worked on. For the CANAL+ multiplex the daemon can also recognise the channel's goal jingle (a reference recording you provide, kept in `models\jingle`, never committed: `scripts\build_jingle_template.py`) and treats it as a strong sign of a goal.
 
 ## How a swap is decided
 
