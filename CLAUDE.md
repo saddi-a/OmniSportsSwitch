@@ -23,6 +23,7 @@ A local "live broadcast director": an Edge extension plus a Python daemon that w
 - Ask before architecture or design decisions: options with pros and cons and a recommendation. Implementation details are yours.
 - The main chat is for planning, decisions and logging the user's feedback; background agents do the work, but spend them deliberately (usage is limited): routine agents run on the cheaper model, follow-ups resume an existing agent, work is batched per area, and tiny edits are done inline (rules in `docs/claude/workflow.md`, "Agent economy").
 - Talk to the user with the window names Main, Window 2 to 5, not the internal ids.
+- When the user asks for the status, answer with a table of the open items (from `PLAN.md` section 0, part C), one row each: item, owner (main / scoring session / user), status (done, in progress, waiting for a decision, waiting for a live game, on hold), next step. Check `git log`, `ListAgents` and the logs first so the statuses are current; add the user's open decisions as rows.
 
 ## Index: read the file when
 
