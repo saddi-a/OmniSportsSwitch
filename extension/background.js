@@ -1,6 +1,6 @@
 // Service worker: browser-only actions (tracking a tab, moving tabs between windows).
 // The browser can shut it down at any time, so all state lives in chrome.storage.local:
-//   tracked:     { tabId: { title, sport, teams, status } }   labels you set in the popup (status: auto|live|break|over)
+//   tracked:     { tabId: { title, sport, teams, multiplex, status } }   labels you set in the popup (status: auto|live|break|over)
 //   weights:     { tabId: number }                     the tab's own weight
 //   priorities:  { sports: { name: weight }, teams: [{ name, mult }] }
 //   windowRoles: { windowId: "MAIN" | "LEFT" | ... }   <- roles belong to windows (screen slots)
@@ -65,7 +65,7 @@ async function pushState() {
   if (!(await chrome.offscreen.hasDocument())) return;
   const weights = effectiveWeights(await getState());
   const { tracked, priorities } = await getState();
-  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status, allowed: t.allowed ?? null, teams: t.teams ?? "", title: t.title ?? "" }]));
+  const labels = Object.fromEntries(Object.entries(tracked).map(([id, t]) => [id, { sport: t.sport, status: t.status, allowed: t.allowed ?? null, teams: t.teams ?? "", multiplex: !!t.multiplex, title: t.title ?? "" }]));
   chrome.runtime
     .sendMessage({ type: "state", roles: await computeTabRoles(), weights, labels, favourites: priorities.teams })
     .catch(() => {});
@@ -255,7 +255,7 @@ async function trackTab(tabId) {
   }
 
   const { tracked, weights, windowRoles } = await getState();
-  tracked[tabId] = { sport: "", teams: "", status: "auto", ...tracked[tabId], title: tab.title };
+  tracked[tabId] = { sport: "", teams: "", multiplex: false, status: "auto", ...tracked[tabId], title: tab.title };
   weights[tabId] ??= 1;
   if (!windowRoles[tab.windowId]) {
     // First tracked window becomes MAIN; later ones fill the other slots in order.

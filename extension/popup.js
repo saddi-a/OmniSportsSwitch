@@ -121,10 +121,13 @@ async function load() {
       block.remove();
     };
 
+    const multiplex = el("input", { type: "checkbox", checked: !!info.multiplex });
+    multiplex.onchange = () => update("tracked", {}, (t) => (t[tabId].multiplex = multiplex.checked));
+    const multiplexLabel = el("label", { title: "Several games on this stream (for example a RedZone channel): the daemon resets the scores when the game changes" }, multiplex, " Multiplex");
     const title = el("span", { className: "title grow", textContent: info.title, title: info.title });
     const block = el("div", { className: "tab" },
       el("div", { className: "row" }, title, el("span", { className: "role", textContent: ROLE_NAMES[role] || "-" }), status, makeMain, makeWindow2, untrack),
-      el("div", { className: "row" }, sport, teams, weight),
+      el("div", { className: "row" }, sport, teams, weight, multiplexLabel),
       slotRow);
     list.append(block);
   }

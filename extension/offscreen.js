@@ -42,6 +42,7 @@ function register(tabId) {
     role: state.roles[tabId] ?? "",
     allowed: state.labels[tabId]?.allowed ?? null,
     teams: state.labels[tabId]?.teams ?? "",
+    multiplex: state.labels[tabId]?.multiplex ?? false,
     title: state.labels[tabId]?.title ?? "",
     favourites: state.favourites,
   });
