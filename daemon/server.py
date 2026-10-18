@@ -33,6 +33,7 @@ from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
 from daemon.geometry import fix_rects
 from daemon.feed_map import FeedMapper, parse_clock_s
+from daemon.jingle import HOP as JINGLE_HOP, N_FFT as JINGLE_FFT, JingleMatcher, JingleWatch
 from daemon.logsetup import LOG_DIR, archive_rotated, prune_archive
 from daemon.recorder import DatasetRecorder, snapshot_rows
 from daemon.sport_choice import choose_sport, sport_from_feed
@@ -89,13 +90,19 @@ def leveling_gain(baseline: float | None, target: float, max_gain: float) -> flo
 
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None,
-                 speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None, rapid_reader=None):
+                 speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None, rapid_reader=None, jingle: JingleMatcher | None = None):
         self.scorer = scorer or Scorer()
         self.scorer.sport_of = self._tab_sport   # per-sport settings overrides: the scorer asks which sport a stream is
         self.scorer.tile_sport_of = self.scoring_sport   # ...and, in a multiview, which sport each tile is
         self.scorer.audible_of = self._audible_index     # ...and which tile has the sound (the audio terms belong to it)
         self.speech = speech                    # SpeechListener or None: the commentary listener (measuring only)
         self.semantic = semantic                # SemanticMatcher or None: how close the commentary is to big-moment phrases (measuring only)
+        self.jingle = jingle                    # JingleMatcher or None (no template file): the channel's goal jingle; None = the daemon behaves as before
+        self.jingle_buffers: dict[int, np.ndarray] = {}   # tab id -> the last stretch of audio the jingle is looked for in
+        self.jingle_total: dict[int, int] = {}    # tab id -> samples received so far (the buffer's end in audio time)
+        self.jingle_scanned: dict[int, int] = {}  # tab id -> jingle_total at the last comparison
+        self.jingle_watch: dict[int, JingleWatch] = {}
+        self.jingle_at: dict[int, float] = {}     # tab id -> when the jingle was last heard (the tab-level cue survives a multiplex game change)
         self.speech_buffers: dict[int, np.ndarray] = {}   # tab id -> last speech_window_s seconds of audio
         self.speech_cue_at: dict[tuple[int, str], float] = {}  # (tab, cue) -> when it was last logged
         self.settings = settings  # daemon.settings.Settings; the popup edits it live
@@ -188,6 +195,8 @@ class Server:
             self.surge_rise.remove(msg["tab_id"])
             self.buffers.pop(msg["tab_id"], None)
             self.speech_buffers.pop(msg["tab_id"], None)
+            for store in (self.jingle_buffers, self.jingle_total, self.jingle_scanned, self.jingle_watch, self.jingle_at):
+                store.pop(msg["tab_id"], None)
             self.rects.pop(msg["tab_id"], None)
             self.audible_seen.pop(msg["tab_id"], None)
             for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen,
@@ -267,6 +276,11 @@ class Server:
             old = self.buffers.get(tab_id)
             buf = samples if old is None else np.concatenate([old, samples])
             self.buffers[tab_id] = buf[-CLASSIFY_WINDOW:]
+        if self.jingle is not None:
+            old = self.jingle_buffers.get(tab_id)
+            buf = samples if old is None else np.concatenate([old, samples])
+            self.jingle_buffers[tab_id] = buf[-self.jingle.window_samples():]
+            self.jingle_total[tab_id] = self.jingle_total.get(tab_id, 0) + samples.size
         if self.speech is not None:
             old = self.speech_buffers.get(tab_id)
             buf = samples if old is None else np.concatenate([old, samples])
@@ -591,6 +605,48 @@ class Server:
                 crowd = float(max(p[idx[name]] for name in CROWD_CLASSES))
                 shout = float(max(p[idx[name]] for name in SHOUT_CLASSES))
                 self.scorer.set_tags(tab_id, crowd, float(p[idx["Speech"]]), float(p[idx["Music"]]), now, shout=shout)
+
+    def _jingle_job(self, tab_id: int) -> tuple[np.ndarray, int] | None:
+        """A copy of the tab's recent audio and where it ends in audio time, when there is new audio and enough of it."""
+        buf, total = self.jingle_buffers.get(tab_id), self.jingle_total.get(tab_id, 0)
+        if buf is None or self.jingle is None or total == self.jingle_scanned.get(tab_id) or len(buf) < self.jingle.frames * JINGLE_HOP + JINGLE_FFT:
+            return None
+        self.jingle_scanned[tab_id] = total
+        return buf.copy(), total
+
+    def _jingle_vote(self, tab_id: int, score: float, end_abs: int, now: float) -> bool:
+        """One comparison's result for a tab (never a single reading: `JingleWatch` needs several that agree). On a hit: log, dataset
+        event and, with `scoring.jingle_cue` on, a strong cue on the tab's audible video. The jingle says a goal was scored in SOME game
+        of the channel, so it is a tab-level cue (and `_on_new_game` keeps it for a multiplex tab)."""
+        cfg = self.scorer.config
+        watch = self.jingle_watch.get(tab_id)
+        if watch is None:
+            watch = self.jingle_watch[tab_id] = JingleWatch()
+        watch.min_score, watch.votes, watch.cooldown_s = cfg.jingle_min_score, max(1, int(cfg.jingle_votes)), cfg.jingle_cooldown_s
+        hit = watch.feed(score, end_abs)
+        if hit is None:
+            return False
+        tile, sport = self._audible_target(tab_id)
+        weight = self.scorer.tile_cfg(tab_id, tile).weights.jingle_cue_weight
+        log.info("jingle heard tab %s (score %.2f)%s", tab_id, hit, "" if cfg.jingle_cue > 0 else " (log only)")
+        self._rec_event("jingle", tab_id, tile, score=round(hit, 3), weight=round(weight, 3), live=cfg.jingle_cue > 0)
+        if cfg.jingle_cue > 0 and weight > 0:
+            self.jingle_at[tab_id] = now
+            self.scorer.set_anticipation(tab_id, now, weight, strong=True, tile=tile)
+            self.buildup.note(self._bkey(tab_id, tile), now, weight, "jingle")
+        return True
+
+    async def _jingle_loop(self) -> None:
+        """Compares each tab's recent audio with the goal jingle's template (CPU, a few ms per tab)."""
+        while True:
+            await asyncio.sleep(max(self.scorer.config.jingle_interval_s, 0.1))
+            for tab_id in list(self.jingle_buffers):
+                job = self._jingle_job(tab_id)
+                if job is None:
+                    continue
+                audio, total = job
+                score, end = await asyncio.to_thread(self.jingle.best, audio)
+                self._jingle_vote(tab_id, score, total - len(audio) + end, time.monotonic())
 
     async def _feed_loop(self) -> None:
         """Measuring only: record ESPN's public scoreboards (and football plays) to logs/feed and log what changes."""
@@ -1107,6 +1163,10 @@ class Server:
         if (tracker := self.trackers.get(key)) is not None:
             tracker.new_game()
         self.scorer.reset_tile(tab_id, tk)
+        heard = self.jingle_at.get(tab_id)
+        if heard is not None and now - heard < self.scorer.config.anticipation_s:   # the goal jingle is the channel's: it still counts for the next game
+            weight = self.scorer.tile_cfg(tab_id, tk).weights.jingle_cue_weight
+            self.scorer.set_anticipation(tab_id, heard, weight, strong=True, tile=tk)
         for store in (self.event_at, self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen):
             store.pop(key, None)
         for kind in ("bug", "clock"):
@@ -1328,6 +1388,8 @@ class Server:
                 loops.append(self._ocr_loop())
             if self.speech is not None:
                 loops.append(self._speech_loop())
+            if self.jingle is not None:
+                loops.append(self._jingle_loop())
             if self.scorer.config.feed_mode > 0:   # needs a restart; mode 0 starts nothing
                 loops.append(self._feed_loop())
             await asyncio.gather(*loops)
@@ -1367,12 +1429,16 @@ if __name__ == "__main__":
             log.info("semantic matcher ready (cpu)")
         except Exception as error:
             log.warning("semantic matcher not available (%s: %s); continuing without it", type(error).__name__, error)
+    from daemon.jingle import load_template
+    template = load_template()
+    jingle = JingleMatcher(template) if template is not None else None
+    log.info("goal jingle matcher %s", f"ready ({jingle.seconds:.1f} s template)" if jingle is not None else "off (no models/jingle/jingle.npz)")
     recorder = DatasetRecorder(LOG_DIR / "dataset", mode=lambda: settings.scoring.dataset_mode)
     import atexit
     atexit.register(recorder.close)
     try:
         asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
                            focuser=TileFocuser(settings.focus), settings=settings, speech=speech, semantic=semantic,
-                           recorder=recorder, rapid_reader=rapid_reader).run())
+                           recorder=recorder, rapid_reader=rapid_reader, jingle=jingle).run())
     except KeyboardInterrupt:
         pass
