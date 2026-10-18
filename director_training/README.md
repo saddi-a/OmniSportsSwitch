@@ -45,7 +45,7 @@ Everything is deterministic (fixed seed `--seed 0`). A crash still closes the ru
 |---|---|
 | `runs.py` | run folders, `runs.jsonl`, `status` table |
 | `data.py` | reads the logs like `scripts/build_dataset.py` and lists the files for `config.json` |
-| `features.py` | the score components and the exact map feature -> setting name (module docstring); `score_from_row` = the daemon's `Scorer.components` formula for a recorded row under any settings (test: identical to the daemon's score) |
+| `features.py` | the score components and the exact map feature -> setting name (module docstring); `score_from_row` = the daemon's `Scorer.components` formula for a recorded row under any settings (test: identical to the daemon's score) Strong cues: `apply_cue_rules` replays the touchdown pair rule (spoken `touchdown` + surge >= `touchdown_pair_surge` within `touchdown_pair_window_s`, either order) on raw rows for the shadow evaluation (`evaluate` applies it); the goal jingle is a recorded strong cue (`cue.strong`), `score_from_row` counts it in full. The fit reads the recorded `cue_part`, which already includes both. |
 | `fit.py` | per-sport L2 logistic regression, class-weighted, leave-one-GAME-out; the data guard; the scaling rule and operating threshold (module docstring) |
 | `evaluate.py` | shadow evaluation: replay the recorded rows with candidate weights, simplified swap rule, judged by `daemon/dataset_builder.py` (regret, miss, lead); the list of what the replay ignores |
 | `ship.py` | gate, `patch.toml`, unified diff, apply with backup, rollback |

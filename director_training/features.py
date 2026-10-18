@@ -22,6 +22,7 @@ so raw is LINEAR in the settings below and a logistic regression on these column
 Not features (they stay as they are): the build-up tracker's own sum (it is built from the same cues, so it would count them twice and its
 threshold buildup_min is a different kind of number), the stream weight, the game-state multiplier, ads (rows on an ad are not used).
 """
+import bisect
 import dataclasses
 import math
 import pathlib
@@ -113,6 +114,57 @@ def score_from_row(row: dict, cfg) -> float | None:
     return score
 
 
+CUE_MATCH_S = 1.5       # a row's cue and a build-up cue are the same cue when their ages differ by less than this
+
+
+def _cue_kind(row: dict) -> str | None:
+    """The build-up kind (`spoken:touchdown`, `jingle`, ...) of the row's newest cue: the `bu.cues` entry whose age is closest to `cue.age`."""
+    cue, details = row.get("cue"), (row.get("bu") or {}).get("cues") or []
+    if not cue or cue.get("age") is None or not details:
+        return None
+    age, kind = min(((abs(float(d[0]) - float(cue["age"])), d[2]) for d in details), key=lambda x: x[0])
+    return kind if age < CUE_MATCH_S else None
+
+
+def _is_pair_cue(row: dict) -> bool:
+    return bool(row.get("cue")) and sport_key(row.get("tile_sport") or row.get("sport")) == "american football" and _cue_kind(row) == "spoken:touchdown"
+
+
+def apply_cue_rules(rows: list[dict], cfg) -> list[dict]:
+    """Copies of the rows with the `strong` flag of the touchdown PAIR RULE as the live scorer applies it under `cfg` (`Scorer.set_touchdown_cue`,
+    `add_audio`, scoring-bugs-98): a spoken touchdown is a strong cue (counted in full, not capped) from the moment a loudness surge of at least
+    `touchdown_pair_surge` has been seen within `touchdown_pair_window_s` before the call (strong at once) or after it (strong from the first
+    such surge); with the window at 0 it stays the capped cue. Needs `cue` and `bu.cues` in the rows (the raw recorder rows, as `build` keeps
+    them in memory) and the rows of a tab to be 1-2 s apart. This is what a row recorded BEFORE the rule existed, or a changed pair setting,
+    needs; a row recorded with the rule already carries the same flag. Other cues keep the recorded flag, notably the goal jingle (`jingle`,
+    set strong directly by `Server._jingle_vote`), which has no rule to replay. Rows without a cue are returned as they are (not copied)."""
+    out = [dict(r) if _is_pair_cue(r) else r for r in rows]
+    surges: dict = {}
+    for r in rows:
+        if r.get("surge") is not None and float(r["surge"]) >= cfg.touchdown_pair_surge:
+            surges.setdefault(r.get("tab"), []).append(float(r["t"]))
+    for ts in surges.values():
+        ts.sort()
+    window = cfg.touchdown_pair_window_s
+    for r in out:
+        if not _is_pair_cue(r):
+            continue
+        cue = dict(r["cue"])
+        call = float(r["t"]) - float(cue["age"])
+        strong = False
+        if window > 0:
+            ts = surges.get(r.get("tab"), [])
+            i = bisect.bisect_left(ts, call - window)
+            if i < len(ts) and ts[i] <= call:
+                strong = True                                        # a surge just before the call: strong at once
+            else:
+                j = bisect.bisect_right(ts, call)                    # else from the first surge within the window after it
+                strong = j < len(ts) and ts[j] <= call + window and ts[j] <= float(r["t"])
+        cue["strong"] = strong
+        r["cue"] = cue
+    return out
+
+
 class CandidateView:
     """A Config view with candidate numbers on top: `weights` = {setting: value} and `scoring` = {setting: value}. Reads fall through to the
     base view, so a candidate only changes what it names."""
@@ -139,5 +191,5 @@ def round_setting(x: float) -> float:
     return round(float(x), 3) if math.isfinite(x) else 0.0
 
 
-__all__ = ["FEATURES", "FEATURE_NAMES", "BY_NAME", "feature_row", "linear_score", "score_from_row", "CandidateView", "today_values", "sport_config",
+__all__ = ["FEATURES", "FEATURE_NAMES", "BY_NAME", "feature_row", "linear_score", "score_from_row", "CandidateView", "apply_cue_rules", "today_values", "sport_config",
            "sport_key", "round_setting", "ROW_COLUMNS_NEEDED"]

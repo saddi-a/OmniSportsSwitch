@@ -169,6 +169,7 @@ def evaluate(result: dict, events_file: list[dict], sport: str, today_cfg, candi
     all_rows = sorted((r for r in result["rows"] if sport_of_row(r) == sport), key=lambda r: r["t"])
     held = set(holdout_games)
     rows = [r for r in all_rows if r.get("game_key") in held] if held else all_rows
+    rows = F.apply_cue_rules(rows, today_cfg)   # the touchdown pair rule as the live scorer applies it (also for rows recorded before it existed)
     games = sorted({r.get("game_key") for r in rows})
     seen_by_fit = sorted(set(games) & set(fit_games))
     out = {"sport": sport, "games_evaluated": games, "rows": len(rows), "hold_out": bool(rows) and not seen_by_fit,
