@@ -66,3 +66,36 @@ def read_slots(image, left: dict, right: dict, rec, min_confidence: float = MIN_
     if not first or not second:
         return None
     return int(first.most_common(1)[0][0]), int(second.most_common(1)[0][0])
+
+
+def stacked_windows(name: dict) -> list[tuple[float, float]]:
+    """The (x0, x1) windows right of one team name of a STACKED scorebug (two names one above the other, each score beside its own name)."""
+    h = max(name["y1"] - name["y0"], 1)
+    return [(name["x1"] - SLOT_REACH * h + offset * h, name["x1"] - SLOT_REACH * h + offset * h + width * h) for offset in OFFSETS for width in WIDTHS]
+
+
+def read_stacked(image, top: dict, bottom: dict, rec, min_confidence: float = MIN_CONFIDENCE, known: tuple = (None, None)) -> tuple[int, int] | None:
+    """(top score, bottom score) of a stacked scorebug, or None unless both slots have a confident number. Each slot is read on its own name's
+    row only (the band never reaches the other row). `known` = a score the readers already found for the top / bottom name (None = read the slot)."""
+    h = max(top["y1"] - top["y0"], bottom["y1"] - bottom["y0"], 1)
+    half = min(BAND * h, 0.5 * abs((bottom["y0"] + bottom["y1"]) - (top["y0"] + top["y1"])) / 2)
+    height, width = image.shape[:2]
+    scores = []
+    for name, found in zip((top, bottom), known):
+        if found is not None:
+            scores.append(int(found))
+            continue
+        cy = (name["y0"] + name["y1"]) / 2
+        y0, y1 = int(max(0, cy - half)), int(min(height, cy + half))
+        votes: Counter = Counter()
+        for x0, x1 in stacked_windows(name):
+            xa, xb = int(max(0, x0)), int(min(width, x1))
+            if xb - xa < 8 or y1 - y0 < 8:
+                continue
+            text, confidence = rec(image[y0:y1, xa:xb])
+            if text and NUMBER_RE.match(text.strip()) and confidence >= min_confidence:
+                votes[text.strip()] += confidence
+        if not votes:
+            return None
+        scores.append(int(votes.most_common(1)[0][0]))
+    return scores[0], scores[1]

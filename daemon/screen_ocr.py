@@ -69,6 +69,20 @@ def find_name_pair(items: list[dict]) -> tuple[dict, dict] | None:
     return None
 
 
+def find_stacked_pair(items: list[dict]) -> tuple[dict, dict] | None:
+    """Two team codes one above the other (a stacked scorebug: LOSC over HAC, the score beside each): (top, bottom) or None."""
+    names = sorted((it for it in items if (looks_like_team_name(it["text"]) or (TEAM_CODE_RE.fullmatch(it["text"]) and it["text"].casefold() not in NOT_TEAM_WORDS))
+                    and it["conf"] >= 0.5 and 10 <= it["y1"] - it["y0"] <= 90),
+                   key=lambda it: it["y0"])
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            h = max(a["y1"] - a["y0"], b["y1"] - b["y0"])
+            gap = (b["y0"] + b["y1"]) / 2 - (a["y0"] + a["y1"]) / 2
+            if abs(a["x0"] - b["x0"]) <= 0.8 * h and 0.8 * h <= gap <= 2.5 * h:
+                return a, b
+    return None
+
+
 def gap_score_items(a: dict, b: dict, text: str, conf: float) -> list[dict] | None:
     """The two score digits, as items, from the digits read in the strip between team codes `a` and `b`.
     Three digits = left score, a logo read as a digit, right score ("021" = 0 and 1). Two digits are the two scores only when

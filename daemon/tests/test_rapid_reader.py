@@ -171,3 +171,24 @@ def test_a_small_tile_with_nothing_read_still_gets_the_second_reader():
 def test_a_small_tile_whose_score_and_clock_are_read_needs_no_second_reader():
     items = [item("TCU", 100, 40, 140, 60), item("7", 150, 36, 170, 62), item("3", 190, 36, 210, 62), item("BAY", 220, 40, 260, 60), item("3:27", 150, 70, 190, 84)]
     assert not needs_rescue(items, small_tile=True)
+
+
+def test_the_rescue_reads_a_stacked_scorebug_slot_by_slot():
+    # Ligue 1 (DAZN): LOSC above HAC with the clock below, each score right of its own name; the first reader found no digit at all
+    from daemon.score_slots import stacked_windows
+    image = np.zeros((200, 400, 3), dtype=np.uint8)
+    items = [item("LOSC", 103, 34, 137, 49), item("HAC", 103, 56, 132, 72), item("49:56", 57, 78, 97, 94)]
+    n_top = len(stacked_windows(items[0]))
+    reader = RapidReader(engine=FakeEngine({}, rec_answers=["1"] * n_top + ["0"] * 40))
+    rescued = reader.rescue(image, items)
+    assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) == (1, 0)
+
+
+def test_the_stacked_rescue_keeps_a_digit_the_full_read_already_found():
+    from daemon.score_slots import stacked_windows
+    image = np.zeros((200, 400, 3), dtype=np.uint8)
+    items = [item("LOSC", 103, 34, 137, 49), item("HAC", 103, 56, 132, 72), item("0", 153, 57, 163, 71, conf=0.95), item("49:56", 57, 78, 97, 94)]
+    n_top = len(stacked_windows(items[0]))
+    reader = RapidReader(engine=FakeEngine({}, rec_answers=["1"] * n_top + ["7"] * 40))      # a bottom-slot sweep would say 7: it must not run
+    rescued = reader.rescue(image, items)
+    assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) == (1, 0)
