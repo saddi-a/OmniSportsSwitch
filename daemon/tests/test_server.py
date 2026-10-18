@@ -996,6 +996,33 @@ def test_a_zoomed_page_gets_its_rects_corrected_when_the_video_area_arrives():
     assert (stored["left"], stored["top"]) == (2618, 308)
 
 
+def _frozen_nfl_board():
+    return {(1, 0): {"texts": ["1ST & 10", "HOUSTON", "7", "K-STATE", "3"], "clocks": ["10:45"]}}
+
+
+def _frozen_clock_state(crowd, seconds):
+    """A one-video American football tab whose game clock never moves, heard with this crowd level; the tracker state after `seconds`."""
+    server = Server(Scorer(Config(warmup_s=0)))
+    server.handle_message({"type": "register", "tab_id": 1})
+    server.sports[1] = "american football"
+    for t in range(0, seconds + 1):
+        server.scorer.add_audio(1, 0.05, float(t))
+        server.scorer.set_tags(1, crowd, 0.1, 0.0, float(t))
+        if t % 3 == 0:
+            server._update_game_states(_frozen_nfl_board(), float(t))
+    return server.trackers[(1, 0)].state
+
+
+def test_a_frozen_clock_with_a_quiet_sound_is_dead_time_after_the_short_limit():
+    assert _frozen_clock_state(crowd=0.02, seconds=36) == "live"       # frozen for 36 s: still a normal stoppage
+    assert _frozen_clock_state(crowd=0.02, seconds=60) == "break"      # frozen 60 s and quiet: dead time (the long limit is 90 s)
+
+
+def test_a_frozen_clock_with_a_loud_crowd_keeps_waiting_for_the_long_limit():
+    assert _frozen_clock_state(crowd=0.6, seconds=60) == "live"        # the crowd is loud: something may be going on
+    assert _frozen_clock_state(crowd=0.6, seconds=99) == "break"
+
+
 def test_an_expand_that_failed_in_the_extension_is_logged_with_its_error(caplog):
     server = Server()
     with caplog.at_level(logging.WARNING):

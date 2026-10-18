@@ -18,6 +18,7 @@ confirm_s = 2.0      # a challenger must keep qualifying this long before it tak
 min_dwell_s = 20.0   # minimum time between two swaps
 stale_s = 5.0        # a stream with no audio for this long is ignored
 idle_music = 0.5     # MAIN counts as showing an ad when music probability is at least this
+dead_quiet_level = 0.15  # crowd and rise in loudness both below this = a quiet sound (a frozen clock then counts as dead time sooner, see [sports])
 audio_ad_margin = 0.15  # ...and music must exceed speech by this much (music under commentary is not an ad)
 audio_ad_votes = 3     # a music-only ad needs this many music readings...
 audio_ad_window = 5    # ...among the last this many (a single reading is never enough)
@@ -180,7 +181,8 @@ freeze_s = 20
 no_clock_s = 45
 
 [sports."american football"]
-freeze_s = 240
+freeze_s = 90          # a stopped clock for this long is a break (a medical timeout or a TV break lasts minutes; user 2026-10-18, was 240)
+quiet_freeze_s = 45    # ...or this long when the sound has also been quiet all that time (0 = off)
 no_clock_s = 90
 
 [sports.generic]       # any other or unknown sport

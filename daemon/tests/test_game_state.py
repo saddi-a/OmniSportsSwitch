@@ -2,13 +2,13 @@ from daemon.game_state import GameTracker, combine
 from daemon.scoring import Config
 
 
-def run(tracker, start, seconds, clock_fn, texts=(), step=3.0):
-    """Feed one reading every `step` seconds; clock_fn(t) returns the clock string or None."""
+def run(tracker, start, seconds, clock_fn, texts=(), step=3.0, quiet=None):
+    """Feed one reading every `step` seconds; clock_fn(t) returns the clock string or None; `quiet` is what the server says about the sound."""
     state = None
     t = start
     while t < start + seconds:
         c = clock_fn(t)
-        state = tracker.update(t, list(texts), [c] if c else [])
+        state = tracker.update(t, list(texts), [c] if c else [], quiet=quiet)
         t += step
     return state
 
@@ -32,8 +32,8 @@ def test_soccer_clock_frozen_becomes_break_quickly():
 def test_american_football_stopped_clock_between_plays_stays_live():
     g = GameTracker("American football")
     run(g, 0, 60, ticking)
-    assert run(g, 60, 120, lambda t: "01:00") == "live"  # 2 minutes of stopped clock is normal
-    assert run(g, 180, 150, lambda t: "01:00") == "break"  # but 4+ minutes is a real break
+    assert run(g, 60, 60, lambda t: "01:00") == "live"  # a minute of stopped clock is normal
+    assert run(g, 120, 60, lambda t: "01:00") == "break"  # but 90+ seconds is a real break (a medical timeout, user 2026-10-18; was 240 s)
 
 
 def test_clock_restarting_ends_the_break():
@@ -1208,3 +1208,41 @@ def test_an_impossible_seconds_value_is_not_a_clock():
     _atm_feed(g, 0.0, 75 * 60, 9)
     g.update(10.0, ["75:30", "ATM", "1 0", "MUN"], ["75:30", "89:95"])
     assert g._real_clock[0] == 75 * 60 + 30
+
+
+# ---- a frozen clock with a quiet crowd is dead time sooner (user 2026-10-18: FSU-Miami sat in a medical timeout) ----------------
+
+def test_a_frozen_clock_with_a_quiet_sound_is_a_break_after_the_short_limit():
+    g = GameTracker("American football")
+    run(g, 0, 60, ticking, quiet=True)
+    assert run(g, 60, 30, lambda t: "01:00", quiet=True) == "live"      # 30 s frozen: still a normal stoppage
+    assert run(g, 90, 30, lambda t: "01:00", quiet=True) == "break"     # 60 s frozen and quiet all along: dead time (limit 45 s, not 90)
+
+
+def test_a_frozen_clock_with_noise_waits_for_the_long_limit():
+    g = GameTracker("American football")
+    run(g, 0, 60, ticking, quiet=False)
+    assert run(g, 60, 75, lambda t: "01:00", quiet=False) == "live"     # the crowd is loud (a replay of a big play): not dead time
+    assert run(g, 135, 30, lambda t: "01:00", quiet=False) == "break"   # but the long limit still applies
+
+
+def test_a_recent_noise_restarts_the_quiet_count():
+    g = GameTracker("American football")
+    run(g, 0, 60, ticking, quiet=True)
+    run(g, 60, 45, lambda t: "01:00", quiet=True)                        # 45 s frozen and quiet: the short limit is reached at the next reading...
+    assert g.state == "live"
+    run(g, 105, 3, lambda t: "01:00", quiet=False)                       # ...but the crowd roars
+    assert run(g, 108, 30, lambda t: "01:00", quiet=True) == "live"      # the quiet count starts again
+    assert run(g, 138, 30, lambda t: "01:00", quiet=True) == "break"
+
+
+def test_an_unknown_sound_never_shortens_the_limit():
+    g = GameTracker("American football")                                 # a tile that does not have the sound: quiet is None
+    run(g, 0, 60, ticking)
+    assert run(g, 60, 80, lambda t: "01:00") == "live"
+
+
+def test_soccer_has_no_quiet_shortcut_because_its_limit_is_already_short():
+    g = GameTracker("football")
+    run(g, 0, 60, ticking, quiet=True)
+    assert run(g, 60, 15, lambda t: "00:59", quiet=True) == "live"

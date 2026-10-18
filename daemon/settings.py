@@ -76,9 +76,9 @@ def _read_toml(settings: Settings, path: pathlib.Path) -> None:
             log.warning("settings: unknown sport [sports.%s] ignored (use football, american football or generic)", name)
             continue
         edited = dataclasses.replace(known, **{k: float(v) for k, v in values.items()
-                                               if k in ("freeze_s", "no_clock_s") and isinstance(v, (int, float))})
+                                               if k in ("freeze_s", "no_clock_s", "quiet_freeze_s") and isinstance(v, (int, float))})
         for k in values:
-            if k not in ("freeze_s", "no_clock_s"):
+            if k not in ("freeze_s", "no_clock_s", "quiet_freeze_s"):
                 log.warning("settings: unknown key [sports.%s] %s ignored", name, k)
         game_state.PROFILES[key] = edited
     banners = data.get("banners", {})
@@ -158,6 +158,7 @@ LAYOUT = [
         ("scoring.stale_s", "Silence limit (s)", "A stream with no audio for this long is ignored."),
     ]),
     ("Ads", [
+        ("scoring.dead_quiet_level", "Quiet sound level", "Crowd and rise in loudness both below this count as a quiet sound: a stopped game clock then ends the game sooner (see the break detection below)."),
         ("scoring.idle_music", "Music level for an ad", "MAIN counts as showing an ad when the music probability is at least this."),
         ("scoring.leverage_weight", "Close / late game bonus", "A late close game adds up to this to a stream's score; a late blowout takes it away. 0 turns it off."),
         ("scoring.lev_us_football_close", "American football: close (points)", "At most this many points apart counts as a close game."),
@@ -290,6 +291,7 @@ LAYOUT = [
         (f"sports.{name}.{key}", f"{_SPORT_LABELS[name]}: {text}", help_)
         for name in _DEFAULT_PROFILES
         for key, text, help_ in (("freeze_s", "clock stopped (s)", "A game clock unchanged for this long means a break."),
+                                 ("quiet_freeze_s", "clock stopped and quiet (s)", "A game clock unchanged for this long with the sound also quiet the whole time means a break (a medical timeout). 0 = off."),
                                  ("no_clock_s", "no clock (s)", "A scoreboard with no readable clock for this long means a break."))
     ]),
     ("Banner phrases", [

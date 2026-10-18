@@ -121,11 +121,12 @@ AD_MEMORY_S = 8.0      # a break placeholder counts this long after it was last 
 class SportProfile:
     freeze_s: float    # clock unchanged for this long -> break
     no_clock_s: float  # no readable clock for this long -> break
+    quiet_freeze_s: float = 0.0   # clock unchanged AND the sound quiet for this long -> break (0 = off): dead time such as a medical timeout
 
 
 PROFILES = {
     "football": SportProfile(freeze_s=20, no_clock_s=45),             # soccer: the clock only stops at half time / full time
-    "american football": SportProfile(freeze_s=240, no_clock_s=90),   # clock stops after most plays and for TV timeouts
+    "american football": SportProfile(freeze_s=90, no_clock_s=90, quiet_freeze_s=45),   # clock stops after most plays; a medical timeout or TV break lasts minutes
     "generic": SportProfile(freeze_s=120, no_clock_s=60),             # any other or unknown sport
 }
 
@@ -169,6 +170,7 @@ class GameTracker:
         self.state = "live"          # optimistic until proven otherwise
         self._clock: str | None = None
         self._clock_changed_at: float | None = None
+        self._loud_at = float("-inf")   # the last reading with a loud sound (`quiet` False); a quiet count needs no noise since the clock froze
         self._last_clock_seen: float | None = None
         self._codes_seen = float("-inf")   # when two team codes were last read together (a scorebug)
         self._first_seen: float | None = None
@@ -279,8 +281,10 @@ class GameTracker:
                 self._game_codes = codes if len(codes) >= 2 else frozenset()
         return kept
 
-    def update(self, now: float, texts: list[str], clocks: list[str]) -> str:
+    def update(self, now: float, texts: list[str], clocks: list[str], quiet: bool | None = None) -> str:
         self.clock_replay_note = None
+        if quiet is False:
+            self._loud_at = now
         if self._first_seen is None:
             self._first_seen = now
         clocks = self._drop_foreign_clocks(now, texts, clocks)
@@ -387,7 +391,9 @@ class GameTracker:
             self.state = "break"   # end of a quarter: until the scorebug shows down and distance / the quarter again
         elif clocks and self._clock_changed_at is not None:
             frozen_for = now - self._clock_changed_at
-            self.state = "break" if frozen_for > self.profile.freeze_s else "live"
+            short = self.profile.quiet_freeze_s
+            dead = bool(short) and quiet is True and frozen_for > short and now - self._loud_at > short   # frozen, and no noise for that long
+            self.state = "break" if frozen_for > self.profile.freeze_s or dead else "live"
         elif now - self._overtime_seen <= OVERTIME_MEMORY_S:
             self.state = "live"   # overtime: no game clock to read
         elif now - self._down_seen <= DOWN_MEMORY_S:

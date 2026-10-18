@@ -575,10 +575,10 @@
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0417,
+"score": 0.0104,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -646,7 +646,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -714,7 +714,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -782,7 +782,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -840,17 +840,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.9444,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.2361,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.2361,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -908,17 +908,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.7222,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1806,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.1806,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -976,17 +976,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.5,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.125,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.125,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1044,17 +1044,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.2778,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0694,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0694,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1112,17 +1112,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.0556,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0139,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0139,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1190,7 +1190,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1258,7 +1258,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1326,7 +1326,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1384,17 +1384,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.8333,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.2083,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.2083,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1452,17 +1452,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.6111,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1528,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.1528,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1520,17 +1520,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.5,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.125,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.125,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1593,17 +1593,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.3889,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0972,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0972,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1661,17 +1661,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.1667,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0417,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0417,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1739,7 +1739,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1807,7 +1807,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1875,7 +1875,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -1943,7 +1943,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2011,7 +2011,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2079,7 +2079,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2147,7 +2147,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2215,7 +2215,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2273,17 +2273,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 1.0,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.25,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.25,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2341,17 +2341,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.7778,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1944,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.1944,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2409,17 +2409,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.5556,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1389,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.1389,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2477,17 +2477,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.3333,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0833,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0833,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2545,17 +2545,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.1111,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0278,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0278,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2623,7 +2623,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2691,7 +2691,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2756,10 +2756,10 @@
 "lev": 0.0,
 "level": 0.14,
 "music": 0.02,
-"score": 1.05,
+"score": 0.2625,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 1.0
 },
 "4": {
@@ -2781,13 +2781,8 @@
 "hold2": 0.0,
 "hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
-"s": 172,
-"swap": [
-3,
-2,
-"challenger [score=1.05 surge=1.00 crowd=0.80 speech=0.20 music=0.02 event=0.00] vs main [score=0.09 surge=0.00 crowd=0.05 speech=0.20 music=0.02 event=0.00]"
-]
+"main": 2,
+"s": 172
 },
 {
 "1": {
@@ -2822,17 +2817,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.8889,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.2222,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.14,
 "music": 0.02,
-"score": 0.5222,
+"score": 0.075,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 1.0
 },
 "4": {
@@ -2854,7 +2849,7 @@
 "hold2": 0.0,
 "hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 176
 },
 {
@@ -2890,17 +2885,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.6667,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1667,
-"event": 0.9333,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.9133,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2920,9 +2915,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 37.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 180
 },
 {
@@ -2958,17 +2953,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.4444,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1111,
-"event": 0.8444,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.7867,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -2988,9 +2983,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 33.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 184
 },
 {
@@ -3026,17 +3021,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.2222,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0556,
-"event": 0.7556,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.66,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3056,9 +3051,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 29.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 188
 },
 {
@@ -3097,14 +3092,14 @@
 "anticipation": 0.0,
 "crowd": 0.05,
 "cue": 0.0,
-"event": 0.6667,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.5333,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3124,9 +3119,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 25.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 192
 },
 {
@@ -3165,14 +3160,14 @@
 "anticipation": 0.0,
 "crowd": 0.05,
 "cue": 0.0,
-"event": 0.5778,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.4622,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3192,9 +3187,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 21.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 196
 },
 {
@@ -3233,14 +3228,14 @@
 "anticipation": 0.0,
 "crowd": 0.05,
 "cue": 0.0,
-"event": 0.4889,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.3911,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3260,9 +3255,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 17.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 200
 },
 {
@@ -3298,17 +3293,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 1.0,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.25,
-"event": 0.4,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.57,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3328,9 +3323,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 13.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 204
 },
 {
@@ -3366,17 +3361,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.7778,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1944,
-"event": 0.3111,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.4433,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3396,9 +3391,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 9.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 208
 },
 {
@@ -3434,17 +3429,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.5556,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.1389,
-"event": 0.2222,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.3167,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3464,9 +3459,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 5.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 212
 },
 {
@@ -3502,17 +3497,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.3333,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0833,
-"event": 0.1333,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.19,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3532,9 +3527,9 @@
 },
 "hold1": 0.0,
 "hold2": 0.0,
-"hold3": 1.0,
+"hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 216
 },
 {
@@ -3570,17 +3565,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.1111,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.0278,
-"event": 0.0444,
+"cue": 0.0,
+"event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.0633,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3602,7 +3597,7 @@
 "hold2": 0.0,
 "hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 220
 },
 {
@@ -3648,7 +3643,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3670,7 +3665,7 @@
 "hold2": 0.0,
 "hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 224
 },
 {
@@ -3716,7 +3711,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3738,7 +3733,7 @@
 "hold2": 0.0,
 "hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 228
 },
 {
@@ -3784,7 +3779,7 @@
 "score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3806,7 +3801,7 @@
 "hold2": 0.0,
 "hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 232
 },
 {
@@ -3842,17 +3837,17 @@
 },
 "3": {
 "ad": false,
-"anticipation": 0.8889,
+"anticipation": 0.0,
 "crowd": 0.05,
-"cue": 0.2222,
+"cue": 0.0,
 "event": 0.0,
 "lev": 0.0,
 "level": 0.05,
 "music": 0.02,
-"score": 0.2222,
+"score": 0.0,
 "shout": 0.0,
 "speech": 0.2,
-"status": "live",
+"status": "break",
 "surge": 0.0
 },
 "4": {
@@ -3874,7 +3869,7 @@
 "hold2": 0.0,
 "hold3": 0.0,
 "hold4": 0.0,
-"main": 3,
+"main": 2,
 "s": 236
 }
 ]

@@ -133,6 +133,7 @@ class Config:
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
     held_change_s: float = 30.0  # a score change read while the game looked like a break is kept this long and counts if the game is live again (0 = drop it at once)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
+    dead_quiet_level: float = 0.15   # crowd and rise in loudness both below this: the sound is quiet (a frozen clock then counts as dead time after `quiet_freeze_s`)
     audio_ad_margin: float = 0.15  # ...and music must exceed speech by this much (stadium music under commentary is not an ad)
     audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...
     audio_ad_window: float = 5.0  # ...among the last this many (one reading is never enough: arena music, jingles)
