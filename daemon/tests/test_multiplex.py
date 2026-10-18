@@ -176,3 +176,11 @@ def test_a_channel_label_is_not_a_team_code():
     assert team_pair(["#FOOT", "BHA", "3", "0", "CRY", "DIRECT"]) == frozenset({"BHA", "CRY"})
     assert team_pair(["#FOOT", "BHA", "direct"]) is None   # one team and the label: still no pair
     assert key_text(team_pair(["FOOT", "SUN", "BOU"])) == "BOU-SUN"
+
+
+def test_league_and_channel_labels_are_not_team_codes_on_redzone():
+    # live 2026-10-18, NFL RedZone on beIN Sports 4: 'NFL' (the league) and 'MAX' / 'MRX' (the beIN logo's small caption) were read as the two
+    # team codes and gave `new game ... MAX-NFL -> MRX-NFL` resets
+    assert team_pair(["NFL", "MAX", "bein SPORTS", "REDZONE"]) is None
+    assert team_pair(["NFL", "MRX", "7", "0"]) is None
+    assert team_pair(["NFL", "KCC", "7", "BUF", "3", "MAX"]) == frozenset({"KCC", "BUF"})
