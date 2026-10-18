@@ -101,15 +101,15 @@ async function load() {
       ...SLOTS.map(([role, label], i) => el("label", {}, slotBoxes[i], label)));
 
     trackedTitles[tabId] = info.title;
-    const makeMain = el("button", { textContent: role === "MAIN" ? "Hold on Main" : "Make Main",
-      title: "Put this stream on Main and keep it there for a while (the hold time is in Settings)" });
+    const makeMain = el("button", { textContent: role === "MAIN" ? "Hold Main" : "To Main",
+      title: "Make Main: put this stream on Main and keep it there for a while (the hold time is in Settings)" });
     makeMain.onclick = () => {
       connectSettings();
       const send = () => settingsSend({ type: "force_main", tab_id: Number(tabId) });
       if (settingsSocket.readyState === WebSocket.OPEN) send(); else settingsSocket.addEventListener("open", send, { once: true });
     };
-    const makeWindow2 = el("button", { textContent: role === "LEFT" ? "Hold on Window 2" : "Make Window 2",
-      title: "Put this stream in Window 2 and keep it there for a while: no swap moves Window 2 meanwhile (the hold time is in Settings)" });
+    const makeWindow2 = el("button", { textContent: role === "LEFT" ? "Hold Window 2" : "To Window 2",
+      title: "Make Window 2: put this stream in Window 2 and keep it there for a while: no swap moves Window 2 meanwhile (the hold time is in Settings)" });
     makeWindow2.onclick = () => {
       connectSettings();
       const send = () => settingsSend({ type: "force_window2", tab_id: Number(tabId) });
