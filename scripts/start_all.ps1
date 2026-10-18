@@ -41,6 +41,13 @@ if ($NoEdge) {
     & (Join-Path $PSScriptRoot "start_test_edge.ps1")
 }
 
+# Optional screenshot recorder (kept outside the repo, next to it; a second copy exits at once by its lock file).
+$capture = Join-Path (Split-Path $root -Parent) "OmniSportsSwitch-capture\capture_loop.py"
+if (Test-Path $capture) {
+    Start-Process (Join-Path $root ".venv\Scripts\python.exe") -WindowStyle Hidden -WorkingDirectory (Split-Path $capture -Parent) -ArgumentList $capture
+    Write-Host "Recorder: started (OmniSportsSwitch-capture, one frame per tracked tile every 30 s)."
+}
+
 Write-Host ""
 Write-Host "Next: open your streams, then in each window press Ctrl+Shift+Y (or the extension icon -> Track this tab)."
 Write-Host "Window names are restored automatically if the windows sit where they did before. Freeze Main with Ctrl+Shift+P."
