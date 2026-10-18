@@ -653,3 +653,22 @@ def test_the_goal_just_announced_is_no_candidate_any_more():
     fired = [_read(w, (0, 1), 115.0 + i * 3) for i in range(4)]
     assert True in fired
     assert not w.candidate                         # the peak has not risen yet, but the goal is already counted
+
+
+# ---- a crest read as a digit glued to the real digit (Liverpool-City bug, 0-0 read as 4-0) ----------------------
+
+LIV_MCI_CREST_GLUED = [   # real boxes of the zoomed strip: the first 0 and the Premier League crest came out as "04"
+    {"text": "LIV", "x0": 55, "y0": 36, "x1": 93, "y1": 58}, {"text": "04", "x0": 112, "y0": 31, "x1": 143, "y1": 62},
+    {"text": "0", "x0": 152, "y0": 32, "x1": 178, "y1": 60}, {"text": "MCI", "x0": 191, "y0": 37, "x1": 235, "y1": 58},
+    {"text": "34:01", "x0": 123, "y0": 60, "x1": 164, "y1": 76}]
+
+
+def test_a_crest_glued_to_the_first_digit_does_not_make_a_wrong_score():
+    from daemon.score_watch import find_score_geo
+    assert find_score_geo(LIV_MCI_CREST_GLUED, ["34:01"]) == (0, 0)       # was (4, 0): "04" became 4
+
+
+def test_a_number_with_a_leading_zero_is_never_read_as_its_value():
+    from daemon.score_watch import find_score_geo
+    glued = [dict(it, text="07") if it["text"] == "04" else it for it in LIV_MCI_CREST_GLUED]
+    assert find_score_geo(glued, ["34:01"]) == (0, 0)

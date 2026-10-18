@@ -205,6 +205,15 @@ def clock_seconds(text: str) -> int | None:
     return int(m.group(1)) * 60 + int(m.group(2)) if m else None
 
 
+def _without_glued_crest(it: dict) -> dict:
+    """A score never starts with a zero: "04" is a real 0 with the crest beside it read as a 4 ("0" + Premier League crest, Liverpool-City
+    bug). Keep the first digit and cut the box to its share of the item."""
+    text = it["text"].strip()
+    if len(text) > 1 and text[0] == "0" and text.isdigit():
+        return dict(it, text="0", x1=it["x0"] + (it["x1"] - it["x0"]) / len(text))
+    return it
+
+
 def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | None:
     """Score from the size and position of the text (each item has text, x0, y0, x1, y1).
 
@@ -213,6 +222,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     """
     skip = set(clocks)
     items = [dict(it, text=m.group(1)) if (m := DIGIT_WITH_MARKS_RE.match(it["text"].strip())) else it for it in items]
+    items = [_without_glued_crest(it) for it in items]
     split = []
     for n, it in enumerate(items):
         c = CLOCK_AND_TEAM_RE.match(it["text"].strip())
