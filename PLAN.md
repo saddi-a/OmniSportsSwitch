@@ -28,6 +28,7 @@ Short hand-over (cleaned up 2026-10-18 evening, refreshed 2026-10-18 late). The 
 * The ESPN feed stays measuring-only (logging, debug, feedback), never a live swap signal.
 * `main` push: not yet. GPU 7.3-7.5 of 10 GB and 1 s log rows: leave as is; if live tests cause trouble, stop the daemon during them. STR-PSG replay comparison: not for now.
 * Aim: move Main BEFORE the goal (build-up), per sport.
+* 'MAIN idle' swaps are wanted (user, 2026-10-18, after the 18:59:19 swap to the PL tab): if Main is idle, any other stream with something going on should take it. Keep that rule as it is when tuning thresholds.
 * Rewind (2026-10-18): a score change on a rewinding tile no longer creates an event/swap (`scoring.rewind_ignores_score`), also not via 'counted late', unless the feed shows that score at the stream clock (stale rewind flag, e.g. high point inflated by scrubbing). Fixed 2026-10-18: the high point is capped by the feed's game clock + `scoring.rewind_high_slack_s` (120 s, 0 = off); readings above it are ignored, a stale high restarts, an active rewind with such a high ends (PAR-REN scrub case).
 
 **C. Open items, in order.**
