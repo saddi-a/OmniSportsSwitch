@@ -210,6 +210,8 @@ class Server:
             log.info("unregistered tab %s", msg["tab_id"])
         elif kind == "audio":
             self.scorer.add_audio(msg["tab_id"], float(msg["rms"]), time.monotonic())
+        elif kind == "expand_failed":   # the extension could not send the real click (its error text is logged): only a script click that selects the tile was sent
+            log.warning("expand of tab %s tile %s failed in the extension, a script click only selected it: %s", msg.get("tab_id"), msg.get("index"), str(msg.get("error"))[:200])
         elif kind == "video_rect":
             tab_id = msg["tab_id"]
             info = {"rects": fix_rects(msg.get("rects") or [], msg.get("win")), "visible": bool(msg.get("visible")), "fullscreen": bool(msg.get("fullscreen"))}

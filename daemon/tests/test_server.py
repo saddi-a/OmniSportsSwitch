@@ -1021,3 +1021,10 @@ def test_a_frozen_clock_with_a_quiet_sound_is_dead_time_after_the_short_limit():
 def test_a_frozen_clock_with_a_loud_crowd_keeps_waiting_for_the_long_limit():
     assert _frozen_clock_state(crowd=0.6, seconds=60) == "live"        # the crowd is loud: something may be going on
     assert _frozen_clock_state(crowd=0.6, seconds=99) == "break"
+
+
+def test_an_expand_that_failed_in_the_extension_is_logged_with_its_error(caplog):
+    server = Server()
+    with caplog.at_level(logging.WARNING):
+        server.handle_message({"type": "expand_failed", "tab_id": 20, "index": 2, "error": "Another debugger is already attached to the tab with id: 20."})
+    assert "expand of tab 20 tile 2 failed in the extension" in caplog.text and "Another debugger is already attached" in caplog.text

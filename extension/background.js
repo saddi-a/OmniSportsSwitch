@@ -145,37 +145,46 @@ function clickVideoTile(index) {
 
 // DAZN only expands a multiview tile (makes it the main one) for a genuine mouse click; a script click just
 // moves the sound. So send a real click through Edge's debugging API: attach, hover, click, detach.
-// Edge shows its "is debugging this browser" bar while attached, which is only a moment.
+// Edge shows its "is being debugged" bar while attached, and that bar moves the page down: a tile centre measured BEFORE the attach is
+// then off by the height of the bar, the click misses DAZN's small expand icon in the middle of the tile and only selects the tile
+// (found live 2026-10-18; the same event sequence sent without the bar expanded the tile). So the centre is measured again after the
+// attach, and once more right before the click.
 async function expandTile(tabId, index) {
-  const [{ result: center }] = await chrome.scripting.executeScript({
+  const [{ result: first }] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (i) => {
-      const video = document.querySelectorAll("video")[i];
-      if (!video) return null;
-      const r = video.getBoundingClientRect();
-      return [r.left + r.width / 2, r.top + r.height / 2];
-    },
+    func: (i) => !!document.querySelectorAll("video")[i],
     args: [index],
   });
-  if (!center) {
+  if (!first) {
     console.warn("expand: video " + index + " not found in tab " + tabId);
     return;
   }
-  const [x, y] = center;
   const target = { tabId };
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await chrome.debugger.attach(target, "1.3");
   try {
-    const mouse = (type, extra = {}, dx = 0, dy = 0) =>
-      chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x: x + dx, y: y + dy, ...extra });
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    await mouse("mouseMoved");
+    // Where the tile centre is right now (viewport coordinates), measured through the debugger.
+    const centre = async () => {
+      const r = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+        expression: `(() => { const v = document.querySelectorAll("video")[${index}]; if (!v) return null; const r = v.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`,
+        returnByValue: true,
+      });
+      return r && r.result ? r.result.value : null;
+    };
+    const mouse = (type, [x, y], extra = {}, dx = 0, dy = 0) =>
+      chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x: x + dx, y: y + dy, pointerType: "mouse", ...extra });
+    await wait(500); // the debugging bar has appeared and the page has moved
+    let at = await centre();
+    if (!at) return;
+    await mouse("mouseMoved", at);
     await wait(700); // the tile shows its expand icon under the pointer
+    at = (await centre()) || at; // the page may have moved again meanwhile
     // The pointer has not moved since the icon appeared, so DAZN does not count it as over the icon and the
     // click only selects the tile. A second small move makes the icon hovered, and the click then expands.
-    await mouse("mouseMoved", {}, 3, 2);
+    await mouse("mouseMoved", at, {}, 3, 2);
     await wait(250);
-    await mouse("mousePressed", { button: "left", clickCount: 1 }, 3, 2);
-    await mouse("mouseReleased", { button: "left", clickCount: 1 }, 3, 2);
+    await mouse("mousePressed", at, { button: "left", buttons: 1, clickCount: 1 }, 3, 2);
+    await mouse("mouseReleased", at, { button: "left", buttons: 0, clickCount: 1 }, 3, 2);
   } finally {
     await chrome.debugger.detach(target).catch(() => {});
   }
@@ -354,6 +363,8 @@ chrome.runtime.onMessage.addListener((m, sender, sendResponse) => {
   if (m.type === "focus_tile") {
     expandTile(m.tab_id, m.index).catch((e) => {
       console.error("expand failed, falling back to a script click (moves the sound only)", e);
+      // the daemon logs why (a debugger already attached by another extension or DevTools, a closed tab...): without it a failed expand looks like a click that was ignored
+      chrome.runtime.sendMessage({ type: "expand_failed", tab_id: m.tab_id, index: m.index, error: String((e && e.message) || e) }).catch(() => {});
       chrome.scripting.executeScript({ target: { tabId: m.tab_id }, func: clickVideoTile, args: [m.index] }).catch(() => {});
     });
   }
