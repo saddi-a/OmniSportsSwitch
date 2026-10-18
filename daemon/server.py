@@ -137,6 +137,7 @@ class Server:
         self.sport_choice_seen: dict[tuple[int, int], tuple] = {}   # last (sport, source) per tile, to log changes only
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
+        self.expand_resend: dict[int, int] = {}   # tab -> tile whose click only selected it: the expand click is sent once more
         self.expand_retried: set[int] = set()   # tabs whose last expand failed and was already asked again once
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
         self.clients = set()
@@ -1007,6 +1008,12 @@ class Server:
             pending = self.pending_expand.get(tab_id)
             if pending is not None and now < pending[1]:
                 continue   # a tile was asked to expand a moment ago: wait to see where the sound went (`_check_expand`) before asking again
+            again = self.expand_resend.pop(tab_id, None)
+            if again is not None:   # the last click only selected this tile (it has the sound but is not the big one): click it again, once
+                log.info("focus tile: tab %s -> tile %s again (the first click only selected it)", tab_id, again)
+                commands.append({"type": "focus_tile", "tab_id": tab_id, "index": again})
+                self.pending_expand[tab_id] = (again, now + EXPAND_CHECK_S)
+                continue
             scores = self.scorer.tile_scores(tab_id, now)   # the wanted tile: the one the scorer rates highest (None while the tab has no score)
             tiles = []
             for pos, rect in enumerate(info["rects"][:4]):
@@ -1045,6 +1052,9 @@ class Server:
         if audible == target and target != main:
             log.warning("expand of tab %s tile %s did not happen: the tile was only selected", tab_id, target)
             del self.pending_expand[tab_id]
+            if tab_id not in self.expand_retried:   # fallback: the focuser would not ask (the tile already has the sound), so click it again directly
+                self.expand_retried.add(tab_id)
+                self.expand_resend[tab_id] = target
         elif audible == main or time.monotonic() > deadline:
             del self.pending_expand[tab_id]
             if audible == main:
