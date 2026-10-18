@@ -27,6 +27,9 @@ def _parser() -> argparse.ArgumentParser:
     b = sub.add_parser("build", help="build the labelled dataset into a run folder")
     b.add_argument("days", nargs="*", help="YYYY-MM-DD (default: every recorded day)")
     b.add_argument("--holdout", default="", help="comma separated game ids to mark as hold-out in the rows")
+    b.add_argument("--since", default="", metavar="'YYYY-MM-DD HH:MM'", help="only rows and events recorded at or after this local time count (the data cut-off)")
+    b.add_argument("--exclude", action="append", default=[], metavar="TAB:HH:MM-HH:MM",
+                   help="leave out the rows and events of a tab in a time range (local time, on the date of the dataset file); repeatable")
 
     f = sub.add_parser("fit", help="fit per-sport logistic regression (refuses below the data guard)")
     f.add_argument("--sport", default="all", choices=list(SPORTS) + ["all"])
@@ -95,7 +98,13 @@ def _params(args) -> dict:
 # ---------------------------------------------------------------------------------------------------------------------------------------
 def cmd_build(ctx) -> int:
     args, out = ctx["args"], ctx["out"]
-    inputs = data.load_inputs(ctx["logs"], args.days)
+    try:
+        since = data.parse_since(args.since) if args.since else None
+        excludes = [data.parse_exclude(x) for x in args.exclude]
+    except ValueError as e:
+        out(f"bad argument: {e}")
+        return 2
+    inputs = data.load_inputs(ctx["logs"], args.days, since=since, excludes=excludes)
     run = _new_run(ctx, "build", _params(args), inputs=inputs["files"])
     if not inputs["rows"]:
         run.finish({"headline": {}}, "# Build\n\nNo recorded rows for " + (", ".join(inputs["days"]) or "any day") + ".\n", status="insufficient-data",

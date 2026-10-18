@@ -9,7 +9,7 @@ Rules: it only READS `logs/` and writes only `logs/director_training/` (gitignor
 ## Commands
 
 ```
-.venv\Scripts\python.exe scripts\director_training.py build [YYYY-MM-DD ...]          # labelled dataset into a run folder (same builder as build_dataset.py)
+.venv\Scripts\python.exe scripts\director_training.py build [YYYY-MM-DD ...] [--since 'YYYY-MM-DD HH:MM'] [--exclude TAB:HH:MM-HH:MM ...]   # labelled dataset into a run folder (same builder as build_dataset.py)
 .venv\Scripts\python.exe scripts\director_training.py fit [--sport football] [--dry-run] [--min-games 8] [--min-events 25]
 .venv\Scripts\python.exe scripts\director_training.py evaluate --fit-run N [--holdout GAMEID,...]
 .venv\Scripts\python.exe scripts\director_training.py ship --fit-run N --shadow-run M                      # DRY: prints the diff, changes nothing
@@ -17,6 +17,11 @@ Rules: it only READS `logs/` and writes only `logs/director_training/` (gitignor
 .venv\Scripts\python.exe scripts\director_training.py ship --rollback RUN
 .venv\Scripts\python.exe scripts\director_training.py status [--sport football]
 ```
+
+`build` data selection (build only; `fit` and `evaluate` read what a build kept): `--since 'YYYY-MM-DD HH:MM'` keeps only rows and events recorded at or after
+that local time (the data cut-off, e.g. `--since '2026-10-18 11:44'`); `--exclude TAB:HH:MM-HH:MM` (repeatable) drops the rows and events of one tab inside a
+local time range, both minutes included, on the date of each dataset file read (e.g. `--exclude 485662290:14:16-14:44`). Both are recorded in the run's `config.json`
+params. A bad value exits with code 2 and makes no run. Without the options every recorded row counts.
 
 Global options (before the command): `--logs-dir` (default `<repo>/logs`), `--settings` (the settings file that defines "today"; default `<repo>/settings.toml`).
 
