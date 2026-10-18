@@ -1105,6 +1105,10 @@ class Server:
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
                 if self.scorer.config.held_change_s > 0 and per_tab[tab_id][-1] == "break":   # kept (not for "over": a finished game): a wrong break reading right after a touchdown must not lose it
                     self.held_change[(tab_id, index)] = (watcher.strength, now)
+            elif held is not None and not changed and per_tab[tab_id][-1] == "live" and self._rewind_ignores(tab_id, index, watcher.score, clock_now, tracker.period):   # held during a break, but the stream is replaying its past
+                del self.held_change[(tab_id, index)]
+                log.info("score change tab %s tile %s dropped: it was read %.0f s ago in a break and the stream is replaying its past (rewind)", tab_id, index, now - held[1])
+                self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=0.0, note="rewind")
             elif held is not None and not changed and per_tab[tab_id][-1] == "live":   # the game is live again: the held change counts now
                 del self.held_change[(tab_id, index)]
                 self.event_at[(tab_id, index)] = now - (1.0 - held[0]) * self.scorer.config.event_s
@@ -1113,10 +1117,14 @@ class Server:
                 self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=held[0], note="counted late")
             elif changed:
                 self.held_change.pop((tab_id, index), None)
+                rewound = self._rewind_ignores(tab_id, index, watcher.score, clock_now, tracker.period)   # before real_change: it may clear a stale rewind
                 change = self.feed_gate.real_change(tab_id, index, now)
                 for line in change.lines:
                     log.info("%s", line)
                 strength = watcher.strength
+                if rewound and change.verdict == "rewind":   # the stream replays its past: this is an old goal, not a new one
+                    self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=0.0, verdict="rewind", note="rewind")
+                    continue
                 factor = self.scorer.config.feed_unconfirmed_factor
                 if change.verdict == "ocr-only" and factor < 1.0:   # mapped game, no feed event first: counts less until the feed confirms
                     self.unconfirmed[(tab_id, index)] = (strength, now)
@@ -1154,6 +1162,20 @@ class Server:
                         self.scorer.set_leverage(tab_id, tab_leverage([tiles[index]], self.scorer.config), tile=index)
             else:   # a single video: the closeness and time left of the best game of the tab, as before
                 self.scorer.set_leverage(tab_id, tab_leverage(list(tiles.values()), self.scorer.config))
+
+    def _rewind_ignores(self, tab_id: int, index: int, score: tuple | None, clock_s: float | None, period: int | None) -> bool:
+        """A score change on a tile whose stream is rewinding is a replayed goal: ignore it (`scoring.rewind_ignores_score`),
+        unless the feed shows this very score at the stream clock; the rewind flag is then stale and is dropped."""
+        if self.scorer.config.rewind_ignores_score <= 0 or not self.feed_gate.is_rewinding(tab_id, index):
+            return False
+        mapped = self.feed_map.mapping(tab_id, index)
+        if mapped is not None and clock_s is not None and score is not None:
+            allowed = self.feed_map.allowed_scores(mapped.game_id, clock_s, period)
+            if allowed and (score in allowed or score[::-1] in allowed):
+                for line in self.feed_gate.distrust_rewind(tab_id, index, clock_s, period):
+                    log.info("%s", line)
+                return False
+        return True
 
     def _on_new_game(self, tab_id: int, index: int, old: frozenset, new: frozenset, now: float, multi: bool | None = None) -> None:
         """A multiplex tab's video now shows another game of the same sport (its scorebug's team codes changed and stayed changed): every

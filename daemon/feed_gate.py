@@ -401,6 +401,24 @@ class FeedGate:
                 return p
         return None
 
+    def is_rewinding(self, tab_id: int, tile: int) -> bool:
+        """The tile's stream is replaying its past (the clock fell far behind its high point and has not come back)."""
+        return self.rewind.get((tab_id, tile), _Rewind()).active
+
+    def distrust_rewind(self, tab_id: int, tile: int, clock_s: float | None, period: int | None) -> list[str]:
+        """The rewind flag was stale (the feed shows the OCR score at the stream clock): end it and restart the high point
+        from the current clock, so an inflated high point (the viewer scrubbed far ahead) cannot re-trigger it."""
+        st = self.rewind.get((tab_id, tile))
+        if st is None or not st.active:
+            return []
+        game_id = self.mapped.get((tab_id, tile))
+        sport = self.sport_of.get(game_id) or ("soccer" if period is None else None)
+        cur = _elapsed(sport, clock_s, period) if sport and clock_s is not None else None
+        st.active, st.low_n = False, 0
+        if cur is not None:
+            st.high = cur
+        return [f"feed rewind tab {tab_id} tile {tile}: dropped, the feed shows the stream's score at its clock (the high point was stale)"]
+
     def real_change(self, tab_id: int, tile: int, now: float) -> Change:
         """The OCR watcher saw a real score change on this tile: does the feed agree?"""
         tile_key = (tab_id, tile)
