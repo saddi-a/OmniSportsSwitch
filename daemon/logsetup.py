@@ -18,6 +18,7 @@ import logging.handlers
 import os
 import pathlib
 import shutil
+import sys
 import threading
 import time
 
@@ -206,3 +207,39 @@ def setup_logging(log_dir: pathlib.Path = LOG_DIR, console: bool = True) -> None
     for handler in handlers:
         handler.setFormatter(formatter)
         root.addHandler(handler)
+
+
+_crash_file = None   # kept open for the life of the process: faulthandler writes to it from a fatal signal
+
+
+def install_exit_trace(log_dir: pathlib.Path = LOG_DIR) -> None:
+    """Makes a silent death leave a trace (2026-10-18: the daemon vanished twice with nothing in the logs). A fatal error (a crash in a native
+    library, for example CUDA) dumps the Python stacks into logs/crash.log; a normal exit, a console close and a termination signal each log a line."""
+    import atexit
+    import faulthandler
+    import signal
+
+    global _crash_file
+    log_dir.mkdir(parents=True, exist_ok=True)
+    _crash_file = open(log_dir / "crash.log", "a", encoding="utf-8")
+    _crash_file.write(f"--- daemon started {datetime.datetime.now():%Y-%m-%d %H:%M:%S} (pid {os.getpid()}) ---\n")
+    _crash_file.flush()
+    faulthandler.enable(file=_crash_file, all_threads=True)
+    atexit.register(lambda: logging.getLogger("daemon").info("daemon exiting (normal interpreter exit)"))
+
+    def on_uncaught(kind, value, trace):   # the launcher sends stderr to nowhere, so an uncaught error would vanish
+        logging.getLogger("daemon").critical("daemon stopped by an uncaught error", exc_info=(kind, value, trace))
+
+    sys.excepthook = on_uncaught
+
+    def on_signal(number, frame):
+        logging.getLogger("daemon").warning("daemon got signal %s (%s): shutting down", number, signal.Signals(number).name)
+        raise SystemExit(1)   # a normal exit: the atexit line follows
+
+    for name in ("SIGTERM", "SIGBREAK"):   # SIGBREAK is the Windows console close / Ctrl+Break (Ctrl+C keeps its KeyboardInterrupt)
+        number = getattr(signal, name, None)
+        if number is not None:
+            try:
+                signal.signal(number, on_signal)
+            except (ValueError, OSError):
+                pass

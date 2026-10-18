@@ -156,3 +156,16 @@ def test_a_failing_archive_does_not_raise_and_is_reported_once(tmp_path, monkeyp
 
 def test_pruning_a_missing_archive_is_fine(tmp_path):
     assert prune_archive(tmp_path / "nothing") == 0
+
+
+def test_exit_trace_creates_crash_log_and_enables_faulthandler(tmp_path):
+    import faulthandler
+    from daemon import logsetup
+
+    try:
+        logsetup.install_exit_trace(tmp_path)
+        assert faulthandler.is_enabled()
+        assert "daemon started" in (tmp_path / "crash.log").read_text(encoding="utf-8")
+    finally:
+        faulthandler.disable()
+        logsetup._crash_file.close()

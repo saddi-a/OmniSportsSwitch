@@ -1474,9 +1474,10 @@ class Server:
 
 
 if __name__ == "__main__":
-    from daemon.logsetup import setup_logging
+    from daemon.logsetup import install_exit_trace, setup_logging
 
     setup_logging()
+    install_exit_trace()
     from daemon.audio_classifier import AudioClassifier
 
     from daemon.screen_ocr import ScreenReader
