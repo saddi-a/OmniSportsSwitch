@@ -34,6 +34,8 @@ NFL templates, built from 79 hand-labelled frames of a highlights replay (2325x1
 
 Measured on the 79 frames (scores right / wrong / none, before -> after): Prime TNF 0/1/5 -> 4/0/2, NFL Network 0/0/6 -> 3/0/3, Fox 7/1/24 -> 18/0/14, CBS 10/9/4 -> 20/0/3, NBC SNF 4/1/0 -> 5/0/0, ESPN MNF 0/0/7 -> 7/0/0. What is still none is a score digit the OCR never read (crest touching the digit, "27 W" merged with the crest, digit hidden by a banner) or a frame without a bug; the NFL Network replay mini-bug (ESPN style, no down text) has no template.
 
+Game clocks of NFL bugs (scoreboard_templates.py, `scoring-bugs-92`): the clock is read from the template's own slot, not searched in all the text. Centre panel: `panel_clock` (slot beside the quarter; the corner ticker is ignored, and an unreadable slot gives NO clock); Fox: `fox_clock` (text above the quarter ordinal); `parse_panel_slot` normalises `5-41`, `8.24`, `6240` (colon read as 2/3/4/8), `:47`, and a play clock glued on. Anything that could be two clocks (`1230`, `347`) or has seconds above 59 gives None. Clocks right/wrong/none on the 79 frames 37/8/34 -> 58/0/21. Tests: `daemon/tests/test_nfl_clocks.py`.
+
 The college bugs of Fox / FS1 / DAZN tiles and the SEC bug have no template: the profile reads them.
 
 ## Adding an entry

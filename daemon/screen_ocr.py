@@ -10,9 +10,10 @@ import mss
 import numpy as np
 
 from daemon.game_state import DOWN_RE
+from daemon.scoreboard_templates import fox_clock, panel_clock
 
 MODEL_DIR = pathlib.Path(__file__).resolve().parent.parent / "models" / "easyocr"
-PLAYER_TIME_RE = re.compile(r"\d+\s?[:.]\s?\d{2}\s?/\s?\d+\s?[:.]\s?\d{2}")   # the player bar's 'position/length'
+PLAYER_TIME_RE = re.compile(r"\d+\s?[:.]\s?\d{2}\s?/\s?\d+\s?[:.]?\s?\d{2}")   # the player bar's 'position/length'
 CLOCK_RE = re.compile(r"\b\d{1,3}\s?[:.,]\s?\d{2}\b")
 COLON_AS_DIGIT_RE = re.compile(r"(\d{2})[38](\d{2})")   # a clock whose colon was read as a 3 or an 8: 12853 = 12:53
 ZOOM_SPAN = 14   # the zoom pass looks this many text heights left and right of the clock / down-and-distance text...
@@ -257,6 +258,7 @@ PLAYER_BAR_BOTTOM = 0.85  # ...and sit on the lowest line of the text, below thi
 BARE_SECONDS_RE = re.compile(r":([0-5]\d)")   # a clock under one minute written without the minute: ':18'
 QUARTER_RE = re.compile(r"(\d(st|nd|rd|th)|ot)", re.I)
 BARE_SECONDS_CONFIDENCE = 0.8
+_BAR_LENGTH_RE = re.compile(r"\d{3,5}")
 _PURE_CLOCK_RE = re.compile(r"\d{1,3}\s?[:.,]\s?\d{2}")
 
 
@@ -264,13 +266,14 @@ def player_bar_items(items: list[dict]) -> list[dict]:
     """The two clock-shaped texts of a video player's bar ('1:20' beside '10:49', the '/' unread): two clocks that touch on
     the lowest line of the text. A scorebug's clocks are never side by side (a play clock has no colon)."""
     clocks = [it for it in items if _PURE_CLOCK_RE.fullmatch(it["text"].strip())]
-    if len(clocks) < 2 or not items:
+    lengths = [it for it in items if _BAR_LENGTH_RE.fullmatch(it["text"].strip())]   # the video's length when its colon was not read ('2252')
+    if not clocks or len(clocks) + len(lengths) < 2 or not items:
         return []
     top, bottom = min(it["y0"] for it in items), max(it["y1"] for it in items)
     out = []
     for a in clocks:
         h = a["y1"] - a["y0"]
-        for b in clocks:
+        for b in clocks + lengths:
             if b is a or not (0 <= b["x0"] - a["x1"] <= PLAYER_BAR_GAP * h):
                 continue
             if abs((a["y0"] + a["y1"]) - (b["y0"] + b["y1"])) > h:
@@ -302,6 +305,12 @@ def find_clocks(texts: list[str], items: list[dict] | None = None) -> list[str]:
     player's bar times are dropped by position and a bare ':18' beside its quarter is read."""
     extra = []
     if items:
+        is_panel, slot_clock = panel_clock(items)
+        if is_panel:
+            return [slot_clock] if slot_clock else []   # a centre-panel bug: its own slot is the game clock, the corner ticker's clocks are other games'
+        chip_clock = fox_clock(items)
+        if chip_clock:
+            return [chip_clock]   # a Fox chip: the clock above the quarter ordinal
         bar = {id(it) for it in player_bar_items(items)}
         texts = [it["text"] for it in items if id(it) not in bar]
         extra = bare_seconds_clocks(items)

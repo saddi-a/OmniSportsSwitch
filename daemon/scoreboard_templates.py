@@ -52,6 +52,12 @@ FOX_ORDINAL_RE = re.compile(r"^(?:[1I]st|[2Z]nd|3rd|4th|[A4]tH|OT)$", re.I)
 TNF_ORDINAL_RE = re.compile(r"^(?:[1I]ST|2ND|3RD|4TH|OT)$", re.I)
 TNF_DOWN_RE = re.compile(r"^(?:[1I]st|[2Z]nd|3rd|4th)\s?&\s?(?:\d{1,2}|goal)$", re.I)
 
+PANEL_SLOT_SEP = "2348"          # centre-panel clock slot: the colon is read as one of these digits ("6240" = 6:40, "11830" = 11:30; measured 2, 3, 4, 8)
+PANEL_SLOT_MAX_MINUTES = 15      # ...a football quarter has 15 minutes: a slot reading above that is not a clock
+PANEL_SLOT_MERGED_WIDTH = 3.2    # ...a slot box this many heights wide holds the play clock too ("5:2740"; measured 4.6; a clock alone is 1.9-2.8)
+PANEL_SLOT_CHAR_WIDTH = 0.45     # ...a digit-only slot reading must be at least this many heights wide PER CHARACTER (measured 0.49-0.78; a box about as tall as 2 characters is a clock glued to its quarter ordinal, whose digits are unreliable: measured 0.34)
+PANEL_SLOT_RE = re.compile(r"^(\d{1,2})\s?[:.,;'\-]\s?(\d{2})$")
+
 
 def _h(it):
     return it["y1"] - it["y0"]
@@ -192,6 +198,56 @@ def read_centre_panel(items: list[dict], clocks: list[str]):
     return None
 
 
+def parse_panel_slot(text: str, width_ratio: float = 0.0) -> str | None:
+    """The 'M:SS' a centre-panel clock slot says, or None. The slot is a known place, so the colon may be mangled: a dash, dot or comma,
+    a digit in its place ('6240', '11830'), or no colon at all ('325'). A reading that could be two different clocks ('1230' is 1:30 with
+    a mangled colon or 12:30 with a missing one) gives None, as does seconds above 59 ('6871') or minutes above a quarter."""
+    t = text.strip()
+    lead = re.match(r"^[:;]\s?(\d{2})$", t)   # under a minute the clock is written without its minute (':47')
+    if lead and int(lead[1]) < 60:
+        return f"0:{lead[1]}"
+    m = PANEL_SLOT_RE.match(t)
+    if m is None:
+        m = re.match(r"^(\d{1,2}):(\d{2})\s?[/|]\s?\d{1,2}$", t)   # the play clock after a slash ("7:31/40")
+    if m is None and width_ratio >= PANEL_SLOT_MERGED_WIDTH:
+        m = re.match(r"^(\d{1,2})[:.,;'\-](\d{2})\d{1,2}$", t)   # the play clock is glued to the end
+    reads = []
+    if m:
+        reads.append((m[1], m[2]))
+    elif t.isdigit() and (width_ratio <= 0 or width_ratio / len(t) >= PANEL_SLOT_CHAR_WIDTH):
+        if len(t) == 3 and t[0] not in PANEL_SLOT_SEP:   # '347' could be ':47' with the colon read as a 3: no answer
+            reads.append((t[0], t[1:]))
+        elif len(t) == 4:
+            reads.append((t[0], t[2:]) if t[1] in PANEL_SLOT_SEP else None)
+            reads.append((t[:2], t[2:]))
+        elif len(t) == 5 and t[2] in PANEL_SLOT_SEP:
+            reads.append((t[:2], t[3:]))
+    valid = [r for r in reads if r and int(r[0]) <= PANEL_SLOT_MAX_MINUTES and int(r[1]) < 60]
+    if len(valid) != 1:
+        return None
+    return f"{int(valid[0][0])}:{valid[0][1]}"
+
+
+def panel_clock(items: list[dict]) -> "tuple[bool, str | None]":
+    """(is a centre-panel bug, its game clock or None). The clock is read only from the panel's own slot (the lower row beside the quarter
+    ordinal); the corner ticker of other games and the play clock are never looked at. Several different slot readings give None."""
+    anchor = _centre_panel_anchor(items)
+    if anchor is None:
+        return False, None
+    ref, panel = anchor
+    found = set()
+    for it in panel:
+        if it is ref or PANEL_QUARTER_RE.match(it["text"].strip()):
+            continue
+        c = parse_panel_slot(it["text"], (it["x1"] - it["x0"]) / max(1, _h(it)))
+        if c is None:
+            m = PANEL_CLOCK_IN_RE.search(it["text"].strip())
+            c = parse_panel_slot(m[0]) if m else None
+        if c is not None:
+            found.add(c)
+    return True, (found.pop() if len(found) == 1 else None)
+
+
 def read_nbc_snf(items: list[dict], clocks: list[str]):
     """NBC Sunday Night Football bug: 'BAL 9 (clock disc) 17 ATL': a team code at each end, the score right after the left code and right before
     the right code, the round clock disc (game clock, quarter, play clock) in the middle. Anchor: exactly two team codes on one row with a
@@ -220,7 +276,7 @@ def read_nbc_snf(items: list[dict], clocks: list[str]):
     return None
 
 
-def _read_fox_chip_only(items: list[dict]):
+def _read_fox_chip_only(items: list[dict], want_chip: bool = False):
     """Fox bug whose quarter ordinal was not read (or was glued to the clock into one tall item): two numbers of the same height on one row with
     exactly ONE clock-looking item between them, nothing else tall, and a team record ('3-1') under the bug. Exactly one such pair, else None."""
     nums = [it for it in items if NUMBER_RE.match(it["text"].strip()) and it.get("conf", 1.0) >= FOX_DIGIT_CONF and _h(it) >= 60]
@@ -237,18 +293,14 @@ def _read_fox_chip_only(items: list[dict]):
             if (len(chips) == 1 and len(between) == 1 and abs(_cy(chips[0]) - _cy(l)) <= 0.4 * h
                     and any(RECORD_RE.match(it["text"].strip()) and l["x0"] - 0.3 * h <= it["x0"] <= r["x1"] + 0.3 * h and _cy(l) <= it["y0"] and it["y1"] <= l["y1"] + 0.6 * h
                             for it in items)):
-                found.append((l, r))
+                found.append((l, r, chips[0]))
     if len(found) == 1:
-        return int(found[0][0]["text"]), int(found[0][1]["text"])
+        return found[0][2] if want_chip else (int(found[0][0]["text"]), int(found[0][1]["text"]))
     return None
 
 
-def read_fox_nfl(items: list[dict], clocks: list[str]):
-    """Fox NFL bug: crest only, big white scores that float on the field, the small dark clock chip between them with the quarter ordinal glued
-    UNDER the game clock ('2:49' over '3RD'), records under the crests. Anchor: exactly one quarter ordinal with a short text right above it
-    (the clock: its own text is often mangled, so only its place counts); the score is the ONE number much taller than the chip text just left
-    of the chip and the ONE just right of it, centred on the chip's rows. Field markings and stat cards are not centred on the chip."""
-    chip_only = _read_fox_chip_only(items)
+def _fox_ordinal_chips(items: list[dict]) -> list:
+    """The (clock text, quarter ordinal) pairs of a Fox chip: a quarter ordinal with ONE short text right above it."""
     ords = [it for it in items if FOX_ORDINAL_RE.match(it["text"].strip()) and len(it["text"].strip()) >= 3]
     chips = []
     for o in ords:
@@ -258,6 +310,16 @@ def read_fox_nfl(items: list[dict], clocks: list[str]):
                  and any(ch.isdigit() or ch == ":" for ch in it["text"])]
         if len(above) == 1:
             chips.append((above[0], o))
+    return chips
+
+
+def read_fox_nfl(items: list[dict], clocks: list[str]):
+    """Fox NFL bug: crest only, big white scores that float on the field, the small dark clock chip between them with the quarter ordinal glued
+    UNDER the game clock ('2:49' over '3RD'), records under the crests. Anchor: exactly one quarter ordinal with a short text right above it
+    (the clock: its own text is often mangled, so only its place counts); the score is the ONE number much taller than the chip text just left
+    of the chip and the ONE just right of it, centred on the chip's rows. Field markings and stat cards are not centred on the chip."""
+    chip_only = _read_fox_chip_only(items)
+    chips = _fox_ordinal_chips(items)
     if len(chips) != 1:
         return chip_only
     clock, o = chips[0]
@@ -271,6 +333,18 @@ def read_fox_nfl(items: list[dict], clocks: list[str]):
     if len(left) == 1 and len(right) == 1 and min(_h(left[0]), _h(right[0])) >= FOX_DIGIT_PAIR * max(_h(left[0]), _h(right[0])):
         return int(left[0]["text"]), int(right[0]["text"])
     return chip_only
+
+
+def fox_clock(items: list[dict]) -> "str | None":
+    """The game clock of a Fox bug's chip (the clock text above the quarter ordinal, or between the two scores), read by its place with the
+    panel slot rules ('8800' = 8:00, '5859' = 5:59, ':47'); None when there is no chip, the text is no clock or two chips disagree."""
+    chips = [c for c, _ in _fox_ordinal_chips(items)]
+    only = _read_fox_chip_only(items, want_chip=True)
+    if only is not None:
+        chips.append(only)
+    reads = {parse_panel_slot(c["text"], (c["x1"] - c["x0"]) / max(1, _h(c))) for c in chips}
+    reads.discard(None)
+    return reads.pop() if len(reads) == 1 else None
 
 
 TEMPLATES: tuple[Template, ...] = (
