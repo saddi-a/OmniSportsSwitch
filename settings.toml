@@ -92,6 +92,8 @@ extra_point_s = 30.0    # an extra point or two-point conversion this soon after
 anticipation_s = 18.0       # a cue boosts a stream this long (fading)
 cue_alone_cap = 0.30        # a cue with no other sign of excitement adds at most this (below min_score)
 cue_support = 0.10          # crowd + surge + shouting + score change worth this much lift that cap
+touchdown_pair_surge = 0.30 # American football: a spoken touchdown call is a STRONG cue (counts in full) with a loudness surge this big...
+touchdown_pair_window_s = 6.0   # ...at most this long before or after the call (0 = off; user 2026-10-18)
 cue_leverage_gain = 0.5     # a cue is worth x(1 + gain * leverage): up to x1.5 in a late close game, x0.5 in a blowout
 cue_speech_window_s = 20.0  # commentary heard this recently tells what a bare review is about
 goal_banner_strength = 0.4  # soccer: a GOAL banner counts as this fraction of a goal (fading) until a real score change takes it to 1.0

@@ -195,3 +195,36 @@ def test_the_watcher_passes_the_sport_to_the_reader():
         for n in range(5):
             w.update(texts, find_clocks(texts), 3.0 * n, items, sport=sport)
         assert w.score == expected or (expected is None and w.score != (23, 42))
+
+
+# ---- beIN NFL, mangled readings of the live Houston-Jacksonville bug (2026-10-18; boxes.log gives text, height, x0, y0; x1 is estimated) ----
+def _live(rows):
+    return boxes([(t, x, y, x + int(h * 0.55 * len(t)), y + h, 0.9) for t, h, x, y in rows])
+
+
+BEIN_LIVE_A = [('1-4HOU', 36, 436, 844), ('24', 44, 559, 843), ('JAX 20', 50, 784, 840), ('3RD', 40, 949, 845), ('2:34', 42, 1029, 843),
+               ('LONDON', 60, 1260, 831), ('NFL', 29, 239, 856), ('1-4', 24, 438, 854), ('30', 37, 1163, 847)]
+BEIN_LIVE_B = [('UF', 26, 238, 858), ("'Hou| 24", 60, 435, 839), ('JAX} 20', 50, 784, 840), ('3RD', 40, 949, 845), ('2:34', 42, 1029, 843),
+               ('26', 42, 1161, 843), ('LONDON', 40, 1264, 833)]
+BEIN_LIVE_C = [('SCORING DRIVE', 30, 684, 798), ('1-4HOU', 36, 436, 844), ('24', 44, 559, 843), ('4-1JAX20', 50, 748, 839), ('3RD', 40, 949, 845),
+               ('2:34', 42, 1029, 843), ('NFL', 28, 239, 856), ('09', 37, 1163, 847)]
+BEIN_LIVE_D = [('HOU', 31, 474, 847), ('24', 44, 559, 843), ('JAXI', 42, 783, 841), ('3RD', 40, 949, 845), ('2:34', 42, 1029, 843),
+               ('LONDON', 60, 1262, 831), ('25', 37, 1163, 847)]
+
+
+def test_bein_template_reads_the_mangled_live_bug():
+    for rows in (BEIN_LIVE_A, BEIN_LIVE_B, BEIN_LIVE_C):
+        assert read_bein_nfl(_live(rows), ["2:34"]) == (24, 20), rows
+    assert read_bein_nfl(_live(BEIN_LIVE_B), ["2:34"]) == (24, 20)
+
+
+def test_bein_loose_reader_controls():
+    assert read_bein_nfl(_live(BEIN_LIVE_D), ["2:34"]) is None                                   # JAX has no score beside it: never guess
+    assert read_bein_nfl(_live([r for r in BEIN_LIVE_A if r[0] != "JAX 20"]), ["2:34"]) is None  # one team only
+    one_row = [r for r in BEIN_LIVE_C if not r[0].startswith("4-1JAX")] + [('4-1JAX20', 50, 748, 700)]
+    assert read_bein_nfl(_live(one_row), ["2:34"]) is None                                       # the codes are on different rows
+    assert read_bein_nfl(_live([('NFL', 40, 300, 840), ('30', 40, 400, 840), ('WEEK 6', 40, 700, 840)]), []) is None   # banner words are no teams
+    glued = [r if r[0] != "4-1JAX20" else ('JAX20', 50, 748, 839) for r in BEIN_LIVE_C]
+    assert read_bein_nfl(_live(glued), ["2:34"]) is None                                         # no separator, no record: not trusted
+    assert read_bein_nfl(_live([r if r[0] != "JAX 20" else ('HOU 21', 50, 784, 840) for r in BEIN_LIVE_A]), ["2:34"]) is None   # the same team twice (24 vs 21)
+    assert read_template(_live(BEIN_LIVE_A), ["2:34"], "football") is None                       # a template belongs to its sport

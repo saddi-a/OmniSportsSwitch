@@ -1630,3 +1630,85 @@ def test_the_dwell_bypass_is_only_for_the_stream_with_the_fresh_goal():
         return s.decide(t)
     swap = run(3)
     assert swap is not None and swap.promote == 2          # only the goal stream may skip the dwell (the loud one waits)
+
+
+# --- the spoken touchdown pair rule (American football, user 2026-10-18 option B): strong only with a loudness surge close by ---------
+
+def _td_scorer():
+    s = make()
+    warm_up(s, level=0.05, seconds=60)
+    return s
+
+
+def _td_score(s, t):
+    return s.components(2, t)["score"]
+
+
+def test_spoken_touchdown_with_a_surge_before_it_is_strong():
+    s = _td_scorer()
+    steady(s, 2, 0.08, 60, 3)                       # surge ~0.6, nothing else
+    s.set_touchdown_cue(2, 63.0, 0.35)
+    assert s.streams[2].anticipation_strong
+    assert _td_score(s, 63.5) >= s.config.min_score
+
+
+def test_spoken_touchdown_with_a_surge_after_it_is_upgraded():
+    s = _td_scorer()
+    s.set_touchdown_cue(2, 60.0, 0.35)
+    assert not s.streams[2].anticipation_strong
+    steady(s, 2, 0.08, 60.5, 8)                     # the roar lags the words by a few seconds
+    assert s.streams[2].anticipation_strong
+    assert s.components(2, 66.0)["cue"] > 0
+
+
+def test_spoken_touchdown_without_a_surge_stays_capped():
+    s = _td_scorer()
+    s.set_touchdown_cue(2, 60.0, 0.35)
+    steady(s, 2, 0.05, 60.5, 8)
+    assert not s.streams[2].anticipation_strong
+    assert _td_score(s, 61.0) <= s.config.cue_alone_cap + 1e-6 and _td_score(s, 61.0) < s.config.min_score
+
+
+def test_spoken_touchdown_with_a_surge_outside_the_window_stays_capped():
+    s = _td_scorer()
+    s2 = _td_scorer()
+    steady(s2, 2, 0.08, 60, 2)
+    steady(s2, 2, 0.05, 62, 30)                    # back to normal (the surge is long gone)
+    s2.set_touchdown_cue(2, 92.0, 0.35)
+    steady(s2, 2, 0.05, 92.5, 10)
+    assert not s2.streams[2].anticipation_strong
+    s3 = _td_scorer()
+    s3.set_touchdown_cue(2, 60.0, 0.35)
+    steady(s3, 2, 0.05, 60.5, 10)                  # the window passes without a surge
+    steady(s3, 2, 0.08, 71.0, 3)                   # a surge 11 s later
+    assert not s3.streams[2].anticipation_strong
+
+
+def test_pair_rule_off_with_window_zero_and_plain_cues_unchanged():
+    s = make(touchdown_pair_window_s=0.0)
+    warm_up(s)
+    steady(s, 2, 0.08, 60, 3)
+    s.set_touchdown_cue(2, 63.0, 0.35)
+    assert not s.streams[2].anticipation_strong
+    s = _td_scorer()
+    steady(s, 2, 0.08, 60, 3)
+    s.set_anticipation(2, 63.0, 0.35)               # any other spoken cue goes through set_anticipation
+    assert not s.streams[2].anticipation_strong
+
+
+def test_the_strong_touchdown_cue_lasts_only_the_normal_anticipation_time():
+    s = _td_scorer()
+    steady(s, 2, 0.08, 60, 3)
+    s.set_touchdown_cue(2, 63.0, 0.35)
+    steady(s, 2, 0.05, 63.5, 30)
+    assert s.components(2, 93.0)["cue"] == 0.0
+    assert _td_score(s, 93.0) < s.config.min_score
+
+
+def test_a_later_stronger_cue_is_not_made_strong_by_the_pending_touchdown():
+    s = _td_scorer()
+    s.set_touchdown_cue(2, 60.0, 0.35)
+    s.set_anticipation(2, 61.0, 0.20)               # weaker: does not replace the touchdown cue, which stays pending
+    s.set_anticipation(2, 62.0, 0.50)               # stronger non-strong cue replaces it
+    steady(s, 2, 0.08, 62.5, 4)
+    assert not s.streams[2].anticipation_strong

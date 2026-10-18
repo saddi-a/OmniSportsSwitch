@@ -49,7 +49,7 @@ from daemon.rapid_reader import RapidReader, needs_rescue
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
 from daemon.buildup import BuildUp, is_soccer, moves_main
-from daemon.cues import GoalPhraseWatch, SpeechMemory, SurgeRiseWatch, surge_rise_weight, cue_weight, end_zone_factor, is_strong_cue, speech_cue_weight, tracker_note_weight
+from daemon.cues import AMERICAN_FOOTBALL, GoalPhraseWatch, SpeechMemory, SurgeRiseWatch, surge_rise_weight, cue_weight, end_zone_factor, is_strong_cue, speech_cue_weight, tracker_note_weight
 from daemon.speech import find_speech_cues
 from daemon.scoring import SHOUT_CLASSES, Scorer, Swap
 
@@ -739,7 +739,10 @@ class Server:
                         weight = speech_cue_weight(cue, sport, tcfg.weights, tcfg.speech_cue_factor)
                         if weight is not None:   # a commentator calling a dangerous moment boosts the stream like the banner would, at a discount
                             log.info("anticipation %s tab %s%s (spoken) weight %.2f", cue, tab_id, where, weight)
-                            self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, sport, tcfg.weights), tile=tile)
+                            if cue == "touchdown" and (sport or "").strip().lower() == AMERICAN_FOOTBALL:   # pair rule: strong only with a loudness surge close by
+                                self.scorer.set_touchdown_cue(tab_id, now, weight, tile=tile)
+                            else:
+                                self.scorer.set_anticipation(tab_id, now, weight, strong=is_strong_cue(weight, sport, tcfg.weights), tile=tile)
                             self.buildup.note(bkey, now, weight, "spoken:" + cue)
                         note = tracker_note_weight(cue, sport, tcfg.weights, tcfg.speech_cue_factor)
                         if note is not None:   # a set piece is a build-up sign for the tracker only: no score, no anticipation

@@ -177,6 +177,8 @@ LAYOUT = [
         ("scoring.cue_zone_far_yd", "End zone: far (yards)", "At this distance or farther, the end-zone cue has its lowest weight."),
         ("scoring.cue_alone_cap", "Cue alone: most it adds", "A cue with no other sign of excitement (crowd, loudness, shouting, a score) adds at most this. Keep it under the minimum score."),
         ("scoring.cue_support", "Cue: other excitement needed", "Crowd + loudness + shouting + score change worth this much lift the cap above."),
+        ("scoring.touchdown_pair_surge", "Touchdown call: surge needed", "American football: a spoken touchdown call counts in full (a strong cue) when the loudness surge is at least this big close to it."),
+        ("scoring.touchdown_pair_window_s", "Touchdown call: window (s)", "...at most this long before or after the call. 0 = off (the call stays a capped cue)."),
         ("scoring.cue_leverage_gain", "Cue: close game boost", "A cue is worth x(1 + this x leverage): more in a late close game, less in a late blowout."),
         ("scoring.cue_speech_window_s", "Cue: commentary window (s)", "Commentary heard this recently tells what a bare review is about."),
         ("scoring.anticipation_cooldown_s", "Anticipation cooldown (s)", "The same banner is not reported again this soon."),

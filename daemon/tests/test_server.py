@@ -1029,3 +1029,28 @@ def test_an_expand_that_failed_in_the_extension_is_logged_with_its_error(caplog)
     with caplog.at_level(logging.WARNING):
         server.handle_message({"type": "expand_failed", "tab_id": 20, "index": 2, "error": "Another debugger is already attached to the tab with id: 20."})
     assert "expand of tab 20 tile 2 failed in the extension" in caplog.text and "Another debugger is already attached" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_spoken_touchdown_is_strong_only_in_american_football_and_with_a_surge():
+    class FakeListener:
+        device = "fake"
+
+        def transcribe(self, samples):
+            return "quel touchdown, touchdown !", "fr"
+
+    for sport, loud, strong in (("american football", True, True), ("american football", False, False), ("football", True, False)):
+        server = Server(Scorer(Config(speech_interval_s=0.01, speech_window_s=1.0, warmup_s=0)), speech=FakeListener())
+        server.handle_message({"type": "register", "tab_id": 5, "sport": sport})
+        t0 = time.monotonic()
+        for i in range(120):
+            server.scorer.add_audio(5, 0.05, t0 - 70.0 + i * 0.5)
+        for i in range(8 if loud else 0):
+            server.scorer.add_audio(5, 0.08, t0 - 5.0 + i * 0.5)
+        server.speech_buffers[5] = np.zeros(SAMPLE_RATE_FOR_TEST, dtype=np.float32)
+        task = asyncio.create_task(server._speech_loop())
+        await asyncio.sleep(1.2)
+        task.cancel()
+        rec = server.scorer.streams[5]
+        assert rec.anticipation_value > 0 or sport == "football", sport
+        assert rec.anticipation_strong is strong, (sport, loud)
