@@ -33,7 +33,7 @@ def test_the_shipped_settings_file_equals_the_built_in_defaults(tmp_path):
     assert dataclasses.asdict(settings.scoring) == dataclasses.asdict(Config())
     assert dataclasses.asdict(settings.focus) == dataclasses.asdict(FocusConfig())
     assert game_state.profile_for("football") == game_state.SportProfile(20, 45)
-    assert game_state.profile_for("American football") == game_state.SportProfile(240, 90)
+    assert game_state.profile_for("American football") == game_state.SportProfile(90, 90, 45)
     assert game_state.profile_for(None) == game_state.SportProfile(120, 60)
     assert game_state.AD_PHRASES == ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire",
                                      "publicidade", "pausa comercial", "ad break", "advertisement", "right back", "volvemos",

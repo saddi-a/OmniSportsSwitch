@@ -915,6 +915,19 @@ class Server:
         self.limits[tab_id] = limit
         self.scorer.set_can_main(tab_id, limit is None or "MAIN" in limit)
 
+    def _tile_quiet(self, tab_id: int, index: int, is_multi: bool, now: float) -> bool | None:
+        """Is the sound quiet (crowd and rise in loudness both low) on this tile? None when the tile has no sound of its own (a multiview tile
+        without the sound) or the stream has no recent audio: a frozen game clock then waits for the long limit."""
+        if is_multi:
+            seen = self.audible_seen.get(tab_id)
+            if seen is None or seen[0] != index:
+                return None
+        c = self.scorer.components(tab_id, now)
+        if c is None:
+            return None
+        level = self.scorer.config.dead_quiet_level
+        return c["crowd"] < level and c["surge"] < level
+
     def _update_game_states(self, results: dict, now: float) -> None:
         per_tab: dict[int, list[str]] = {}
         tile_states: dict[tuple[int, int], str] = {}
@@ -946,7 +959,7 @@ class Server:
             if detected != self.sport_seen.get((tab_id, index)):
                 log.info("sport detected tab %s tile %s: %s", tab_id, index, detected or "unknown")
                 self.sport_seen[(tab_id, index)] = detected
-            tile_states[(tab_id, index)] = tracker.update(now, r["texts"], r["clocks"])
+            tile_states[(tab_id, index)] = tracker.update(now, r["texts"], r["clocks"], quiet=self._tile_quiet(tab_id, index, tab_id in multi, now))
             per_tab.setdefault(tab_id, []).append(tile_states[(tab_id, index)])
             if tracker.scorebug_note:   # measuring only: DAZN hides the scorebug during replays
                 kind, secs = tracker.scorebug_note
