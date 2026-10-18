@@ -322,7 +322,8 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
         for p in panel:
             h = p["y1"] - p["y0"]
             if (n["x0"] >= p["x1"] - 5 and abs((n["y0"] + n["y1"]) / 2 - (p["y0"] + p["y1"]) / 2) <= 0.6 * h and n["x0"] - p["x1"] <= 4 * h
-                    and (n["y1"] - n["y0"]) <= PLAY_CLOCK_VS_PANEL * h):
+                    and (n["y1"] - n["y0"]) <= PLAY_CLOCK_VS_PANEL * h
+                    and not any(t["x0"] >= p["x1"] - 5 and t["x1"] <= n["x0"] + 5 and abs(cy(t) - cy(p)) <= 0.8 * h for t in teams)):   # a team code between them: a score, not a play clock (stacked LaLiga bug)
                 return True
         return False
 

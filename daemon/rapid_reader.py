@@ -14,9 +14,9 @@ import re
 import numpy as np
 
 from daemon.game_state import AD_PHRASES, PROMO_PHRASES
-from daemon.score_slots import read_slots
+from daemon.score_slots import read_slots, read_stacked
 from daemon.score_watch import find_score_geo
-from daemon.screen_ocr import GAP_DIGIT_HEIGHT, NOT_TEAM_WORDS, TEAM_CODE_RE, find_clocks, find_name_pair, looks_like_team_name
+from daemon.screen_ocr import GAP_DIGIT_HEIGHT, NOT_TEAM_WORDS, TEAM_CODE_RE, find_clocks, find_name_pair, find_stacked_pair, looks_like_team_name
 
 log = logging.getLogger("daemon")
 
@@ -152,6 +152,26 @@ def slot_items(left: dict, right: dict, left_score: int, right_score: int, conf:
             {"text": str(right_score), "conf": conf, "x0": right["x0"] - 2 - w, "x1": right["x0"] - 2, "y0": y0, "y1": y1}]
 
 
+def known_digit(name: dict, items: list[dict]) -> int | None:
+    """The score a reader already found right of a team name on its own row (a number item, confidence 0.5 or more), else None."""
+    h = max(name["y1"] - name["y0"], 1)
+    cy = (name["y0"] + name["y1"]) / 2
+    for it in items:
+        if re.fullmatch(r"\d{1,3}", it["text"].strip()) and it.get("conf", 1.0) >= 0.5 and it["x0"] >= name["x1"] - 3 and it["x0"] - name["x1"] <= 4 * h                 and abs((it["y0"] + it["y1"]) / 2 - cy) <= 0.6 * h:
+            return int(it["text"])
+    return None
+
+
+def stacked_slot_items(top: dict, bottom: dict, top_score: int, bottom_score: int, conf: float = 0.9) -> list[dict]:
+    """The two score digits of a stacked scorebug as items right of their own names (the stacked rule of `find_score_geo` pairs them)."""
+    out = []
+    for name, score in ((top, top_score), (bottom, bottom_score)):
+        h = name["y1"] - name["y0"]
+        cy, dh, w = (name["y0"] + name["y1"]) // 2, int(GAP_DIGIT_HEIGHT * h), max(2, int(0.8 * h))
+        out.append({"text": str(score), "conf": conf, "x0": name["x1"] + 2, "x1": name["x1"] + 2 + w, "y0": cy - dh // 2, "y1": cy + dh // 2})
+    return out
+
+
 class RapidReader:
     def __init__(self, engine=None, gpu: bool = False):
         self.engine = engine if engine is not None else _load_engine(gpu)
@@ -210,9 +230,14 @@ class RapidReader:
         merged = merge_items(items, self.read_items(image))
         clocks = find_clocks([it["text"] for it in merged])
         if find_score_geo(merged, clocks) is None:
-            pair = find_name_pair([dict(it, conf=max(it["conf"], 0.55), text=_as_code(it["text"])) for it in merged])
+            named = [dict(it, conf=max(it["conf"], 0.55), text=_as_code(it["text"])) for it in merged]
+            pair = find_name_pair(named)
             if pair is not None:
                 scores = read_slots(image, pair[0], pair[1], self.rec)
                 if scores is not None:
                     merged = merge_items(merged, slot_items(pair[0], pair[1], scores[0], scores[1]))
+            elif (stacked := find_stacked_pair(named)) is not None:   # two names one above the other: the score is right of each
+                scores = read_stacked(image, stacked[0], stacked[1], self.rec, known=(known_digit(stacked[0], merged), known_digit(stacked[1], merged)))
+                if scores is not None:
+                    merged = merge_items(merged, stacked_slot_items(stacked[0], stacked[1], scores[0], scores[1]))
         return merged

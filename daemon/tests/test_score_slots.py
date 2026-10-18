@@ -57,3 +57,38 @@ def test_no_score_when_the_names_leave_no_room_for_two_scores():
 def test_text_that_is_not_a_number_is_ignored():
     assert not read_slot(IMAGE, LEFT, RIGHT, "left", lambda crop: ("TEXAS", 0.99))
     assert not read_slot(IMAGE, LEFT, RIGHT, "right", lambda crop: ("12:30", 0.99))
+
+
+# ---- stacked names (Ligue 1 bug: LOSC above HAC, each score right of its own name) --------------------------------
+
+from daemon.score_slots import read_stacked, stacked_windows   # noqa: E402
+
+TOP = {"text": "LOSC", "x0": 103, "x1": 137, "y0": 34, "y1": 49}      # real boxes of the second reader
+BOTTOM = {"text": "HAC", "x0": 103, "x1": 132, "y0": 56, "y1": 72}
+STACK_IMAGE = np.zeros((200, 400, 3), dtype=np.uint8)
+
+
+def test_the_windows_of_a_stacked_slot_start_at_the_right_edge_of_its_own_name_and_never_go_left_of_it():
+    top = stacked_windows(TOP)
+    assert top and min(x0 for x0, _ in top) == TOP["x1"] - 0.2 * 15 and all(x1 > x0 for x0, x1 in top)
+    assert max(x0 for x0, _ in top) - TOP["x1"] <= 4 * 15        # a slot is never far from its name
+
+
+def test_read_stacked_returns_the_top_and_the_bottom_score():
+    n_top = len(stacked_windows(TOP))
+    rec = answers(*([("1", 0.95)] * n_top + [("0", 0.9)]))        # the top slot is read first
+    assert read_stacked(STACK_IMAGE, TOP, BOTTOM, rec) == (1, 0)
+
+
+def test_read_stacked_needs_both_slots():
+    assert read_stacked(STACK_IMAGE, TOP, BOTTOM, answers(("", 0.0))) is None
+    n_top = len(stacked_windows(TOP))
+    assert read_stacked(STACK_IMAGE, TOP, BOTTOM, answers(*([("1", 0.95)] * n_top + [("x", 0.9)]))) is None   # the bottom slot reads no number
+
+
+def test_a_slot_the_readers_already_found_is_not_read_again():
+    # the Ligue 1 frame: the full read found the bottom 0 (0.95) but not the top 1; the sweep reads only the top slot
+    rec = answers(("1", 0.95))
+    assert read_stacked(STACK_IMAGE, TOP, BOTTOM, rec, known=(None, 0)) == (1, 0)
+    assert read_stacked(STACK_IMAGE, TOP, BOTTOM, answers(("", 0.0)), known=(None, 0)) is None     # the missing slot is still needed
+    assert read_stacked(STACK_IMAGE, TOP, BOTTOM, answers(("", 0.0)), known=(2, 0)) == (2, 0)       # both known: nothing to read

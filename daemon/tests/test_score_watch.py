@@ -692,3 +692,25 @@ def test_a_normal_two_digit_score_is_not_split():
     board = [{"text": "LIV", "x0": 56, "y0": 30, "x1": 98, "y1": 54}, {"text": "10", "x0": 104, "y0": 24, "x1": 142, "y1": 56},
              {"text": "0", "x0": 152, "y0": 24, "x1": 178, "y1": 56}, {"text": "MCI", "x0": 194, "y0": 30, "x1": 240, "y1": 54}]
     assert find_score_geo(board, []) == (10, 0)
+
+
+# ---- stacked LaLiga bug: the clock sits on the second team's row (Barcelona-Getafe, DAZN) -------------------------
+
+BAR_GET_STACKED = [   # real boxes of the zoomed strip: BAR / GET one above the other, their scores right of them, the clock left of GET
+    {"text": "BAR", "x0": 144, "y0": 30, "x1": 181, "y1": 52}, {"text": "1", "x0": 206, "y0": 30, "x1": 219, "y1": 51},
+    {"text": "07:54", "x0": 79, "y0": 72, "x1": 140, "y1": 96}, {"text": "GET", "x0": 146, "y0": 72, "x1": 179, "y1": 94},
+    {"text": "0", "x0": 205, "y0": 73, "x1": 221, "y1": 97}]
+
+
+def test_a_score_digit_behind_a_team_code_is_not_a_play_clock_even_beside_the_game_clock():
+    from daemon.score_watch import find_score_geo
+    assert find_score_geo(BAR_GET_STACKED, ["07:54"]) == (1, 0)        # the 0 was dropped as a play clock: it sits right of the clock panel
+
+
+def test_a_play_clock_right_of_the_game_clock_is_still_not_a_score():
+    from daemon.score_watch import find_score_geo
+    # the NFL scorebug: team names left and right, "2nd 9:34 :25", the play clock 25 in the clock's size right of it, nothing between
+    board = [{"text": "HOUSTON", "x0": 40, "y0": 60, "x1": 160, "y1": 84}, {"text": "7", "x0": 170, "y0": 40, "x1": 200, "y1": 100},
+             {"text": "9:34", "x0": 215, "y0": 60, "x1": 270, "y1": 84}, {"text": "25", "x0": 280, "y0": 60, "x1": 312, "y1": 84},
+             {"text": "3", "x0": 330, "y0": 40, "x1": 360, "y1": 100}, {"text": "K-STATE", "x0": 370, "y0": 60, "x1": 490, "y1": 84}]
+    assert find_score_geo(board, ["9:34"]) == (7, 3)
