@@ -17,6 +17,8 @@ from collections import Counter, deque
 
 from daemon.scoring import Config
 from daemon.clock import clock_seconds as _shared_clock_seconds
+from daemon.scoreboard_profiles import AMERICAN_FOOTBALL, GENERIC, ScoreboardProfile, profile_for
+from daemon.scoreboard_templates import read_template
 
 SCORE_PAIR_RE = re.compile(r"^(\d{1,3})\s?[-–:]\s?(\d{1,3})$")  # "2-0"
 NUMBER_RE = re.compile(r"^\d{1,3}$")
@@ -46,7 +48,7 @@ MAX_PAIR_VALUE = 9   # "a-b" tokens above this are more likely a misread clock t
 MAX_RISE = 10
 RECORD_ROW = 0.8   # a "4-0" pair counts as a score only when its team names are on its own row (records sit below the names)
 PANEL_QUARTER_RE = re.compile(r"^(q[1-4]|[1-4]q)$", re.I)
-PLAY_CLOCK_VS_PANEL = 1.3   # a number right of the clock / quarter text and at most this much taller than it is the play clock, not a score
+PLAY_CLOCK_VS_PANEL = 1.3   # (the default of every profile: `scoreboard_profiles`) a number right of the clock / quarter text and at most this much taller than it is the play clock, not a score
 SCORE_VS_LABEL = 2.0   # score digits are at least this much taller than the team names beside them
 CLOCK_SLACK_S = 20   # allowed clock movement beyond twice the elapsed time before it counts as a jump
 CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
@@ -243,13 +245,52 @@ def _without_glued_crest(it: dict) -> dict:
     return it
 
 
-def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | None:
+GLUED_RANK_RE = re.compile(r"^\d{1,2}[^\W\d_]{3,}(?:[ .'\-][^\W\d_]+)*$")   # "24KENTUCKY", "18USC": the ranking read glued to the name
+TRIM_ROW = 0.5   # a number overlapping the one before it must be on its row (centres within this many line heights)
+
+
+def _trim_overlapping_digits(items: list[dict]) -> list[dict]:
+    """A number of three digits or more whose box starts inside the box of another number on its row ("23" and "342": the real "42" read with
+    a copy of the neighbour's last digit in front) loses the leading digits that lie over the neighbour, if they are a copy of that neighbour's last digits. The result is marked `trimmed`."""
+    out = []
+    for it in items:
+        text = it["text"].strip()
+        if text.isdigit() and len(text) >= 3:
+            h = it["y1"] - it["y0"]
+            for o in items:
+                ot = o["text"].strip()
+                if (o is not it and ot.isdigit() and o["x0"] < it["x0"] < o["x1"] and o["x1"] < it["x1"]
+                        and abs((o["y0"] + o["y1"]) / 2 - (it["y0"] + it["y1"]) / 2) <= TRIM_ROW * h):
+                    char = (it["x1"] - it["x0"]) / len(text)
+                    drop = -(-(o["x1"] - it["x0"]) // char)   # whole characters under the neighbour, rounded up
+                    if 0 < drop <= len(text) - 2 and text[:int(drop)] == ot[-int(drop):]:   # only a true copy of the neighbour's last digits is cut
+                        it = dict(it, text=text[int(drop):], x0=it["x0"] + char * drop, trimmed=True)
+                    break
+        out.append(it)
+    return out
+
+
+def find_score_geo(items: list[dict], clocks: list[str], sport: str | None = None) -> tuple[int, int] | None:
     """Score from the size and position of the text (each item has text, x0, y0, x1, y1).
 
     Score digits are the biggest numbers on the scoreboard, two of them side by side on one line with similar
     height, with a team name nearby. Play clocks, records, jersey numbers and "2nd & 10" are smaller or alone.
+
+    Lookup order: a recognised network / league TEMPLATE (`scoreboard_templates`) reads the board from its known structure;
+    otherwise the PROFILE of `sport` (`scoreboard_profiles`) sets the rules; with no sport, a down text ("1ST & 10") on screen
+    means American football, anything else is the generic profile.
     """
+    key = " ".join(str(sport or "").lower().split()) or None
+    from daemon.game_state import DOWN_RE   # game_state imports this module
+    if key is None and any(DOWN_RE.fullmatch(it["text"].strip()) for it in items):
+        key = AMERICAN_FOOTBALL.name
+    hit = read_template(items, clocks, key)
+    if hit is not None:
+        return hit[1]
+    profile = profile_for(key)
     skip = set(clocks)
+    if profile.trim_overlapping_digits:
+        items = _trim_overlapping_digits(items)
     items = [dict(it, text=m.group(1)) if (m := DIGIT_WITH_MARKS_RE.match(it["text"].strip())) else it for it in items]
     items = [part for it in items for part in _wide_code_scores(it)]
     items = [half for it in items for half in _wide_pair_halves(it)]
@@ -287,7 +328,8 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     def cy(it):
         return (it["y0"] + it["y1"]) / 2
 
-    teams = [it for it in live if (TEAM_RE.match(it["text"].strip()) or RANKED_TEAM_RE.match(it["text"].strip()))
+    teams = [it for it in live if (TEAM_RE.match(it["text"].strip()) or RANKED_TEAM_RE.match(it["text"].strip())
+                                   or (profile.glued_rank_names and GLUED_RANK_RE.match(it["text"].strip())))
              and len(it["text"].strip()) >= 3 and not ORDINAL_RE.match(it["text"].strip())]
 
     def teams_near(line_cy, line_h, x0, x1) -> int:
@@ -338,7 +380,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
         for p in panel:
             h = p["y1"] - p["y0"]
             if (n["x0"] >= p["x1"] - 5 and abs((n["y0"] + n["y1"]) / 2 - (p["y0"] + p["y1"]) / 2) <= 0.6 * h and n["x0"] - p["x1"] <= 4 * h
-                    and (n["y1"] - n["y0"]) <= PLAY_CLOCK_VS_PANEL * h
+                    and (n["y1"] - n["y0"]) <= profile.play_clock_vs_panel * h
                     and not any(t["x0"] >= p["x1"] - 5 and t["x1"] <= n["x0"] + 5 and abs(cy(t) - cy(p)) <= 0.8 * h for t in teams)   # a team code between them: a score, not a play clock (stacked LaLiga bug)
                     and not any(m is not n and NUMBER_RE.match(m["text"].strip()) and 0.7 <= height(m) / max(height(n), 1) <= 1.43 and abs(m["x0"] - n["x0"]) <= 0.6 * height(n)
                                 and 0.8 * height(n) <= abs(cy(m) - cy(n)) <= 3.0 * height(n) for m in live)):   # an equal number stacked right above or below it: the two scores of a stacked scorebug
@@ -353,7 +395,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             if ha < 12 or hb < 12 or abs(cy(a) - cy(b)) > 0.5 * max(ha, hb) or not 0.7 <= ha / hb <= 1.43:
                 continue
             left, right = (a, b) if a["x0"] <= b["x0"] else (b, a)
-            if right["x0"] - left["x1"] < 0.3 * min(ha, hb):
+            if right["x0"] - left["x1"] < 0.3 * min(ha, hb) and not right.get("trimmed"):
                 continue
             near = teams_near((cy(a) + cy(b)) / 2, max(ha, hb), left["x0"], right["x1"])
             if near == 0:
@@ -532,7 +574,7 @@ class ScoreWatcher:
             self._reset(now)
         if any(STAT_GRAPHIC_RE.search(t) for t in texts):
             return False   # a stat graphic or halftime banner: its numbers are not the score, and must not become the baseline
-        score = find_score_geo(items, clocks) if items else None
+        score = find_score_geo(items, clocks, sport) if items else None
         if score is None:
             score = find_score(texts, clocks, anchored_only=bool(items))
             if score is not None and items and not _numbers_read_as_a_score(score, items):
