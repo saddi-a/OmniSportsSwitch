@@ -117,3 +117,57 @@ def test_merge_zoom_keeps_what_is_outside_the_crop():
 def test_the_video_players_position_over_length_is_not_a_game_clock():
     assert find_clocks(["71:27", "11:16/14:06"]) == ["71:27"]
     assert find_clocks(["11:16 / 14:06"]) == []
+
+
+def _boxes(rows):
+    return [{"text": t, "x0": a, "y0": b, "x1": c, "y1": d, "conf": q} for t, a, b, c, d, q in rows]
+
+
+# Real boxes (benchmark frames, 2026-10-18 / 2026-10-10 / 2026-10-04), a few unrelated items left out.
+STRA_PSG = _boxes([("STRA", 83, 27, 123, 45, .98), ("0", 138, 30, 148, 44, .98), ("PSG", 83, 49, 115, 69, .99), ("0", 138, 52, 148, 67, .97),
+                   ("03.03", 37, 71, 79, 91, .82), ("k", 845, 243, 867, 259, .51), ("1.20", 111, 505, 143, 523, .54),
+                   ("HD", 784, 506, 797, 515, .96), ("00", 7, 504, 27, 527, .92), ("10.49", 151, 509, 191, 523, .65)])
+LIV_MCI = _boxes([("LIV", 61, 34, 98, 55, .79), ("02", 100, 27, 193, 60, .99), ("MCI", 196, 34, 242, 58, .99), ("71-27", 127, 57, 169, 73, .67),
+                  ("Premier Loayue", 849, 488, 932, 502, .84), ("00", 26, 510, 46, 533, .74), ("11:16", 131, 513, 171, 529, .94),
+                  ("14.06", 179, 513, 219, 529, .97), ("HD", 803, 512, 815, 522, .97)])
+INDIANA = _boxes([("INDIANA", 371, 441, 429, 461, .97), ("3", 443, 436, 463, 472, .94), ("3", 490, 435, 510, 472, .99),
+                  ("MEBRASKA", 522, 438, 600, 464, .55), ("colandrea", 723, 469, 779, 485, .42), ("7/12,78 YDs", 785, 469, 841, 485, .56),
+                  ("140", 420, 484, 456, 508, 1.0), ("38", 464, 484, 492, 508, 1.0), ("Ist & 10", 498, 484, 560, 508, .71)])
+MIAMI = _boxes([("MIAMI", 53, 985, 167, 1021, .94), ("CLEMSON", 1185, 985, 1363, 1021, .74), ("17", 320, 1010, 458, 1085, 1.0),
+                ("3", 950, 1010, 1039, 1083, 1.0), ("2ND", 516, 1053, 599, 1088, .98), (":18", 635, 1051, 738, 1088, .84),
+                ("25", 794, 1053, 858, 1086, 1.0)])
+
+
+def test_player_bar_times_are_dropped_by_position_when_they_are_two_items():
+    assert find_clocks([i["text"] for i in STRA_PSG]) == ["03:03", "1:20", "10:49"]   # the texts alone cannot tell
+    assert find_clocks([i["text"] for i in STRA_PSG], STRA_PSG) == ["03:03"]
+    assert find_clocks([i["text"] for i in LIV_MCI], LIV_MCI) == []                 # the '71-27' dash read is no clock; the bar is gone
+
+
+def test_two_clocks_that_are_not_the_bottom_line_are_both_kept():
+    # a control: the same two clocks with text below them are not a player bar (a scorebug may sit low on the screen)
+    below = STRA_PSG + _boxes([("FOOTER", 100, 530, 160, 545, .9)])
+    assert find_clocks([i["text"] for i in below], below) == ["03:03", "1:20", "10:49"]
+    # and one clock alone on the bottom line is the game clock
+    alone = [i for i in STRA_PSG if i["text"] != "10.49"]
+    assert find_clocks([i["text"] for i in alone], alone) == ["03:03", "1:20"]
+
+
+def test_seconds_of_sixty_or_more_are_not_a_clock():
+    assert find_clocks([i["text"] for i in INDIANA], INDIANA) == []   # '12,78' from '7/12,78 YDs'
+    assert find_clocks(["7/12,78 YDs"]) == []
+    assert find_clocks(["12:59", "0:00"]) == ["12:59", "0:00"]
+
+
+def test_a_bare_seconds_clock_beside_its_quarter_is_read():
+    assert find_clocks([i["text"] for i in MIAMI], MIAMI) == ["0:18"]
+    assert find_clocks([i["text"] for i in MIAMI]) == []   # without boxes nothing is guessed
+
+
+def test_a_bare_seconds_text_without_a_quarter_or_sure_reading_is_ignored():
+    no_quarter = [i for i in MIAMI if i["text"] != "2ND"]
+    assert find_clocks([i["text"] for i in no_quarter], no_quarter) == []
+    unsure = [dict(i, conf=0.5) if i["text"] == ":18" else i for i in MIAMI]
+    assert find_clocks([i["text"] for i in unsure], unsure) == []
+    far = [dict(i, x0=i["x0"] + 600, x1=i["x1"] + 600) if i["text"] == ":18" else i for i in MIAMI]
+    assert find_clocks([i["text"] for i in far], far) == []

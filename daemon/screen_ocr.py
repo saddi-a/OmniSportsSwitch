@@ -252,15 +252,67 @@ def reading_order(found: list) -> list:
     return [item for line in lines for item in sorted(line, key=lambda i: centre(i)[2])]
 
 
-def find_clocks(texts: list[str]) -> list[str]:
-    """Game-clock-looking strings such as '32:19' or '3:08' in the OCR output."""
+PLAYER_BAR_GAP = 1.0     # the player bar's two times ('position' 'length') are at most this many text heights apart...
+PLAYER_BAR_BOTTOM = 0.85  # ...and sit on the lowest line of the text, below this fraction of the text's total height
+BARE_SECONDS_RE = re.compile(r":([0-5]\d)")   # a clock under one minute written without the minute: ':18'
+QUARTER_RE = re.compile(r"(\d(st|nd|rd|th)|ot)", re.I)
+BARE_SECONDS_CONFIDENCE = 0.8
+_PURE_CLOCK_RE = re.compile(r"\d{1,3}\s?[:.,]\s?\d{2}")
+
+
+def player_bar_items(items: list[dict]) -> list[dict]:
+    """The two clock-shaped texts of a video player's bar ('1:20' beside '10:49', the '/' unread): two clocks that touch on
+    the lowest line of the text. A scorebug's clocks are never side by side (a play clock has no colon)."""
+    clocks = [it for it in items if _PURE_CLOCK_RE.fullmatch(it["text"].strip())]
+    if len(clocks) < 2 or not items:
+        return []
+    top, bottom = min(it["y0"] for it in items), max(it["y1"] for it in items)
+    out = []
+    for a in clocks:
+        h = a["y1"] - a["y0"]
+        for b in clocks:
+            if b is a or not (0 <= b["x0"] - a["x1"] <= PLAYER_BAR_GAP * h):
+                continue
+            if abs((a["y0"] + a["y1"]) - (b["y0"] + b["y1"])) > h:
+                continue
+            if (a["y0"] + a["y1"]) / 2 < top + PLAYER_BAR_BOTTOM * (bottom - top):
+                continue
+            if any(it["y0"] > a["y1"] for it in items):
+                continue   # something is below them: not the bottom bar
+            out += [a, b]
+    return out
+
+
+def bare_seconds_clocks(items: list[dict]) -> list[str]:
+    """':18' read beside its quarter ('2ND') on the same line is the clock 0:18 (the minutes digit is not drawn)."""
+    out = []
+    for it in items:
+        m = BARE_SECONDS_RE.fullmatch(it["text"].strip())
+        if not m or it.get("conf", 0) < BARE_SECONDS_CONFIDENCE:
+            continue
+        h = it["y1"] - it["y0"]
+        if any(QUARTER_RE.fullmatch(q["text"].strip()) and 0 <= it["x0"] - q["x1"] <= 2 * h and abs((q["y0"] + q["y1"]) - (it["y0"] + it["y1"])) <= h
+               for q in items):
+            out.append(f"0:{m[1]}")
+    return out
+
+
+def find_clocks(texts: list[str], items: list[dict] | None = None) -> list[str]:
+    """Game-clock-looking strings such as '32:19' or '3:08' in the OCR output. With the items (their boxes) the video
+    player's bar times are dropped by position and a bare ':18' beside its quarter is read."""
+    extra = []
+    if items:
+        bar = {id(it) for it in player_bar_items(items)}
+        texts = [it["text"] for it in items if id(it) not in bar]
+        extra = bare_seconds_clocks(items)
     clocks = []
     for text in texts:
         if PLAYER_TIME_RE.search(text):
             continue   # '11:16/14:06' is the video player's position, not the game clock
         found = [re.sub(r"[.,]", ":", m.replace(" ", "")) for m in CLOCK_RE.findall(text)]
+        found = [c for c in found if int(c[-2:]) < 60]   # '12:78' (from '7/12,78 YDs') is not a time
         glued = COLON_AS_DIGIT_RE.fullmatch(text.strip())
         if not found and glued and int(glued[2]) < 60:
             found = [f"{glued[1]}:{glued[2]}"]
         clocks += found
-    return clocks
+    return clocks + extra

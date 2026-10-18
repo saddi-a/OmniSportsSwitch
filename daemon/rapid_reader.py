@@ -133,7 +133,7 @@ def needs_rescue(items: list[dict], small_tile: bool = False) -> bool:
     anyway (measured on frames shrunk to 467 px: EasyOCR read 0 of 24 scores, the second reader 6 to 7 and 16 of 24 clocks)."""
     if not small_tile and not has_scorebug_anchor(items):
         return False
-    clocks = find_clocks([it["text"] for it in items])
+    clocks = find_clocks([it["text"] for it in items], items)
     return not clocks or find_score_geo(items, clocks) is None
 
 
@@ -228,7 +228,7 @@ class RapidReader:
         if not self.available:
             return items
         merged = merge_items(items, self.read_items(image))
-        clocks = find_clocks([it["text"] for it in merged])
+        clocks = find_clocks([it["text"] for it in merged], merged)
         if find_score_geo(merged, clocks) is None:
             named = [dict(it, conf=max(it["conf"], 0.55), text=_as_code(it["text"])) for it in merged]
             pair = find_name_pair(named)

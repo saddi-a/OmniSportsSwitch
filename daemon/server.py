@@ -832,7 +832,7 @@ class Server:
                 image = np.asarray(Image.fromarray(image).resize(size, Image.LANCZOS))
             items = self.screen_reader.read_items(image)
             texts = [item["text"] for item in items]
-            if hasattr(self.screen_reader, "zoom_pass") and find_score_geo(items, find_clocks(texts)) is None:
+            if hasattr(self.screen_reader, "zoom_pass") and find_score_geo(items, find_clocks(texts, items)) is None:
                 # Small digits next to three-letter team codes are missed at normal size: read the strip around the clock
                 # again at twice the size (not on every pass when nothing is there; it costs GPU time).
                 key, now_s = (tab_id, index), time.monotonic()
@@ -841,14 +841,14 @@ class Server:
                     self.zoom_try_at[key] = now_s
                     if zoom is not None:
                         merged = merge_zoom(items, *zoom)
-                        if find_score_geo(merged, find_clocks([it["text"] for it in merged])) is not None:
+                        if find_score_geo(merged, find_clocks([it["text"] for it in merged], merged)) is not None:
                             if key not in self.zoom_found:
                                 log.info("zoom pass tab %s tile %s: score found", tab_id, index)
                             self.zoom_found.add(key)
                             items, texts = merged, [it["text"] for it in merged]
                         else:
                             self.zoom_found.discard(key)
-            if hasattr(self.screen_reader, "gap_pass") and find_score_geo(items, find_clocks(texts)) is None:
+            if hasattr(self.screen_reader, "gap_pass") and find_score_geo(items, find_clocks(texts, items)) is None:
                 # Team codes at both ends and the scores between them, with a digit missed (thin white digit on a pale panel, a
                 # logo between the scores): read only the strip between the codes again, at twice the size, digits only.
                 key, now_s = (tab_id, index), time.monotonic()
@@ -857,14 +857,14 @@ class Server:
                     self.gap_try_at[key] = now_s
                     if gap is not None:
                         merged = merge_zoom(items, *gap)
-                        if find_score_geo(merged, find_clocks([it["text"] for it in merged])) is not None:
+                        if find_score_geo(merged, find_clocks([it["text"] for it in merged], merged)) is not None:
                             if key not in self.gap_found:
                                 log.info("gap pass tab %s tile %s: score found", tab_id, index)
                             self.gap_found.add(key)
                             items, texts = merged, [it["text"] for it in merged]
                         else:
                             self.gap_found.discard(key)
-            if hasattr(self.screen_reader, "read_digits_beside_names") and find_score_geo(items, find_clocks(texts)) is None:
+            if hasattr(self.screen_reader, "read_digits_beside_names") and find_score_geo(items, find_clocks(texts, items)) is None:
                 # The big score digits of some scoreboards are not read at all. Look right beside the team names, but
                 # not on every pass when nothing is there (it costs GPU time).
                 key, now_s = (tab_id, index), time.monotonic()
@@ -889,15 +889,15 @@ class Server:
                     except Exception:   # the second reader must never break the OCR pass: keep the first reader's items
                         log.exception("second OCR reader failed on tab %s tile %s", tab_id, index)
                         merged = items
-                    if find_score_geo(merged, find_clocks([it["text"] for it in merged])) is not None:
+                    if find_score_geo(merged, find_clocks([it["text"] for it in merged], merged)) is not None:
                         if key not in self.rapid_found:
                             log.info("second reader tab %s tile %s: score found", tab_id, index)
                         self.rapid_found.add(key)
                     else:
                         self.rapid_found.discard(key)
-                    if len(find_clocks([it["text"] for it in merged])) > len(find_clocks(texts)) or key in self.rapid_found:
+                    if len(find_clocks([it["text"] for it in merged], merged)) > len(find_clocks(texts, items)) or key in self.rapid_found:
                         items, texts = merged, [it["text"] for it in merged]
-            results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts), "items": items}
+            results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts, items), "items": items}
         return results
 
     def _update_favourite(self, tab_id: int, now: float) -> None:
