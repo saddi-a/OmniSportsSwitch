@@ -160,3 +160,11 @@ def test_dataset_rows_carry_the_game_key():
     feed(server, game("KCC", "BUF", 5, (3, 0)))
     rows = snapshot_rows(server, 200.0, 1.0)
     assert next(r for r in rows if r["tab"] == 2)["tiles"][0]["game_key"] == "BUF-KCC"
+
+
+def test_a_channel_label_is_not_a_team_code():
+    # live 2026-10-18, CANAL+ Premier League multiplex: the '#FOOT' logo read as a team code gave pairs like FOOT-MUN / FOOT-LEE (three codes with
+    # both teams = no pair at all)
+    assert team_pair(["#FOOT", "BHA", "3", "0", "CRY", "DIRECT"]) == frozenset({"BHA", "CRY"})
+    assert team_pair(["#FOOT", "BHA", "direct"]) is None   # one team and the label: still no pair
+    assert key_text(team_pair(["FOOT", "SUN", "BOU"])) == "BOU-SUN"
