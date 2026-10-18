@@ -24,6 +24,14 @@ def sport_from_feed(feed_sport: str | None) -> str | None:
     return _FEED_SPORTS.get((feed_sport or "").strip().casefold())
 
 
+def sport_of_league(league: str | None) -> str | None:
+    """Our sport name for a feed league code ('fra.1' -> 'Football', 'nfl' -> 'American football'); None for an unknown league. The one
+    league -> sport table of the daemon (`feed.LEAGUES` holds the feed's sport per league); the analysis tools wrap it with their own spelling."""
+    from daemon import feed
+    entry = feed.LEAGUES.get(league) if isinstance(league, str) else None
+    return sport_from_feed(entry[0]) if entry else None
+
+
 def choose_sport(popup=None, hard=None, feed=None, title=None, weak=None, memory=None) -> tuple[str | None, str | None]:
     """(sport, source) of the highest source that names a known sport, else (None, None)."""
     given = {"popup": popup, "hard": hard, "feed": feed, "title": title, "weak": weak, "memory": memory}

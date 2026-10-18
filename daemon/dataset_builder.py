@@ -45,10 +45,10 @@ import statistics
 import time
 
 from daemon.espn_history import tier2_group
+from daemon.sport_choice import sport_of_league
 from daemon.clock import clock_seconds
 
 GOAL_LAG_S = 12.0                      # same value as daemon.backtest.GOAL_LAG_S (OCR confirms a goal this long after the picture)
-SPORT_OF_FEED = {"soccer": "football", "american football": "american football"}
 GOAL_KINDS = {"football": ("goal", "penalty goal", "own goal"), "american football": ("touchdown", "field goal good")}
 # Event tiers v1 (docs/director-training.md section 3). A kind not listed is tier 3 (note only).
 FEED_TIER = {
@@ -211,8 +211,8 @@ def tab_sports(rows: list[dict]) -> dict:
 # Feed events
 # ---------------------------------------------------------------------------------------------------------------
 def feed_sport(league: str) -> str:
-    from daemon import feed
-    return SPORT_OF_FEED.get(feed.LEAGUES[league][0], "unknown") if league in feed.LEAGUES else "unknown"
+    """Lower-case sport name of a feed league (the spelling of the dataset rows); 'unknown' for an unknown league."""
+    return (sport_of_league(league) or "unknown").casefold()   # the shared league -> sport table (`sport_choice.sport_of_league`)
 
 
 def tier_of(sport: str, kind: str) -> int:
