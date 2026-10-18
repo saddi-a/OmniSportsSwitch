@@ -932,3 +932,17 @@ def test_a_confirmed_expand_clears_the_retry_mark():
     server.pending_expand[20] = (2, time.monotonic() + 8)
     _report(server, 20, audible=0)
     assert 20 not in server.expand_retried
+
+
+def test_a_click_that_only_selected_the_tile_is_sent_once_more():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.pending_expand[20] = (2, time.monotonic() + 8)
+    _report(server, 20, audible=2)                          # only selected: the focuser would not ask (tile 2 has the sound)
+    assert server.expand_resend == {20: 2}
+    now = time.monotonic()
+    assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 20, "index": 2}]
+    assert 20 not in server.expand_resend and server.pending_expand[20][0] == 2
+    server.pending_expand[20] = (2, now + 8)
+    _report(server, 20, audible=2)                          # selected again: no third try
+    assert 20 not in server.expand_resend
