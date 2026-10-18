@@ -6,7 +6,7 @@
 
 ## Design questions
 - Ask before architecture or design decisions: give options with pros and cons and a recommendation. Implementation details are yours.
-- Do NOT implement an open decision without asking (see the open items in the newest state paragraphs of `PLAN.md` section 0: the 2026-10-17 entries and "State at the end of the 2026-10-14 session"; the old 2026-10-13 list is only history in `docs/history/plan-section0-archive.md`).
+- Do NOT implement an open decision without asking (see "User decisions still in force" and "Open items" in `PLAN.md` section 0; older lists are only history in `docs/history/plan-section0-archive.md`).
 
 ## Main chat versus agents (user, 2026-10-13)
 - The main chat is for planning, decisions and logging the user's feedback; agents do the work.
@@ -27,7 +27,7 @@ Every agent re-reads docs and code before it starts, so a new agent per small ta
 
 ## Context economy (user, 2026-10-13: 83% of the week's usage was at over 150k context, 32% in sessions active 8+ hours)
 - A long session is expensive even when cached: every reply re-reads the whole context. Keep state in FILES (PLAN.md section 0, memory, docs), not in the chat, so a session can end at any time.
-- Switching to a new task = start a fresh session (`/clear`); in the middle of a task past about 150k context = `/compact`. Before ending a long session: write the hand-over (PLAN.md section 0 top paragraph: state, what is live, open decisions, next steps) and commit/push `develop`.
+- Switching to a new task = start a fresh session (`/clear`); in the middle of a task past about 150k context = `/compact`. Before ending a long session: write the hand-over (PLAN.md section 0: current state, decisions in force, open items) and commit/push `develop`.
 - Do not leave a session open for hours with background loops or waits; end it and restart with the start prompt in PLAN.md.
 - Keep replies short; read files with an offset/limit instead of whole; do not paste long logs into the chat.
 

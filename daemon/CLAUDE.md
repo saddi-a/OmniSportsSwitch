@@ -1,6 +1,6 @@
 # daemon/ (guide for Claude)
 
-The Python daemon: one asyncio process (`python -m daemon.server`, started by `scripts\start_all.ps1`) that listens on `ws://127.0.0.1:8765`, receives audio and reports from the extension, scores each stream, and sends back "arrange" (move tabs) and "focus_tile" (DAZN multiview) commands. Read `PLAN.md` sections 3, 5 and 6 for the rules these files implement.
+The Python daemon: one asyncio process (`python -m daemon.server`, started by `scripts\start_all.ps1`) that listens on `ws://127.0.0.1:8765`, receives audio and reports from the extension, scores each stream, and sends back "arrange" (move tabs) and "focus_tile" (DAZN multiview) commands. Read the README ("How it works", "How a swap is decided"), the key facts in the root `CLAUDE.md` and the scoring rules reference in `docs/scoring-rules.md` for the rules these files implement.
 
 ## Files
 

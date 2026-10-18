@@ -253,7 +253,7 @@ Not committed: `.venv\`, `models\`, `logs\`, `samples\`, `dist\`, `build\`.
 
 ## Project notes
 
-The design, the scoring rules and the hand-over notes for development are in [PLAN.md](PLAN.md). Guidance for AI coding assistants is in [CLAUDE.md](CLAUDE.md).
+The hand-over notes for development are in [PLAN.md](PLAN.md); the old design and scoring-rules text is kept in [docs/history/plan-section0-archive.md](docs/history/plan-section0-archive.md). Guidance for AI coding assistants is in [CLAUDE.md](CLAUDE.md).
 
 ## Licence
 

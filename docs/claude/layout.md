@@ -1,7 +1,7 @@
 # Repo layout
 
 ## Tracked
-- `PLAN.md` hand-over (section 0) and architecture; `README.md` for users; `settings.toml` every threshold, weight and phrase (a test keeps it equal to the built-in defaults; per-sport tables `[scoring.<sport>]`, `[weights.<sport>]`).
+- `PLAN.md` hand-over (section 0); `README.md` for users; `settings.toml` every threshold, weight and phrase (a test keeps it equal to the built-in defaults; per-sport tables `[scoring.<sport>]`, `[weights.<sport>]`).
 - `daemon/` Python daemon, file table in `daemon/CLAUDE.md`. Newer pieces: `recorder.py` (learning data), `dataset_builder.py`, `swap_review.py`, `buildup.py`, `team_names.py` with `team_tables/` (one text file per sport), `feed*.py` (ESPN feed, measuring only), `backtest.py`. Tests in `daemon/tests/` (fixtures in `daemon/tests/fixtures/`).
 - `extension/` Edge Manifest V3 extension, plain JS, no build step (`extension/CLAUDE.md`).
 - `launcher/` tray launcher (`launcher.py`), built into `dist/OmniSportsSwitch.exe` by `scripts/build_launcher.ps1` (build tools in `requirements-build.txt`); it starts this project's `.venv` daemon and the test Edge profile.
@@ -11,4 +11,4 @@
 
 ## Not tracked
 - `logs/` (daemon.log, events.log, boxes.log, plus `archive/` gzip of rotated logs, `dataset/` recorder rows, `dataset_built/`, `feed/`, `feedback/` the user's remarks, `review/` swap marks), `models/`, `samples/`, `dist/`, `build/`, `.venv/`, `settings.local.json` (popup changes).
-- `tmp/` scratch space, nothing in it is kept. The Phase 0 experiments (`spike/`) were removed; their conclusions are in `PLAN.md` and the code is in the git history before the removing commit.
+- `tmp/` scratch space, nothing in it is kept. The Phase 0 experiments (`spike/`) were removed; their conclusions are in the archive (`docs/history/plan-section0-archive.md`, 'Removed 2026-10-18 evening') and the code is in the git history before the removing commit.
