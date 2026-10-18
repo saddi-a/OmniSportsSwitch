@@ -737,3 +737,26 @@ def test_a_code_and_digits_item_of_its_natural_width_is_left_alone():
     wide = dict(item, x1=242)
     parts = _wide_code_scores(wide)
     assert [p["text"] for p in parts] == ["MCI", "1", "0"] and parts[1]["x1"] <= parts[2]["x0"]
+
+
+# ---- crest-only LaLiga bug (DAZN): no team text, two stacked digits and the clock beside them (Betis-Barcelona 0-1) ------
+
+BET_BAR_CRESTS = [   # real boxes of the second reader: the digits 0 over 1, the clock at the left, the crests read as junk ("#P")
+    {"text": "0", "x0": 130, "y0": 23, "x1": 143, "y1": 44}, {"text": "26:27", "x0": 47, "y0": 55, "x1": 85, "y1": 69},
+    {"text": "#P", "x0": 90, "y0": 48, "x1": 118, "y1": 76}, {"text": "1", "x0": 132, "y0": 52, "x1": 141, "y1": 69}]
+
+
+def test_two_stacked_digits_with_the_game_clock_beside_them_are_a_score_when_no_team_name_is_readable():
+    from daemon.score_watch import find_score_geo
+    assert find_score_geo(BET_BAR_CRESTS, ["26:27"]) == (0, 1)
+
+
+def test_two_stacked_numbers_without_a_clock_beside_them_are_not_a_score():
+    from daemon.score_watch import find_score_geo
+    assert find_score_geo([it for it in BET_BAR_CRESTS if it["text"] != "26:27"], []) is None       # no clock, no names: could be anything
+
+
+def test_stacked_numbers_far_from_the_clock_are_not_a_score():
+    from daemon.score_watch import find_score_geo
+    far = [dict(it, x0=it["x0"] + 700, x1=it["x1"] + 700) if it["text"] in ("0", "1") else it for it in BET_BAR_CRESTS]
+    assert find_score_geo(far, ["26:27"]) is None

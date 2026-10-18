@@ -339,7 +339,9 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
             h = p["y1"] - p["y0"]
             if (n["x0"] >= p["x1"] - 5 and abs((n["y0"] + n["y1"]) / 2 - (p["y0"] + p["y1"]) / 2) <= 0.6 * h and n["x0"] - p["x1"] <= 4 * h
                     and (n["y1"] - n["y0"]) <= PLAY_CLOCK_VS_PANEL * h
-                    and not any(t["x0"] >= p["x1"] - 5 and t["x1"] <= n["x0"] + 5 and abs(cy(t) - cy(p)) <= 0.8 * h for t in teams)):   # a team code between them: a score, not a play clock (stacked LaLiga bug)
+                    and not any(t["x0"] >= p["x1"] - 5 and t["x1"] <= n["x0"] + 5 and abs(cy(t) - cy(p)) <= 0.8 * h for t in teams)   # a team code between them: a score, not a play clock (stacked LaLiga bug)
+                    and not any(m is not n and NUMBER_RE.match(m["text"].strip()) and 0.7 <= height(m) / max(height(n), 1) <= 1.43 and abs(m["x0"] - n["x0"]) <= 0.6 * height(n)
+                                and 0.8 * height(n) <= abs(cy(m) - cy(n)) <= 3.0 * height(n) for m in live)):   # an equal number stacked right above or below it: the two scores of a stacked scorebug
                 return True
         return False
 
@@ -385,6 +387,12 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
                 continue
             if all(any(t["x1"] <= n["x0"] + 0.5 * h and n["x0"] - t["x1"] <= 4 * h and abs(cy(t) - cy(n)) <= 0.7 * h for t in teams) for n in (top, bottom)):
                 key = (min(ha, hb), 2)
+                if best_key is None or key > best_key:
+                    best, best_key = (int(top["text"]), int(bottom["text"])), key
+            elif any(c["x1"] <= min(top["x0"], bottom["x0"]) + 0.5 * h and min(top["x0"], bottom["x0"]) - c["x1"] <= 8 * h
+                     and cy(top) - 0.5 * h <= cy(c) <= cy(bottom) + 0.5 * h for c in panel if CLOCK_RE.match(c["text"].strip())):
+                # a crest-only scorebug (no readable team text, the DAZN LaLiga bug): the game clock right beside two stacked digits is enough
+                key = (min(ha, hb), 1)
                 if best_key is None or key > best_key:
                     best, best_key = (int(top["text"]), int(bottom["text"])), key
     if any(p[5] for p in pairs):
