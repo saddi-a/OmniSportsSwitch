@@ -16,6 +16,7 @@ import numpy as np
 from daemon.game_state import AD_PHRASES, PROMO_PHRASES
 from daemon.score_slots import read_slots, read_stacked
 from daemon.score_watch import find_score_geo
+from daemon.touchdown_banner import BANNER_FROM, BANNER_SCALE
 from daemon.screen_ocr import GAP_DIGIT_HEIGHT, NOT_TEAM_WORDS, TEAM_CODE_RE, find_clocks, find_name_pair, find_stacked_pair, looks_like_team_name
 
 log = logging.getLogger("daemon")
@@ -207,6 +208,23 @@ class RapidReader:
                 found = merge_items(found, to_items(raw, 0, y0, scale))
             self.errors = 0
             return found
+        except Exception as error:
+            self._fail(error)
+            return []
+
+    def read_banner_band(self, image: np.ndarray) -> list[str]:
+        """The texts of the lower part of the video area (rows `BANNER_FROM` to the bottom) at `BANNER_SCALE`: where RedZone flashes its huge
+        TOUCHDOWN banner. [] when the reader is unavailable or fails."""
+        if not self.available:
+            return []
+        try:
+            import cv2
+            height = image.shape[0]
+            band = np.ascontiguousarray(image[int(height * BANNER_FROM):])
+            band = cv2.resize(band, None, fx=BANNER_SCALE, fy=BANNER_SCALE, interpolation=cv2.INTER_AREA)
+            raw, _ = self.engine(band)
+            self.errors = 0
+            return [str(r[1]).strip() for r in (raw or []) if str(r[1]).strip()]
         except Exception as error:
             self._fail(error)
             return []

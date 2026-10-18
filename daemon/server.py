@@ -46,6 +46,7 @@ from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score_geo
 from daemon.sport_detect import SportDetector
 from daemon.rapid_reader import RapidReader, needs_rescue
+from daemon.touchdown_banner import TouchdownBannerWatch, has_banner, has_doubt
 from daemon.screen_ocr import find_clocks, grab, merge_zoom
 from daemon.semantic import level as semantic_level
 from daemon.buildup import BuildUp, is_soccer, moves_main
@@ -115,6 +116,8 @@ class Server:
         self.screen_reader = screen_reader
         self.rapid_reader = rapid_reader   # RapidReader or None: the second OCR reader (tests pass None)
         self.rapid_try_at: dict[tuple[int, int], float] = {}   # (tab, video) -> when the second reader last looked
+        self.td_try_at: dict[tuple[int, int], float] = {}       # (tab, video) -> when the TOUCHDOWN banner pass last looked (monotonic)
+        self.td_watch: dict[tuple[int, int], TouchdownBannerWatch] = {}   # votes and cooldown of the TOUCHDOWN banner per tile
         self.rapid_found: set[tuple[int, int]] = set()          # tiles where the second reader currently completes the reading
         self.ocr: dict[tuple[int, int], dict] = {}  # (tab id, video index) -> latest OCR reading
         self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
@@ -200,7 +203,7 @@ class Server:
             self.rects.pop(msg["tab_id"], None)
             self.audible_seen.pop(msg["tab_id"], None)
             for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen,
-                          self.sport_choice_seen, self.held_change, self.fed, self.identities):
+                          self.sport_choice_seen, self.held_change, self.fed, self.identities, self.td_try_at, self.td_watch):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
@@ -965,8 +968,33 @@ class Server:
                         self.rapid_found.discard(key)
                     if len(find_clocks([it["text"] for it in merged], merged)) > len(find_clocks(texts, items)) or key in self.rapid_found:
                         items, texts = merged, [it["text"] for it in merged]
-            results[(tab_id, index)] = {"texts": texts, "clocks": find_clocks(texts, items), "items": items}
+            result = {"texts": texts, "clocks": find_clocks(texts, items), "items": items}
+            banner = self._banner_pass(tab_id, index, image, texts)
+            if banner is not None:
+                result["banner_texts"] = banner
+            results[(tab_id, index)] = result
         return results
+
+    def _banner_pass(self, tab_id: int, index: int, image, texts: list[str]) -> list[str] | None:
+        """RedZone's TOUCHDOWN banner (huge chrome letters the first reader misses): the second reader on the lower rows, only for American
+        football on a tab flagged multiplex (or every such tab with `touchdown_banner_all_tabs`), at most every `touchdown_banner_interval_s`,
+        and only when the normal reading did not find the banner. Returns the texts read, or None when it did not look. Never raises."""
+        cfg = self.scorer.config
+        if self.rapid_reader is None or cfg.touchdown_banner_interval_s <= 0 or not self.rapid_reader.available:
+            return None
+        if self.tile_sport(tab_id, index) != "american football" or not (self.multiplex.get(tab_id) or cfg.touchdown_banner_all_tabs > 0):
+            return None
+        if has_banner(texts):
+            return None
+        key, now_s = (tab_id, index), time.monotonic()
+        if now_s - self.td_try_at.get(key, float("-inf")) < cfg.touchdown_banner_interval_s:
+            return None
+        self.td_try_at[key] = now_s
+        try:
+            return self.rapid_reader.read_banner_band(image)
+        except Exception:   # must never break the OCR pass
+            log.exception("TOUCHDOWN banner pass failed on tab %s tile %s", tab_id, index)
+            return None
 
     def _update_favourite(self, tab_id: int, now: float) -> None:
         """A favourite counts if its name is in the tab's teams field or was read on screen in the last minute.
@@ -1071,6 +1099,7 @@ class Server:
                     self.scorer.set_event(tab_id, now, strength, goal=True, tile=tk)
                 log.info("goal banner tab %s tile %s: %s", tab_id, index, tracker.goal_banner)
                 self._rec_event("goal_banner", tab_id, index, text=str(tracker.goal_banner), strength=strength)
+            self._check_touchdown_banner(tab_id, index, tk, r, tracker, tile_states[(tab_id, index)], tile_cfg, now)
             seen = match_multiplier(r["texts"], self.favourites)
             if seen > 1.0:
                 self.fav_seen[(tab_id, index)] = (seen, now)
@@ -1165,6 +1194,27 @@ class Server:
                         self.scorer.set_leverage(tab_id, tab_leverage([tiles[index]], self.scorer.config), tile=index)
             else:   # a single video: the closeness and time left of the best game of the tab, as before
                 self.scorer.set_leverage(tab_id, tab_leverage(list(tiles.values()), self.scorer.config))
+
+    def _check_touchdown_banner(self, tab_id: int, index: int, tk, r: dict, tracker, state: str, tile_cfg, now: float) -> None:
+        """RedZone's TOUCHDOWN banner as a score event (same path as the soccer GOAL banner; a real score change later takes the max). Votes
+        and cooldown per tile; not on an ad, not in a game that is not live, not during a replay or a rewind, not beside review wording."""
+        cfg = self.scorer.config
+        extra = r.get("banner_texts")
+        if tracker.sport != "american football" or cfg.touchdown_banner_interval_s <= 0:
+            return
+        texts = list(r["texts"]) + list(extra or [])
+        seen = has_banner(texts) if (extra is not None or has_banner(r["texts"])) else None
+        watch = self.td_watch.setdefault((tab_id, index), TouchdownBannerWatch())
+        if seen and (state != "live" or tracker.on_ad or tracker.replay or has_doubt(texts) or self.feed_gate.is_rewinding(tab_id, index)):
+            seen = False
+        if not watch.update(now, seen, cfg.touchdown_banner_votes, cfg.touchdown_banner_window_s, cfg.touchdown_banner_cooldown_s):
+            return
+        strength = tile_cfg.touchdown_banner_strength
+        if strength > 0:
+            self.event_at[(tab_id, index)] = max(self.event_at.get((tab_id, index), float("-inf")), now - (1.0 - strength) * cfg.event_s)
+            self.scorer.set_event(tab_id, now, strength, goal=True, tile=tk)
+        log.info("touchdown banner tab %s tile %s", tab_id, index)
+        self._rec_event("touchdown_banner", tab_id, index, text="TOUCHDOWN", strength=strength)
 
     def _rewind_ignores(self, tab_id: int, index: int, score: tuple | None, clock_s: float | None, period: int | None) -> bool:
         """A score change on a tile whose stream is rewinding is a replayed goal: ignore it (`scoring.rewind_ignores_score`),
@@ -1291,7 +1341,7 @@ class Server:
         if target == main:
             return
         for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen, self.sport_choice_seen,
-                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities):
+                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities, self.td_try_at, self.td_watch):
             a, b = (tab_id, target), (tab_id, main)
             moved_a, moved_b = store.pop(a, None), store.pop(b, None)
             if moved_b is not None:

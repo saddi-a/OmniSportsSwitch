@@ -209,6 +209,12 @@ LAYOUT = [
     ("Logs and learning data", [
         ("scoring.ocr_assist", "Second OCR reader (1 = on, 0 = off)", "A PaddleOCR reader (CPU) re-reads a scorebug whose score or clock the first reader missed: it merges its text and reads the two score digits slot by slot. Needs the rapidocr-onnxruntime package; without it nothing changes."),
         ("scoring.ocr_assist_gpu", "Second reader on GPU (1 = GPU, 0 = CPU)", "Runs the second reader through DirectML (about 2.6x faster, adds GPU load). Needs onnxruntime-directml installed instead of onnxruntime; without it the CPU is used."),
+        ("scoring.touchdown_banner_interval_s", "TOUCHDOWN banner look (s)", "American football on a tab flagged Multiplex (NFL RedZone): the second reader looks at the lower part of the video this often for the TOUCHDOWN banner. 0 = off."),
+        ("scoring.touchdown_banner_all_tabs", "TOUCHDOWN banner on every tab (1 = yes)", "1 = also look on American football tabs that are not flagged Multiplex."),
+        ("scoring.touchdown_banner_votes", "TOUCHDOWN banner readings", "How many readings of the banner are needed..."),
+        ("scoring.touchdown_banner_window_s", "TOUCHDOWN banner window (s)", "...within this long."),
+        ("scoring.touchdown_banner_cooldown_s", "TOUCHDOWN banner cooldown (s)", "After a banner counted, the same tile ignores it this long (the banner stays on screen about 4 s)."),
+        ("scoring.touchdown_banner_strength", "TOUCHDOWN banner strength", "A TOUCHDOWN banner counts as this fraction of a touchdown (fading) until the score itself changes. 0 = the banner is only logged."),
         ("scoring.ocr_assist_retry_s", "Second reader retry (s)", "How often the second reader looks again on a tile where it found nothing."),
         ("scoring.dataset_mode", "Record learning data (1 = on, 0 = off)", "1 = one row per stream every second plus the events (swaps, goals, cues) are written to logs/dataset/ (local only, never committed) for later learning. 0 = nothing is written. Takes effect at once."),
         ("scoring.log_archive_days", "Keep archived logs (days, 0 = forever)", "Rotated log files are compressed into logs/archive/ and kept this many days. The learning data in logs/dataset/ is never deleted."),

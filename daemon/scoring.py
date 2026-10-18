@@ -30,7 +30,7 @@ SPORT_KEYS = ("football", "american football")   # same keys as the [sports.*] s
 OVERRIDABLE_SCORING = frozenset({
     "min_score", "threshold", "min_gap", "confirm_s", "hold_break_score",          # a challenger against MAIN: the CHALLENGER's sport
     "surge_cap", "audio_ad_goal_s", "goal_pending_s", "goal_pending_surge", "goal_pending_crowd", "anticipation_s", "cue_alone_cap", "cue_support", "touchdown_pair_surge", "touchdown_pair_window_s", "cue_leverage_gain", "leverage_weight", "replay_dampen",
-    "big_play_strength", "goal_banner_strength", "cue_zone_near_yd", "cue_zone_far_yd",
+    "big_play_strength", "goal_banner_strength", "touchdown_banner_strength", "cue_zone_near_yd", "cue_zone_far_yd",
     "speech_cue_factor", "speech_cue_cooldown_s",
     "lev_us_football_close", "lev_us_football_blowout",
     "lev_soccer_close", "lev_soccer_blowout",
@@ -155,6 +155,12 @@ class Config:
     feed_mode: float = 0.0          # outside game data (ESPN): 0 = local only (nothing starts), 1 = record only (measuring, changes no score); needs a restart
     ocr_assist: float = 1.0          # 1 = a second OCR reader (PaddleOCR via rapidocr-onnxruntime, CPU) fills in a missing score or clock on a tile whose scorebug is on screen, 0 = off
     ocr_assist_gpu: float = 1.0      # 1 = the second reader runs on the GPU (DirectML; needs onnxruntime-directml instead of onnxruntime, falls back to the CPU when missing), 0 = CPU
+    touchdown_banner_interval_s: float = 2.0   # American football on a tab flagged multiplex: the second reader looks at the lower part of the video for RedZone's TOUCHDOWN banner this often (0 = off)
+    touchdown_banner_all_tabs: float = 0.0     # 1 = every American football tab gets that look, not only the multiplex ones
+    touchdown_banner_votes: float = 2.0        # banner readings needed...
+    touchdown_banner_window_s: float = 6.0     # ...within this long
+    touchdown_banner_cooldown_s: float = 30.0  # per tile, the banner lasts about 4 s
+    touchdown_banner_strength: float = 0.9     # the banner counts as this fraction of a touchdown (fading, a goal for the hold); a score change then takes it to 1.0
     ocr_assist_retry_s: float = 3.0  # ...and looks again this often on a tile where it found nothing (it is read on every pass once it finds a score)
     dataset_mode: float = 1.0       # 1 = record one row per stream every 2 s (and the events) to logs/dataset/<date>.jsonl for later learning, 0 = off; read live
     log_archive_days: float = 90.0  # rotated log files are copied (gzip) to logs/archive/<date>/ and kept this many days (0 = forever)
