@@ -29,7 +29,7 @@ SPORT_KEYS = ("football", "american football")   # same keys as the [sports.*] s
 # can be overridden. An override of any other key is ignored with a warning (daemon/settings.py).
 OVERRIDABLE_SCORING = frozenset({
     "min_score", "threshold", "min_gap", "confirm_s", "hold_break_score",          # a challenger against MAIN: the CHALLENGER's sport
-    "surge_cap", "audio_ad_goal_s", "goal_pending_s", "goal_pending_surge", "goal_pending_crowd", "anticipation_s", "cue_alone_cap", "cue_support", "cue_leverage_gain", "leverage_weight", "replay_dampen",
+    "surge_cap", "audio_ad_goal_s", "goal_pending_s", "goal_pending_surge", "goal_pending_crowd", "anticipation_s", "cue_alone_cap", "cue_support", "touchdown_pair_surge", "touchdown_pair_window_s", "cue_leverage_gain", "leverage_weight", "replay_dampen",
     "big_play_strength", "goal_banner_strength", "cue_zone_near_yd", "cue_zone_far_yd",
     "speech_cue_factor", "speech_cue_cooldown_s",
     "lev_us_football_close", "lev_us_football_blowout",
@@ -112,6 +112,8 @@ class Config:
     anticipation_s: float = 18.0   # a cue boosts a stream this long (fading)
     cue_alone_cap: float = 0.30    # a cue with no other sign of excitement (crowd, surge, shouting, a score) adds at most this: below min_score
     cue_support: float = 0.10      # crowd + surge + shouting + score change worth this much lift that cap
+    touchdown_pair_surge: float = 0.30   # American football: a spoken touchdown call counts as a STRONG cue (in full) when a loudness surge this big is seen...
+    touchdown_pair_window_s: float = 6.0   # ...at most this long before or after the call (0 = off: the call stays a capped cue)
     cue_leverage_gain: float = 0.5  # a cue is worth x(1 + gain * leverage): up to x1.5 in a late close game, down to x0.5 in a late blowout
     cue_speech_window_s: float = 20.0   # commentary heard this recently tells what a bare review is about
     goal_banner_strength: float = 0.4   # soccer: a GOAL banner counts as this fraction of a goal (fading) until a real score change takes it to 1.0
@@ -250,6 +252,7 @@ class _Tile:
     hot_start: float = float("-inf")   # start of the current hot episode (MAIN's own goal / strong cue), see `hot_left`
     hot_last: float = float("-inf")    # the latest goal / strong cue of that episode
     review_at: float = float("-inf")   # when a review-weight cue (>= buildup_review_min) was last seen, whatever replaced the stored cue since
+    pair_at: float = float("-inf")   # when a spoken touchdown cue (American football) waits for a loudness surge to become a strong cue
     anticipation_strong: bool = False   # a football cue worth a review of a possible goal or more: it counts in full without other signs
     event_at: float = float("-inf")  # when a score change was last seen
     goal_at: float = float("-inf")   # real time of the last goal (score change or goal banner)
@@ -274,6 +277,7 @@ class _Stream(_Tile):
     tags_at: float = float("-inf")
     shout: float = 0.0   # 0..1 probability of shouting / yelling / screaming
     can_main: bool = True  # False if the user restricted this stream away from the MAIN slot
+    surge_hit_at: float = float("-inf")   # when the loudness surge last was at least touchdown_pair_surge (the pair rule of the spoken touchdown cue)
     loud_at: float = float("-inf")      # when the sound last was a clear surge or crowd roar (for the early goal signal)
     audio_ad_at: float = float("-inf")  # when the sound last looked like an ad (music, no crowd) on enough readings
     ad_at: float = float("-inf")        # when the stream was last seen on an ad (picture or sound)
@@ -447,6 +451,34 @@ class Scorer:
                 alpha = 1 - math.exp(-(now - stream.last_sample) / self.config.baseline_s)
                 stream.baseline += alpha * (level - stream.baseline)
         stream.last_sample = now
+        cfg = self.cfg_for(tab_id)
+        if cfg.touchdown_pair_window_s > 0 and self._surge_now(stream, cfg) >= cfg.touchdown_pair_surge:
+            stream.surge_hit_at = now
+            for key, rec in self._recs(stream):   # a surge just AFTER a spoken touchdown call: the call becomes strong
+                if now - rec.pair_at <= self.tile_cfg(tab_id, key).touchdown_pair_window_s:
+                    self._upgrade_pair(rec, now, self.tile_cfg(tab_id, key))
+
+    @staticmethod
+    def _upgrade_pair(rec: _Tile, now: float, cfg) -> None:
+        if rec.anticipation_at == rec.pair_at and not rec.anticipation_strong:   # still the touchdown cue (a later or stronger cue replaced it otherwise)
+            rec.anticipation_strong = True
+            Scorer._hot_trigger(rec, now, cfg)
+        rec.pair_at = float("-inf")
+
+    def set_touchdown_cue(self, tab_id: int, now: float, value: float, tile: int | None = None) -> None:
+        """A spoken touchdown call (American football) with weight `value`. Alone it is the normal capped cue; with a loudness surge of
+        `touchdown_pair_surge` seen within `touchdown_pair_window_s` before it (now) or after it (`add_audio`) it is a STRONG cue."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return
+        self.set_anticipation(tab_id, now, value, tile=tile)
+        cfg = self.tile_cfg(tab_id, tile)
+        rec = self._write_rec(stream, tile)
+        if cfg.touchdown_pair_window_s <= 0 or rec.anticipation_at != now:
+            return
+        rec.pair_at = now
+        if now - stream.surge_hit_at <= cfg.touchdown_pair_window_s:
+            self._upgrade_pair(rec, now, cfg)
 
     def baseline_of(self, tab_id: int) -> float | None:
         """The stream's normal loudness (long-term average), or None if nothing was heard yet."""
@@ -600,6 +632,7 @@ class Scorer:
             rec.event_at = rec.goal_at = rec.pending_at = rec.replay_seen_at = rec.anticipation_at = rec.review_at = float("-inf")
             rec.anticipation_value = 0.0
             rec.anticipation_strong = False
+            rec.pair_at = float("-inf")
             rec.goal_hold_on = False
             rec.replay = False
             self._hot_end(rec)

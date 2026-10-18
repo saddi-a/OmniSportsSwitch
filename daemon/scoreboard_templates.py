@@ -75,7 +75,52 @@ class Template:
     read: Callable[[list[dict], list[str]], "tuple[int, int] | None"]
 
 
+BEIN_LOOSE_RE = re.compile(r"^['`.\s]*(?:\d{1,2}\s?-\s?\d{1,2})?([A-Za-z]{2,3})(?:\s?[|!Il/\]\[}{)(E]\s?|\s)?(\d{1,3})?$")   # "Hou| 24", "JAX 20", "4-1JAX20", "1-4HOU" (a code, maybe a record glued in front, maybe its score)
+BEIN_NOT_CODES = frozenset({"NFL", "LIVE", "WEEK", "TOP", "MAX", "BEIN", "QTR", "TV", "HD", "FLAG", "UEL", "UF", "UFL"})
+BEIN_LOOSE_ROW = 0.6            # beIN bug, loose form: the two team codes lie on one row (centres within this many heights)
+
+
+def _bein_loose(items: list[dict], clocks: list[str]):
+    """Fallback for the beIN bug when OCR mangles it: the code in lower case ('Hou| 24'), the record glued to the code ('1-4HOU', '4-1JAX20'), no
+    separator ('JAX 20'). Each team is a 2-3 letter code (upper-cased) with its score in the same item or the number right after it; EXACTLY two
+    different complete teams on one row are needed, else nothing. A code with no number beside it ('JAXI') is never completed from far away."""
+    live = [it for it in items if it["text"].strip() not in clocks and it.get("conf", 1.0) >= 0.5]
+    teams = []
+    for it in live:
+        t = it["text"].strip()
+        m = BEIN_LOOSE_RE.match(t)
+        if not m or m.group(1).upper() in BEIN_NOT_CODES or t.upper().startswith("LIVE"):
+            continue
+        record_first = bool(re.match(r"^['`.\s]*\d", t))   # a record glued in front: "4-1JAX20"
+        number = m.group(2)
+        if number is None:
+            n = [o for o in live if NUMBER_RE.match(o["text"].strip()) and o["x0"] >= it["x1"] - 0.5 * _h(it) and o["x0"] - it["x1"] <= BEIN_NUMBER_REACH * _h(it)
+                 and abs(_cy(o) - _cy(it)) <= 0.6 * _h(it) and o.get("conf", 1.0) >= 0.8]
+            if len(n) != 1:
+                continue
+            number = n[0]["text"].strip()
+        elif not record_first and t[m.end(1):m.start(2)] == "":
+            continue                      # "JAX20" with nothing between: not trusted without a record in front
+        teams.append((m.group(1).upper(), int(number), it))
+    by_code = {}
+    for code, num, it in teams:
+        by_code.setdefault(code, set()).add(num)
+    if len(by_code) != 2 or any(len(v) != 1 for v in by_code.values()):
+        return None
+    pair = [min((x for x in teams if x[0] == c), key=lambda x: x[2]["x0"]) for c in by_code]
+    a, b = sorted(pair, key=lambda x: x[2]["x0"])
+    if abs(_cy(a[2]) - _cy(b[2])) > BEIN_LOOSE_ROW * max(_h(a[2]), _h(b[2])):
+        return None
+    return a[1], b[1]
+
+
 def read_bein_nfl(items: list[dict], clocks: list[str]):
+    """The strict reading first; when it finds nothing, the loose one (`_bein_loose`)."""
+    hit = _read_bein_strict(items, clocks)
+    return hit if hit is not None else _bein_loose(items, clocks)
+
+
+def _read_bein_strict(items: list[dict], clocks: list[str]):
     """beIN SPORTS NFL bug: 'rec rec PHI| 14  3-1 JAX 7  3RD 9:39 37'. The left team's code and score are ONE item (separator read as | / ] ...),
     the right team's code is a second item and its score the number right after it; or both are code+score items ('JAX] 10')."""
     live = [it for it in items if it["text"].strip() not in clocks]
