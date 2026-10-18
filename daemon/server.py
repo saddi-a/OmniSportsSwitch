@@ -4,7 +4,7 @@ Messages are JSON, one object per message.
 
 Extension -> daemon:
   {"type": "register",   "tab_id": 12, "weight": 1.0, "is_main": false, "sport": "Football", "status": "auto|live|break|over", "role": "LEFT", "allowed": ["MAIN", "LEFT"]|null,
-                "teams": "Paris SG vs Lyon", "favourites": [{"name": "PSG", "mult": 2}]}
+                "teams": "Paris SG vs Lyon", "multiplex": false, "favourites": [{"name": "PSG", "mult": 2}]}
   {"type": "unregister", "tab_id": 12}
   {"type": "audio",      "tab_id": 12, "rms": 0.031}   (simple loudness-only form)
   {"type": "set_weight", "tab_id": 12, "weight": 1.5}
@@ -39,6 +39,7 @@ from daemon.sport_choice import choose_sport, sport_from_feed
 from daemon.sport_detect import sport_from_title
 from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
+from daemon.game_identity import GameIdentity, key_text, team_pair
 from daemon.game_state import GameTracker, combine
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score_geo
@@ -112,6 +113,8 @@ class Server:
         self.sports: dict[int, str | None] = {}     # tab id -> sport label chosen in the popup
         self.favourites: list[dict] = []            # user's favourite teams [{name, mult}]
         self.team_text: dict[int, str] = {}         # tab id -> teams typed in the popup
+        self.multiplex: dict[int, bool] = {}        # tab id -> the user flagged it: one video jumps between several games of the same sport
+        self.identities: dict[tuple[int, int], GameIdentity] = {}   # (tab, video) -> the game it shows, from the team codes of its scorebug
         self.page_text: dict[int, str] = {}         # tab id -> what the page says about the game (media session, player header text)
         self.fav_seen: dict[tuple[int, int], tuple[float, float]] = {}  # (tab, video) -> (multiplier, when seen on screen)
         self.roles: dict[int, str] = {}             # tab id -> slot its window currently has
@@ -167,6 +170,7 @@ class Server:
             if isinstance(msg.get("favourites"), list):
                 self.favourites = msg["favourites"]
             self.team_text[tab_id] = msg.get("teams") or ""
+            self.multiplex[tab_id] = bool(msg.get("multiplex"))
             self.tab_titles[tab_id] = msg.get("title") or ""
             self.feed_map.set_text(tab_id, self._feed_text(tab_id))
             self._update_favourite(tab_id, time.monotonic())
@@ -187,11 +191,12 @@ class Server:
             self.rects.pop(msg["tab_id"], None)
             self.audible_seen.pop(msg["tab_id"], None)
             for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen,
-                          self.sport_choice_seen, self.held_change, self.fed):
+                          self.sport_choice_seen, self.held_change, self.fed, self.identities):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
             self.team_text.pop(msg["tab_id"], None)
+            self.multiplex.pop(msg["tab_id"], None)
             self.page_text.pop(msg["tab_id"], None)
             self.feed_map.forget(msg["tab_id"])
             for key in [k for k in self.unconfirmed if k[0] == msg["tab_id"]]:
@@ -687,6 +692,8 @@ class Server:
 
     def _feed_text(self, tab_id: int) -> str:
         """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says."""
+        if self.multiplex.get(tab_id):
+            return ""   # the teams typed in the popup / on the page belong to one game; a multiplex tab shows many
         return self.team_text.get(tab_id) or self.page_text.get(tab_id, "")
 
     def _page_info(self, tab_id: int, info: dict) -> None:
@@ -903,12 +910,13 @@ class Server:
     def _update_favourite(self, tab_id: int, now: float) -> None:
         """A favourite counts if its name is in the tab's teams field or was read on screen in the last minute.
         The same goes for team rules that limit the slots a tab may use."""
-        mult = match_multiplier([self.team_text.get(tab_id, "")], self.favourites)
+        typed = "" if self.multiplex.get(tab_id) else self.team_text.get(tab_id, "")   # a multiplex tab: only the teams read on screen pin favourites
+        mult = match_multiplier([typed], self.favourites)
         for (t, _), (m, seen_at) in self.fav_seen.items():
             if t == tab_id and now - seen_at <= FAVOURITE_MEMORY_S:
                 mult = max(mult, m)
         self.scorer.set_favourite(tab_id, mult)
-        rule = match_slots([self.team_text.get(tab_id, "")], self.favourites)
+        rule = match_slots([typed], self.favourites)
         for (t, _), (slots, seen_at) in self.rule_seen.items():
             if t == tab_id and now - seen_at <= RULE_MEMORY_S:
                 rule = slots if rule is None else ((rule & slots) or rule)
@@ -942,6 +950,9 @@ class Server:
         for (tab_id, index), r in results.items():
             tk = index if tab_id in multi else None   # the tile argument of every scorer call below
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id), self.scorer.config))
+            new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(team_pair(r["texts"]))
+            if new_game is not None and self.multiplex.get(tab_id):   # only on a tab the user flagged; the identity is tracked everywhere (dataset game_key)
+                self._on_new_game(tab_id, index, new_game[0], new_game[1], now, multi=tab_id in multi)
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
             det = self.sport_detectors[(tab_id, index)]
             now_wall = time.time()
@@ -1085,6 +1096,31 @@ class Server:
             else:   # a single video: the closeness and time left of the best game of the tab, as before
                 self.scorer.set_leverage(tab_id, tab_leverage(list(tiles.values()), self.scorer.config))
 
+    def _on_new_game(self, tab_id: int, index: int, old: frozenset, new: frozenset, now: float, multi: bool | None = None) -> None:
+        """A multiplex tab's video now shows another game of the same sport (its scorebug's team codes changed and stayed changed): every
+        memory that belongs to the old game is dropped, so the new game starts from a clean baseline (no false goal from the other game's
+        score, no stale FINAL / break / replay / hold, no old build-up). The tab's audio, weights and the user's settings stay."""
+        key = (tab_id, index)
+        tk = index if (multi if multi is not None else self._is_multi(tab_id)) else None
+        if (watcher := self.watchers.get(key)) is not None:
+            watcher.new_game()
+        if (tracker := self.trackers.get(key)) is not None:
+            tracker.new_game()
+        self.scorer.reset_tile(tab_id, tk)
+        for store in (self.event_at, self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen):
+            store.pop(key, None)
+        for kind in ("bug", "clock"):
+            self.replay_signal.pop((tab_id, index, kind), None)
+        self.buildup.reset(self._bkey(tab_id, tk))
+        self.cue_speech.reset(self._bkey(tab_id, tk))
+        self.feed_map.drop_lock(tab_id, index)
+        self.rapid_found.discard(key)
+        self.digit_found.discard(key)
+        self.zoom_found.discard(key)
+        self.gap_found.discard(key)
+        log.info("new game on tab %s: %s -> %s", tab_id, key_text(old), key_text(new))
+        self._rec_event("new_game", tab_id, index, old=key_text(old), new=key_text(new))
+
     def _focus_commands(self, now: float) -> list[dict]:
         """For multiview tabs: which tile should have the sound?"""
         commands = []
@@ -1167,7 +1203,7 @@ class Server:
         if target == main:
             return
         for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen, self.sport_choice_seen,
-                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen):
+                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities):
             a, b = (tab_id, target), (tab_id, main)
             moved_a, moved_b = store.pop(a, None), store.pop(b, None)
             if moved_b is not None:

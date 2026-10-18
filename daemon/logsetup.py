@@ -28,7 +28,7 @@ DAEMON_LOG_BYTES, DAEMON_LOG_BACKUPS = 20_000_000, 10
 EVENTS_LOG_BYTES, EVENTS_LOG_BACKUPS = 5_000_000, 20
 BOXES_LOG_BYTES, BOXES_LOG_BACKUPS = 20_000_000, 5
 FORMAT = "%(asctime)s %(message)s"
-EVENT_WORDS = ("score change", "big play", "goal banner", "would fire", "sport detected", "swap:", "arrange:", "swap refused", "focus tile", "game state", "scorebug ", "replay by clock", "anticipation ", "speech cue", "feed ", "semantic high", "semantic mid", "semantic matcher", "commentary listener", "freeze",
+EVENT_WORDS = ("score change", "big play", "goal banner", "would fire", "sport detected", "swap:", "arrange:", "swap refused", "focus tile", "game state", "new game on tab", "scorebug ", "replay by clock", "anticipation ", "speech cue", "feed ", "semantic high", "semantic mid", "semantic matcher", "commentary listener", "freeze",
                "audio classifier ready", "screen reader ready", "listening on", "extension connected",
                "extension disconnected")
 

@@ -131,6 +131,7 @@ class Config:
     scorebug_memory_s: float = 60.0  # ...if it was seen within this long before; a later first sight of the gap is stale and not logged
     replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
+    new_game_readings: int = 3   # multiplex tabs: a different pair of team codes must be read this many times in a row to count as a new game (a lone misread, a ticker or a studio shot never does)
     held_change_s: float = 30.0  # a score change read while the game looked like a break is kept this long and counts if the game is live again (0 = drop it at once)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
     dead_quiet_level: float = 0.15   # crowd and rise in loudness both below this: the sound is quiet (a frozen clock then counts as dead time after `quiet_freeze_s`)
@@ -582,6 +583,20 @@ class Scorer:
                 self._hot_end(rec)
                 if now is not None:
                     self.streams[tab_id].ad_at = now
+
+    def reset_tile(self, tab_id: int, tile: int | None = None) -> None:
+        """A different game came on this video (multiplex): its event, goal, post-goal hold, hot episode, cue and goal candidate belong
+        to the old game. Audio, baseline and the user's settings are the stream's and stay."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return
+        for _, rec in self._sel(stream, tile):
+            rec.event_at = rec.goal_at = rec.pending_at = rec.replay_seen_at = rec.anticipation_at = rec.review_at = float("-inf")
+            rec.anticipation_value = 0.0
+            rec.anticipation_strong = False
+            rec.goal_hold_on = False
+            rec.replay = False
+            self._hot_end(rec)
 
     def set_event(self, tab_id: int, now: float, strength: float = 1.0, goal: bool = False, tile: int | None = None) -> None:
         """A goal (strength 1.0) or a weaker event such as a big play. The event fades linearly, so a weaker one is

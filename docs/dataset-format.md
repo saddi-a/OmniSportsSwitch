@@ -58,7 +58,7 @@ note, `surge_note`, `crowd_note`, `surge_rise`), `min`/`gap`/`live` = the thresh
 (`dwell`, `goal on MAIN N s ago`, `not live`, `slot rules`, `on an ad`, `manual hold`, `MAIN is frozen`, `already MAIN`) or null.
 
 `tiles[]`: `i` tile index, `sport` / `sport_src` (popup, hard, feed, title, weak, memory), `state`, `ad`, `replay`, `period`, `clock` (text), `clock_min`,
-`home`, `away` (voted score), `audible` (this tile has the sound), `game_id`, `league`, `mapped_ok` (the feed mapping is verified by the OCR score/clock),
+`home`, `away` (voted score), `audible` (this tile has the sound), `game_key` (the scorebug's two team codes, sorted, "AAA-BBB", or null: the game this video shows, which a multiplex channel changes; new games are also `new_game` events), `game_id`, `league`, `mapped_ok` (the feed mapping is verified by the OCR score/clock),
 `score` (multiview only, else null: the score of THIS tile; the tab's `score` is the best of them; the audio terms are in the audible tile's score only).
 
 ## Event lines
