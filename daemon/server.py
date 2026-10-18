@@ -64,7 +64,7 @@ FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use ar
 SKIP_LOG_S = 10.0      # a swap skipped because Window 2 is fixed is said at most this often
 WINDOW2 = "LEFT"       # the internal id of Window 2 (the user only ever sees "Window 2")
 EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
-EXPAND_SETTLE_S = 2.0   # a report this soon after the ask is older than the click (the extension needs a moment): the sound on the big slot proves nothing yet
+EXPAND_SETTLE_S = 2.0   # a report this soon after the ask may be older than the click (the extension needs a moment): where the sound sits proves nothing yet
 FAVOURITE_MEMORY_S = 60.0
 RULE_MEMORY_S = 600.0     # slot rules are remembered longer: a team stays on its tab through ads and breaks  # a favourite read on screen keeps counting for this long
 OCR_MIN_WIDTH = 900  # smaller areas (multiview tiles) are enlarged before reading
@@ -1123,13 +1123,14 @@ class Server:
         areas = sorted(((r["width"] * r["height"], r.get("index", pos)) for pos, r in enumerate(rects)), reverse=True)
         main = areas[0][1]
         audible = next((r.get("index", pos) for pos, r in enumerate(rects) if r.get("audible")), None)
-        if audible == target and target != main:
+        settled = time.monotonic() >= deadline - EXPAND_CHECK_S + EXPAND_SETTLE_S
+        if audible == target and target != main and settled:
             log.warning("expand of tab %s tile %s did not happen: the tile was only selected", tab_id, target)
             del self.pending_expand[tab_id]
             if tab_id not in self.expand_retried:   # fallback: the focuser would not ask (the tile already has the sound), so click it again directly
                 self.expand_retried.add(tab_id)
                 self.expand_resend[tab_id] = target
-        elif (audible == main and time.monotonic() >= deadline - EXPAND_CHECK_S + EXPAND_SETTLE_S) or time.monotonic() > deadline:
+        elif (audible == main and settled) or time.monotonic() > deadline:
             del self.pending_expand[tab_id]
             if audible == main:
                 self.expand_retried.discard(tab_id)

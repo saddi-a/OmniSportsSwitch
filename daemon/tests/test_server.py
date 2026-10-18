@@ -275,7 +275,7 @@ def test_a_click_that_only_selected_the_tile_swaps_nothing_and_warns(caplog):
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
     server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
-    server.pending_expand[20] = (2, time.monotonic() + 8)
+    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)   # asked 3 s ago
     with caplog.at_level(logging.WARNING):
         _report(server, 20, audible=2)                  # the sound went to the clicked tile: only selected
     assert server.trackers[(20, 0)] == "main-game" and server.trackers[(20, 2)] == "tile2-game"
@@ -937,13 +937,13 @@ def test_a_confirmed_expand_clears_the_retry_mark():
 def test_a_click_that_only_selected_the_tile_is_sent_once_more():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
-    server.pending_expand[20] = (2, time.monotonic() + 8)
+    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)
     _report(server, 20, audible=2)                          # only selected: the focuser would not ask (tile 2 has the sound)
     assert server.expand_resend == {20: 2}
     now = time.monotonic()
     assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 20, "index": 2}]
     assert 20 not in server.expand_resend and server.pending_expand[20][0] == 2
-    server.pending_expand[20] = (2, now + 8)
+    server.pending_expand[20] = (2, now + 8 - 3)
     _report(server, 20, audible=2)                          # selected again: no third try
     assert 20 not in server.expand_resend
 
@@ -965,6 +965,22 @@ def test_the_live_sequence_stale_report_then_only_selected_is_caught(caplog):
     server.handle_message({"type": "register", "tab_id": 20})
     server.pending_expand[20] = (2, time.monotonic() + 8)
     _report(server, 20, audible=0)                              # stale
+    server.pending_expand[20] = (2, server.pending_expand[20][1] - 3)   # three seconds go by
     with caplog.at_level(logging.WARNING):
-        _report(server, 20, audible=2)                          # one second later: the sound moved to the small tile
+        _report(server, 20, audible=2)                          # the sound moved to the small tile
     assert "only selected" in caplog.text and server.expand_resend == {20: 2}
+
+
+def test_a_report_right_after_the_second_click_is_not_a_second_failure(caplog):
+    # found live 2026-10-18 02:31:17: the click was sent again, and the report 286 ms later still had the sound on the clicked tile
+    # (it was already there from the first click): that said nothing about the second click and was counted as a failure
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.pending_expand[20] = (2, time.monotonic() + 8)           # the second click was just sent
+    with caplog.at_level(logging.WARNING):
+        _report(server, 20, audible=2)
+    assert 20 in server.pending_expand and "only selected" not in caplog.text
+    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)       # three seconds later it is still not expanded: now it is a failure
+    with caplog.at_level(logging.WARNING):
+        _report(server, 20, audible=2)
+    assert 20 not in server.pending_expand and "only selected" in caplog.text
