@@ -30,7 +30,7 @@ What the daemon looks at:
 
 Goals are also announced by a GOAL banner (soccer) and a few commentator phrases. Scorebugs with a logo or a pale panel between the scores get a second, zoomed reading of the strip between the team codes. A stats table, a play clock or a team record is never read as a score. The sport of a stream is learned from the scoreboard, from league words on screen (NFL, Ligue 1...), and from the last sport seen on that tab (remembered in `logs/sports.json`), so a restart does not slow the first break detection. A full-screen score card (two numbers and the quarter, no team names) is read as a score when the scorebug is hidden and the numbers fit the last score.
 
-Other features: freeze Main with a hotkey, **Make Main** to force a stream there for a while, DAZN multiview support (it clicks the right tile), window names remembered across restarts, sport detected from the picture, close and late games valued above blowouts, every setting editable in the popup, permanent logs.
+Other features: freeze Main with a hotkey, **Make Main** to force a stream there for a while, the same two controls for Window 2 (**Freeze Window 2**, **Make Window 2**), DAZN multiview support (it clicks the right tile), window names remembered across restarts, sport detected from the picture, close and late games valued above blowouts, every setting editable in the popup, permanent logs.
 
 The daemon understands English and French scoreboards and banners.
 
@@ -122,6 +122,8 @@ scripts\build_launcher.ps1
 |---|---|
 | Keep Main where it is | `Ctrl+Shift+P` (or the popup's Freeze button). While frozen, the winning stream goes to Window 2 instead. Press again to resume. |
 | Put a stream on Main yourself | Popup, on that stream's block: **Make Main**. It stays on Main for the hold time (60 seconds by default, set in Settings), unless something really exciting happens elsewhere. A yellow bar at the top of the popup shows the time left and a **Release** button. |
+| Keep Window 2 where it is | `Ctrl+Shift+L` (or the popup's Freeze Window 2 button). While Window 2 is frozen (or held, next row) no swap moves its stream: the stream that leaves Main goes to another window, and if no other window can take it the swap is skipped (a warning in `logs/events.log`, at most every 10 seconds). Press again to resume. |
+| Put a stream in Window 2 yourself | Popup, on that stream's block: **Make Window 2** (it reads **Hold on Window 2** when the stream is already there). It stays in Window 2 for its own hold time (60 seconds by default, `Hold time for Make Window 2` in Settings), whatever happens elsewhere; a second yellow bar shows the time left and a **Release** button. On the stream that is in Main it swaps Main and Window 2 once, then holds. |
 | Stop a stream from taking Main | Untick **Main** in its "Allowed in" boxes (per tab) or in the team's boxes (per team). |
 | Prefer a team | Popup, Priorities, Teams: add the team with a multiplier (2 = twice as much). Favourites stay on Main unless something exciting happens elsewhere. |
 | Tell the daemon a game is over or on a break | Per tab: Status = Over or Break (Auto reads it from the picture). |
@@ -162,14 +164,15 @@ The start script uses a separate test profile because it is easy to reset. To us
 | Keys | Action |
 |---|---|
 | `Ctrl+Shift+P` | Freeze or unfreeze Main. |
+| `Ctrl+Shift+L` | Freeze or unfreeze Window 2. |
 | `Ctrl+Shift+Y` | Track (or re-track) the visible tab of the current window. |
 
 If a shortcut does nothing, check `edge://extensions/shortcuts`.
 
 ### The popup
 
-- Name of the current window (Main, Window 2...), the freeze button, and the hold bar when a stream is held on Main.
-- Per tracked tab: sport, teams, weight, status (Auto, Live, Break, Over), which windows it may use, **Make Main**, Untrack.
+- Name of the current window (Main, Window 2...), the two freeze buttons (Main, Window 2), and a hold bar for each window that has a held stream.
+- Per tracked tab: sport, teams, weight, status (Auto, Live, Break, Over), which windows it may use, **Make Main**, **Make Window 2**, Untrack.
 - Settings: all the scoring, ad, weight, timing and banner settings (needs the daemon running). Changed values are shown in bold, the arrow button puts one back to its default, and "Reset all" restores everything. The values are kept in `settings.local.json` (not committed), layered on top of the defaults in `settings.toml`.
 - Priorities: sport weights, and a team list with a bonus multiplier (favourites) and allowed windows per team. For a team rule to apply at once, type the team in the tab's Teams field. The daemon also learns teams from the scoreboard text.
 

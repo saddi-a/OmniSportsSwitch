@@ -6,7 +6,7 @@ Edge Manifest V3 extension in plain JavaScript, **no build step, no npm**. It do
 
 | File | Job |
 |---|---|
-| `manifest.json` | Permissions (tabCapture, offscreen, activeTab, tabs, storage, scripting, debugger), keyboard commands (`Ctrl+Shift+P` freeze, `Ctrl+Shift+Y` track). |
+| `manifest.json` | Permissions (tabCapture, offscreen, activeTab, tabs, storage, scripting, debugger), keyboard commands (`Ctrl+Shift+P` freeze Main, `Ctrl+Shift+L` freeze Window 2, `Ctrl+Shift+Y` track). |
 | `background.js` | Service worker. **Stateless**: Edge can stop it at any time, so all state is in `chrome.storage.local` (tracked tabs, weights, priorities, window roles, layout). Tracks tabs, remembers window roles by window position, moves tabs between windows (`chrome.tabs.move`, keeping a spare `about:blank` tab so windows never close), injects the video reporter, performs `arrange` and `focus_tile` commands from the daemon. |
 | `offscreen.html` / `offscreen.js` | Long-lived page: per-tab audio capture (tabCapture), 100 ms PCM chunks to the daemon over WebSocket, mutes everything except `MAIN` (gain nodes), registers tabs with the daemon (role, weight, sport, status, allowed slots, teams, team rules). |
 | `pcm-processor.js` | AudioWorklet that turns audio blocks into 32 kHz mono samples. |

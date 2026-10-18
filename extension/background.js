@@ -197,8 +197,21 @@ async function toggleFreeze() {
   await setFrozen(!frozen);
 }
 
+// Freeze Window 2: the same for the stream in Window 2 (no swap moves it). State lives in storage (frozen2); the badge is
+// left alone (LOCK stays for Main's freeze), the popup button shows the state.
+async function setFrozen2(frozen2) {
+  await chrome.storage.local.set({ frozen2 });
+  if (await chrome.offscreen.hasDocument()) chrome.runtime.sendMessage({ type: "freeze2", value: frozen2 }).catch(() => {});
+}
+
+async function toggleFreeze2() {
+  const { frozen2 = false } = await chrome.storage.local.get("frozen2");
+  await setFrozen2(!frozen2);
+}
+
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === "toggle-freeze") toggleFreeze();
+  if (command === "toggle-freeze-window2") toggleFreeze2();
   if (command === "track-tab") {
     // The shortcut counts as the click Edge needs: (re)track the visible tab of the window you are in.
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -319,7 +332,7 @@ async function reconcile() {
   const open = new Set((await chrome.windows.getAll()).map((w) => String(w.id)));
   const { windowRoles } = await getState();
   for (const id of Object.keys(windowRoles)) if (!open.has(id)) delete windowRoles[id];
-  await chrome.storage.local.set({ tracked: {}, weights: {}, windowRoles, frozen: false });
+  await chrome.storage.local.set({ tracked: {}, weights: {}, windowRoles, frozen: false, frozen2: false });
   await restoreRoles();
   await saveLayout(); // remember where the windows that already have a role sit
 }
@@ -328,6 +341,7 @@ chrome.runtime.onStartup.addListener(reconcile);
 
 chrome.runtime.onMessage.addListener((m) => {
   if (m.type === "toggle_freeze") toggleFreeze();
+  if (m.type === "toggle_freeze2") toggleFreeze2();
   if (m.type === "track") trackTab(m.tabId).catch((e) => console.error("track failed", e));
   if (m.type === "focus_tile") {
     expandTile(m.tab_id, m.index).catch((e) => {

@@ -27,7 +27,7 @@ import time
 import numpy as np
 from websockets.asyncio.server import serve
 
-from daemon.arrange import plan_fix, plan_swap
+from daemon.arrange import SLOT_PREFERENCE, plan_fix, plan_move, plan_swap
 from daemon.favourites import match_multiplier, match_slots
 from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
@@ -61,7 +61,9 @@ GAP_RETRY_S = 1.5          # the gap pass (strip between two team codes) looks a
 ZOOM_RETRY_S = 6.0         # the zoom pass looks again this often on a tile where it found no score
 DIGIT_RETRY_S = 6.0       # the digit fallback looks again this often on a tile where it found nothing
 FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use are corrected
-EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
+SKIP_LOG_S = 10.0      # a swap skipped because Window 2 is fixed is said at most this often
+WINDOW2 = "LEFT"       # the internal id of Window 2 (the user only ever sees "Window 2")
+EXPAND_CHECK_S = 8.0  # how long to wait for the next video report to confirm an expand
 FAVOURITE_MEMORY_S = 60.0
 RULE_MEMORY_S = 600.0     # slot rules are remembered longer: a team stays on its tab through ads and breaks  # a favourite read on screen keeps counting for this long
 OCR_MIN_WIDTH = 900  # smaller areas (multiview tiles) are enlarged before reading
@@ -139,6 +141,8 @@ class Server:
         self.focuser = focuser or TileFocuser()
         self.expand_resend: dict[int, int] = {}   # tab -> tile whose click only selected it: the expand click is sent once more
         self.expand_retried: set[int] = set()   # tabs whose last expand failed and was already asked again once
+        self.skip_logged_at: dict[str, float] = {}   # reason -> when a skipped swap (Window 2 fixed) was last logged
+        self.swap_refusal: str | None = None         # why the last `_perform_swap` refused (for the popup), None if it did not
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
@@ -219,8 +223,28 @@ class Server:
         elif kind == "freeze":
             self.scorer.frozen = bool(msg["value"])
             log.info("freeze %s", "ON: no swaps or tile changes" if self.scorer.frozen else "OFF")
+        elif kind == "freeze2":
+            self.scorer.frozen2 = bool(msg["value"])
+            log.info("freeze Window 2 %s", "ON: no swap moves Window 2" if self.scorer.frozen2 else "OFF")
         else:
             log.warning("unknown message type: %r", kind)
+
+    def window2_tab(self) -> int | None:
+        """The stream that sits in Window 2 (internal LEFT) now."""
+        return next((t for t, role in self.roles.items() if role == WINDOW2 and t in self.scorer.streams), None)
+
+    def fixed_slots(self, now: float) -> frozenset[str]:
+        """Slots no swap may move: Window 2 while it is held or frozen. Also tells the scorer which streams sit there."""
+        tab = self.window2_tab()
+        fixed = self.scorer.window2_fixed(now, tab)
+        self.scorer.fixed_tabs = frozenset({tab}) if fixed else frozenset()
+        return frozenset({WINDOW2}) if fixed else frozenset()
+
+    def _note_roles(self, moves: list[tuple[int, str]]) -> None:
+        """The windows are being arranged: remember the new slots at once (the extension confirms them a moment later)."""
+        for tab, role in moves:
+            if tab in self.roles:
+                self.roles[tab] = role
 
     def handle_audio(self, raw: bytes) -> None:
         """Binary frame: 4-byte little-endian tab id, then 16-bit little-endian mono samples."""
@@ -260,19 +284,24 @@ class Server:
     async def handle_control_message(self, msg: dict) -> dict | None:
         """The popup's manual control: put a stream on MAIN and hold it there, release the hold, ask for its state."""
         kind = msg.get("type")
+        if kind in ("force_window2", "release_hold2", "get_hold2"):
+            return await self._handle_window2_control(msg)
         if kind not in ("force_main", "release_hold", "get_hold"):
             return None
         now, error = time.monotonic(), None
         if kind == "force_main":
             try:
                 tab_id = int(msg["tab_id"])
+                fixed = self.fixed_slots(now)
+                if self.roles.get(tab_id) in fixed:
+                    raise ValueError("Window 2 is held or frozen, so this stream cannot leave it: release the hold (or unfreeze Window 2) first")
                 swap = self.scorer.force_main(tab_id, now)
                 if swap is not None:
                     log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
                     self._rec_swap(swap, "user", now)
                     if not await self._perform_swap(swap, restore_main=True):
                         self.scorer.release_hold()
-                        error = "this stream cannot go to Main (slot rules or windows not set)"
+                        error = self.swap_refusal or "this stream cannot go to Main (slot rules or windows not set)"
                 if error is None:
                     log.info("MAIN forced to tab %s by the user, held for %.0f s", tab_id, self.scorer.hold_left(now))
             except (ValueError, KeyError, TypeError) as e:
@@ -282,15 +311,56 @@ class Server:
             log.info("hold on MAIN released by the user")
         return {"type": "hold", "tab_id": self.scorer.hold_tab, "left_s": round(self.scorer.hold_left(now)), "error": error}
 
+    async def _handle_window2_control(self, msg: dict) -> dict:
+        """The popup's Window 2 control: put a stream in Window 2 and hold it there (like Make Main), release, ask."""
+        kind, now, error = msg.get("type"), time.monotonic(), None
+        if kind == "force_window2":
+            try:
+                tab_id = int(msg["tab_id"])
+                moves = [] if self.roles.get(tab_id) == WINDOW2 else plan_move(tab_id, WINDOW2, self.roles, self.limits)
+                if moves is None:
+                    raise ValueError("this stream cannot go to Window 2 (slot rules or windows not set)")
+                occupant = next((t for t, r in self.roles.items() if r == WINDOW2 and t != tab_id), None)
+                swap = self.scorer.force_window2(tab_id, now, occupant)   # raises before changing anything if it cannot be
+                if swap is not None:   # the stream was Main: Main and Window 2 trade places once
+                    log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
+                    self._rec_swap(swap, "user", now)
+                if moves:
+                    log.info("arrange (Window 2 forced by the user): %s", moves)
+                    self._note_roles(moves)
+                    await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
+                log.info("Window 2 forced to tab %s by the user, held for %.0f s", tab_id, self.scorer.hold2_left(now, self.window2_tab()))
+            except (ValueError, KeyError, TypeError) as e:
+                error = str(e) or "bad request"
+        elif kind == "release_hold2":
+            self.scorer.release_hold2()
+            log.info("hold on Window 2 released by the user")
+        return {"type": "hold2", "tab_id": self.scorer.hold2_tab, "left_s": round(self.scorer.hold2_left(now, self.window2_tab())), "error": error}
+
+    def _log_skipped(self, reason: str, now: float) -> None:
+        """A swap that Window 2 being fixed stopped: a warning in events.log, at most every SKIP_LOG_S s per reason."""
+        if now - self.skip_logged_at.get(reason, float("-inf")) >= SKIP_LOG_S:
+            self.skip_logged_at[reason] = now
+            log.warning("swap skipped: %s", reason)
+
     async def _perform_swap(self, swap, restore_main: bool) -> bool:
-        """Arrange the windows for a swap the scorer decided on. False if the slot rules refuse it."""
-        moves = plan_swap(swap.promote, swap.demote, self.roles, self.limits)
+        """Arrange the windows for a swap the scorer decided on. False if the slot rules refuse it, or if Window 2 is held or
+        frozen and no other window can take the old Main stream (`swap_refusal` then says why)."""
+        now = time.monotonic()
+        self.swap_refusal = None
+        fixed = self.fixed_slots(now)
+        moves = plan_swap(swap.promote, swap.demote, self.roles, self.limits, fixed)
         if moves is None:
-            log.info("swap refused (allowed slots or unknown slots): promote %s, demote %s", swap.promote, swap.demote)
+            if fixed and plan_swap(swap.promote, swap.demote, self.roles, self.limits) is not None:
+                self.swap_refusal = "Window 2 is held or frozen and no other window can take the stream that leaves Main"
+                self._log_skipped(self.swap_refusal, now)
+            else:
+                log.info("swap refused (allowed slots or unknown slots): promote %s, demote %s", swap.promote, swap.demote)
             if restore_main:
                 self.scorer.main = swap.demote  # nothing moved, so the old MAIN stays MAIN
             return False
         log.info("arrange: %s", moves)
+        self._note_roles(moves)
         await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
         return True
 
@@ -1005,6 +1075,8 @@ class Server:
                 continue
             if self.scorer.frozen and tab_id == self.scorer.main:
                 continue  # MAIN is locked: leave which tile it shows alone
+            if self.scorer.frozen2 and self.roles.get(tab_id) == WINDOW2:
+                continue  # Window 2 is frozen: same for it
             pending = self.pending_expand.get(tab_id)
             if pending is not None and now < pending[1]:
                 continue   # a tile was asked to expand a moment ago: wait to see where the sound went (`_check_expand`) before asking again
@@ -1131,11 +1203,19 @@ class Server:
                                [(it["text"], it["y1"] - it["y0"], it["x0"], it["y0"]) for it in r["items"][:40]])
 
     def _next_swap(self, now: float):
-        """Normal swap into MAIN; while MAIN is frozen, a swap into the LEFT window instead."""
+        """Normal swap into MAIN; while MAIN is frozen, a swap into the LEFT window instead (into the next window if Window 2 is
+        held or frozen)."""
+        fixed = self.fixed_slots(now)
         if not self.scorer.frozen:
             return self.scorer.decide(now)
-        left = next((t for t, role in self.roles.items() if role == "LEFT" and t != self.scorer.main), None)
-        return self.scorer.decide(now, target=left) if left is not None else None
+        slots = [WINDOW2] if not fixed else [s for s in SLOT_PREFERENCE if s not in fixed]
+        for slot in slots:
+            target = next((t for t, role in self.roles.items() if role == slot and t != self.scorer.main), None)
+            if target is not None:
+                return self.scorer.decide(now, target=target)
+        if fixed:
+            self._log_skipped("Main and Window 2 are both frozen or held and no other window can take a swap", now)
+        return None
 
     def _ensure_main(self) -> None:
         """Safety net: with no MAIN stream the scorer decides nothing at all. If the windows say which tab sits in the
@@ -1153,6 +1233,7 @@ class Server:
             await asyncio.sleep(DECIDE_INTERVAL_S)
             now = time.monotonic()
             taken = None
+            fixed = self.fixed_slots(now)   # Window 2 held or frozen: the scorer must not pick its stream, plan_fix must not move it
             if now - last_log >= SCORE_LOG_INTERVAL_S:
                 taken = self._log_scores(now)
                 last_log = now
@@ -1161,9 +1242,10 @@ class Server:
                 last_snap = now
             self._ensure_main()
             swap = taken or self.scorer.evict_main(now) or self._next_swap(now)
-            if not swap and now - last_fix >= FIX_INTERVAL_S and (moves := plan_fix(self.roles, self.limits)):
+            if not swap and now - last_fix >= FIX_INTERVAL_S and (moves := plan_fix(self.roles, self.limits, fixed)):
                 last_fix = now
                 log.info("arrange (slot rules): %s", moves)
+                self._note_roles(moves)
                 await self._broadcast({"type": "arrange", "moves": [{"tab_id": t, "role": r} for t, r in moves]})
             if swap:
                 log.info("swap: promote tab %d, demote tab %d | %s", swap.promote, swap.demote, swap.reason)
