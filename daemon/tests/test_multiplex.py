@@ -133,15 +133,23 @@ def test_a_studio_shot_or_ticker_does_not_reset():
     assert server.watchers[(2, 0)]._peak == (21, 14) and server.identities[(2, 0)].key == frozenset({"KCC", "BUF"})
 
 
-def test_a_flagged_tab_ignores_the_popup_teams_for_favourites():
+def test_a_flagged_tab_still_honours_the_teams_the_user_typed():
+    # user 2026-10-18: anything typed by hand in the extension overrides the automatic readout, on a multiplex tab too
     reg = {"type": "register", "tab_id": 2, "role": "LEFT", "sport": "American football", "teams": "Chiefs vs Bills", "favourites": [{"name": "Chiefs", "mult": 2}]}
     server = make(True)
     server.handle_message({**reg, "multiplex": True})
     server._update_favourite(2, 100.0)
-    assert server.scorer.streams[2].favourite == 1.0
-    server.handle_message({**reg, "multiplex": False})
-    server._update_favourite(2, 100.0)
     assert server.scorer.streams[2].favourite == 2.0
+    assert server._feed_text(2) == "Chiefs vs Bills"
+
+
+def test_a_flagged_tab_ignores_the_page_text_but_not_the_typed_teams():
+    server = make(True)
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT", "sport": "American football", "multiplex": True})
+    server.page_text[2] = "New Orleans Saints / Minnesota Vikings"
+    assert server._feed_text(2) == ""                       # the page title belongs to the channel
+    server.handle_message({"type": "register", "tab_id": 2, "role": "LEFT", "sport": "American football", "multiplex": False})
+    assert server._feed_text(2) == "New Orleans Saints / Minnesota Vikings"   # an unflagged tab uses it as before
 
 
 def test_new_game_drops_fav_seen_rule_seen_and_buildup():

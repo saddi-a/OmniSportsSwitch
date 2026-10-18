@@ -751,9 +751,10 @@ class Server:
                             self.buildup.note(bkey, now, note, "note:" + cue)
 
     def _feed_text(self, tab_id: int) -> str:
-        """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says."""
+        """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says. On a multiplex tab only
+        what the user typed counts (a manual entry wins; the page title belongs to the channel, not to one of its games)."""
         if self.multiplex.get(tab_id):
-            return ""   # the teams typed in the popup / on the page belong to one game; a multiplex tab shows many
+            return self.team_text.get(tab_id, "")
         return self.team_text.get(tab_id) or self.page_text.get(tab_id, "")
 
     def _page_info(self, tab_id: int, info: dict) -> None:
@@ -970,7 +971,7 @@ class Server:
     def _update_favourite(self, tab_id: int, now: float) -> None:
         """A favourite counts if its name is in the tab's teams field or was read on screen in the last minute.
         The same goes for team rules that limit the slots a tab may use."""
-        typed = "" if self.multiplex.get(tab_id) else self.team_text.get(tab_id, "")   # a multiplex tab: only the teams read on screen pin favourites
+        typed = self.team_text.get(tab_id, "")   # what the user typed always counts, on a multiplex tab too (a manual entry wins)
         mult = match_multiplier([typed], self.favourites)
         for (t, _), (m, seen_at) in self.fav_seen.items():
             if t == tab_id and now - seen_at <= FAVOURITE_MEMORY_S:
