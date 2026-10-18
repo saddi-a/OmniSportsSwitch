@@ -210,3 +210,9 @@ def test_crowd_note_default_is_three_readings_at_the_one_second_tick():
     b = BuildUp(cooldown_s=30.0)
     assert not b.crowd_note_due(1, 0.0, 0.5, 0.25) and not b.crowd_note_due(1, 1.0, 0.5, 0.25)
     assert b.crowd_note_due(1, 2.0, 0.5, 0.25)       # the same 2 s hold as two readings at the old 2 s tick
+
+
+def test_the_default_build_up_level_to_take_main_is_040():
+    # user decision 2026-10-18 (option A): 0.32 let weak surge notes flip-flop Main between two quiet football games
+    from daemon.scoring import Config
+    assert Config().buildup_min == pytest.approx(0.40)

@@ -664,6 +664,7 @@ def test_french_touche_is_not_a_touchdown_but_a_called_one_is():
 def _buildup_server(sport, level=0.46, tabs=(1, 2)):
     """Server with MAIN = tab 1 and a stream 2 whose build-up cues add up to `level`, both warmed up on quiet audio."""
     server = Server()
+    server.scorer.config.buildup_min = 0.32   # these tests pin the mechanics at the old level (the shipped default is 0.40 since 2026-10-18)
     for t in tabs:
         server.handle_message({"type": "register", "tab_id": t, "is_main": t == 1})
         for i in range(120):
