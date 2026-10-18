@@ -16,6 +16,8 @@ import re
 import urllib.error
 import urllib.request
 
+from daemon.clock import clock_seconds as _shared_clock_seconds
+
 log = logging.getLogger("daemon")
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/"
@@ -122,9 +124,8 @@ def _float(value) -> float | None:
 
 
 def clock_seconds(text) -> float | None:
-    """'12:21' -> 741.0; '0:07.5' -> 7.5; None when it is not a clock."""
-    m = re.fullmatch(r"\s*(\d+):(\d{1,2}(?:\.\d+)?)\s*", text or "")
-    return int(m.group(1)) * 60 + float(m.group(2)) if m else None
+    """'12:21' -> 741.0; '0:07.5' -> 7.5; None when it is not a clock. The shared parser (`daemon/clock.py`)."""
+    return _shared_clock_seconds(text)
 
 
 def game_elapsed_s(sport: str, period: int | None, clock_s: float | None) -> float | None:

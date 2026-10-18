@@ -45,6 +45,7 @@ import statistics
 import time
 
 from daemon.espn_history import tier2_group
+from daemon.clock import clock_seconds
 
 GOAL_LAG_S = 12.0                      # same value as daemon.backtest.GOAL_LAG_S (OCR confirms a goal this long after the picture)
 SPORT_OF_FEED = {"soccer": "football", "american football": "american football"}
@@ -162,16 +163,8 @@ def read_feed(feed_dir, t_min: float, t_max: float, margin_s: float = 3 * 3600.0
 
 
 def parse_clock(text) -> float | None:
-    """'36:15' -> 2175.0. Anything else (stoppage '45+2', countdown junk, None) -> None: no guess."""
-    if not isinstance(text, str):
-        return None
-    parts = text.strip().split(":")
-    if len(parts) != 2 or not all(p.isdigit() for p in parts):
-        return None
-    minutes, seconds = int(parts[0]), int(parts[1])
-    if seconds > 59 or minutes > 130:
-        return None
-    return float(minutes * 60 + seconds)
+    """'36:15' -> 2175.0. Anything else (stoppage '45+2', countdown junk, None) -> None: no guess. The shared parser (`daemon/clock.py`)."""
+    return clock_seconds(text)
 
 
 # ---------------------------------------------------------------------------------------------------------------

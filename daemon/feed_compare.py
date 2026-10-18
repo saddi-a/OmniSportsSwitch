@@ -17,6 +17,7 @@ import statistics
 import unicodedata
 
 from daemon import feed
+from daemon.clock import clock_seconds
 
 OCR_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3})\s+ocr tab (\d+)\[(\d+)\]: clocks=(\[[^\]]*\]) texts=(\[.*\])\s*$")
 CLOCK = re.compile(r"^(\d{1,3}):(\d{2})$")
@@ -47,8 +48,7 @@ class Measurement:
 
 
 def parse_clock(text: str) -> float | None:
-    m = CLOCK.match(text.strip())
-    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+    return clock_seconds(text)   # the shared parser (`daemon/clock.py`)
 
 
 def parse_ocr(lines) -> list[Reading]:

@@ -12,6 +12,7 @@ Rules (see PLAN.md):
 import re
 from dataclasses import dataclass
 
+from daemon.clock import clock_seconds
 from daemon.cues import banner_tier
 from daemon.score_watch import STAT_GRAPHIC_RE
 from daemon.scoring import Config
@@ -324,8 +325,8 @@ class GameTracker:
         # game clock: seen on two readings in a row it counts like an ad placeholder phrase.
         scoreboard = has_scoreboard_text(texts, clocks)
         lone_clock = bool(clocks) and bool(texts) and not scoreboard and not self._continues_game_clock(now, clocks)
-        if scoreboard and clocks and (m := re.fullmatch(r"(\d{1,3}):(\d{2})", clocks[0].strip())):
-            self._game_clock = (int(m.group(1)) * 60 + int(m.group(2)), now)
+        if scoreboard and clocks and (game_s := clock_seconds(clocks[0])) is not None:
+            self._game_clock = (game_s, now)
         promo = not scoreboard and any(p in t for t in lowered for p in PROMO_PHRASES)   # a promo screen with no game on it
         if texts or clocks:   # a frame the OCR read as completely empty says nothing: it must not reset the 2-in-a-row count (a DAZN carousel is read empty every other frame)
             self._ad_hits = self._ad_hits + 1 if lone_clock or promo or any(p in t for t in lowered for p in AD_PHRASES) else 0
@@ -423,9 +424,9 @@ class GameTracker:
             return False
         last, then = self._game_clock
         for c in clocks:
-            m = re.fullmatch(r"(\d{1,3}):(\d{2})", c.strip())
-            if m:
-                moved = abs(int(m.group(1)) * 60 + int(m.group(2)) - last)
+            s = clock_seconds(c)
+            if s is not None:
+                moved = abs(s - last)
                 if moved <= CLOCK_SLACK_S or abs(moved - (now - then)) <= CLOCK_SLACK_S:
                     return True
         return False
@@ -436,7 +437,7 @@ class GameTracker:
         reading is reported as ("start", seconds back); ("end", seconds) comes when the live clock returns (a jump forward). A rewind of
         minutes by the viewer is not one. With `replay_by_clock_s` above 0 `self.replay` is also set for that long (0 = log only)."""
         cfg = self.config
-        seconds = [int(m.group(1)) * 60 + int(m.group(2)) for c in clocks if (m := re.fullmatch(r"(\d{1,3}):(\d{2})", c.strip()))]
+        seconds = [s for c in clocks if (s := clock_seconds(c)) is not None]
         if not seconds:
             return
         if self._cs_last is None:

@@ -16,6 +16,7 @@ import re
 from collections import Counter, deque
 
 from daemon.scoring import Config
+from daemon.clock import clock_seconds as _shared_clock_seconds
 
 SCORE_PAIR_RE = re.compile(r"^(\d{1,3})\s?[-–:]\s?(\d{1,3})$")  # "2-0"
 NUMBER_RE = re.compile(r"^\d{1,3}$")
@@ -200,9 +201,8 @@ def _numbers_read_as_a_score(score: tuple[int, int], items: list[dict]) -> bool:
     return False
 
 
-def clock_seconds(text: str) -> int | None:
-    m = CLOCK_TEXT_RE.match(text)
-    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+def clock_seconds(text: str) -> float | None:
+    return _shared_clock_seconds(text)   # the shared parser (`daemon/clock.py`)
 
 
 WIDE_PAIR_VS_HEIGHT = 2.2   # two digits are about 1.5 text heights wide; wider than this there is a crest between them

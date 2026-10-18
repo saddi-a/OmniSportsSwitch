@@ -14,6 +14,7 @@ import re
 import unicodedata
 
 from daemon import feed, team_names as names_table
+from daemon.clock import first_clock_seconds
 
 WINDOW = 10            # readings (with at least one candidate) remembered per tile
 MIN_HITS = 3           # readings in the window that must show the game's two teams
@@ -84,11 +85,7 @@ def shows_game(texts: list[str], snap: feed.Snapshot) -> bool:
 
 
 def parse_clock_s(clocks: list[str]) -> float | None:
-    for c in clocks:
-        s = feed.clock_seconds(c)
-        if s is not None:
-            return s
-    return None
+    return first_clock_seconds(clocks)   # the shared parser (`daemon/clock.py`)
 
 
 @dataclasses.dataclass(frozen=True)
