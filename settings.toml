@@ -195,8 +195,10 @@ no_clock_s = 60
 # The sports are football (soccer), "american football"; any other or unknown sport uses the shared values. Only
 # per-stream values may be overridden (all [weights]; of [scoring] the swap margins, cue, leverage, goal hold and build-up values; the
 # list is OVERRIDABLE_SCORING in daemon/scoring.py); a server-wide key is ignored with a warning. A shared value changed in the popup
-# still reaches every sport that does not override it. Nothing is overridden by default (a test checks this file equals the defaults).
+# still reaches every sport that does not override it. Only one override ships (below, American football speech); a test checks the rest equals the defaults.
 # [scoring.football]
 # buildup_min = 0.40
 # [weights.football]
 # cue_chance = 0.30
+[weights."american football"]
+speech = -0.1   # commentary costs half as much: the touchdown call is spoken over the crowd (2026-10-18 audio analysis, 20 of 43 calls reach 0.35 instead of 6)

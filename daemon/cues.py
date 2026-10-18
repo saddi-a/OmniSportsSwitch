@@ -32,7 +32,7 @@ _RED_CARD_RE = re.compile(r"red card|carton rouge|sent off|sending off|dismissed
 
 SPEECH_SCORING = {"free kick": "free_kick", "chance": "chance", "post": "chance", "penalty": "chance", "goal": "chance",
                   "penalty awarded": "penalty_awarded", "post area": "mid"}   # spoken cues that feed the score (soccer)
-SPEECH_SCORING_AMERICAN = {"interception": "high", "field goal": "chance"}   # spoken cues that feed the score in American football: a turnover call, a field goal being kicked
+SPEECH_SCORING_AMERICAN = {"interception": "high", "touchdown": "high", "field goal": "chance"}   # spoken cues that feed the score in American football: a turnover call, a touchdown call, a field goal being kicked
 
 
 def speech_cue_weight(cue: str, sport: str | None, weights, factor: float) -> float | None:

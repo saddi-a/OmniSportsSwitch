@@ -36,14 +36,16 @@ def test_without_overrides_every_sport_gets_the_config_itself():
         assert cfg.for_sport(sport) is cfg
 
 
-def test_the_shipped_settings_file_has_no_override_values_only_a_commented_example(tmp_path):
+def test_the_shipped_settings_file_has_one_override_american_football_speech_and_a_commented_example(tmp_path):
     text = SETTINGS_PATH.read_text(encoding="utf-8")
     assert "# [scoring.football]" in text and "# [weights.football]" in text
     shipped = tmp_path / SETTINGS_PATH.name
     shipped.write_bytes(SETTINGS_PATH.read_bytes())
     s = load_settings(shipped)
-    assert s.scoring.sport_scoring == {} and s.scoring.sport_weights == {}
+    assert s.scoring.sport_scoring == {} and s.scoring.sport_weights == {"american football": {"speech": -0.1}}
     assert dataclasses.asdict(s.scoring) == dataclasses.asdict(Config())   # overrides are no dataclass fields
+    assert s.scoring.for_sport("american football").weights.speech == pytest.approx(-0.1)
+    assert s.scoring.for_sport("football").weights.speech == pytest.approx(-0.2)
 
 
 def test_scores_are_identical_with_or_without_a_sport_lookup():

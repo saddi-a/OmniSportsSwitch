@@ -23,7 +23,7 @@ def test_it_does_not_count_in_other_sports_or_when_the_sport_is_unknown_or_switc
 
 def test_the_other_american_football_cues_are_unchanged():
     w = Weights()
-    for cue in ("touchdown", "red zone", "fourth down", "flag"):
+    for cue in ("red zone", "fourth down", "flag"):
         assert speech_cue_weight(cue, "american football", w, 1.0) is None
 
 
@@ -82,3 +82,11 @@ def test_sack_counts_only_as_a_real_sack_call():
         assert "interception" not in find_speech_cues(text, "american football"), text
     for text in ("he is sacked!", "a sack by Walker", "sack on third down", "what a fumble", "intercepted at the 30"):
         assert "interception" in find_speech_cues(text, "american football"), text
+
+
+def test_a_spoken_touchdown_weighs_the_high_tier_in_american_football_only():
+    w = Weights()
+    assert speech_cue_weight("touchdown", "american football", w, 1.0) == pytest.approx(w.cue_review_high)
+    assert speech_cue_weight("touchdown", "american football", w, 0.0) is None
+    for sport in ("football", "hockey", None, ""):
+        assert speech_cue_weight("touchdown", sport, w, 1.0) is None
