@@ -35,7 +35,7 @@ Short hand-over (cleaned up 2026-10-18 evening, refreshed 2026-10-18 late). The 
 1. Live checks on game days: `jingle heard` vs goals on the CANAL+ tab (set `jingle_cue` 0 if it misfires, tune `jingle_min_score`); `new game on tab` lines on the multiplex tabs; the spoken-touchdown cue count; the NFL templates and clocks on live games and the share of unread Fox clocks; DAZN expand on small tiles (no `did not happen` / `expand ... failed in the extension` lines), the new break rule on a real medical timeout or review, `second reader ... score found` on stacked LaLiga/Ligue 1 bugs.
 2. NFL RedZone: capture frames (studio shots, which templates fail, how scores jump between games); a template for it if needed. Keep its dataset rows out of Director Training unless the user says otherwise.
 3. Director Training: count after the game days (target about 8 games / 25 events per sport); `build` stays on hold (see B).
-4. The per-tile-sport live checklist (`docs/per-tile-sport.md` section 8) needs a mixed soccer + American football DAZN multiview (its text 'the audible tile is not known' is outdated: rects now carry `audible`).
+4. The per-tile-sport live checklist (`docs/per-tile-sport.md` section 8) needs a mixed soccer + American football DAZN multiview.
 5. Launcher tray start/restart still untested live.
 6. External data API: `docs/api-plan.md` section 14 (everything measuring-only or shadow, `feed_event_weight` 0).
 

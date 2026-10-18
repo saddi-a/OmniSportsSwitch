@@ -306,7 +306,7 @@ See the final report of the scoping task; they are copied to PLAN.md section 0 w
 
 Choices the build took without asking (all the safest option; change on request):
 
-* The audible tile is not known (no `audible` in the rects of a multiview): every tile hears the tab's audio (as before the work), and spoken cues go to the tile whose sport is the audible sport, else the first tile.
+* The audible tile is known: the extension marks it in the rects (`audible` = the video is not muted and has volume, `extension/background.js`), `Server._audible_index` takes the first audible one and the Scorer's `audible_of` hands the audio terms (speech, crowd, loudness) and spoken cues to that tile only. Only when no tile is reported audible does every tile hear the tab's audio and a spoken cue go to the tile whose sport is the audible sport, else the first tile (`Server._audible_target`). An audible tile of unknown sport in a multiview counts as football.
 * A one-video tab is untouched: its picture signals stay in the stream itself (`tile=None`); a golden test proves equal scores and swaps. Tile records exist only while the tab shows 2+ videos.
 * The goal-hold log lines ("post-goal replay hold tab T ...") stay per tab (the longest tile hold); the hold itself is per tile.
 * The focus uses the scorer's tile scores only when every tile has one; otherwise event + crowd, as before. The score of the audible tile includes the crowd and loudness, so a silent tile needs a cue or goal clearly above it (1.5x).
