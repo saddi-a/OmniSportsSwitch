@@ -14,6 +14,8 @@ import datetime
 import re
 import statistics
 
+from daemon.sport_choice import sport_of_league
+
 TS = r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3})"
 SIGNAL_LINE = re.compile(
     TS + r"\s+(MAIN )?(\d+): (live|break) fav=(-?[\d.]+) score=(-?[\d.]+) surge=(-?[\d.]+) crowd=(-?[\d.]+) speech=(-?[\d.]+)")
@@ -262,7 +264,6 @@ def summarise(leads: list[Lead], detail: bool = True) -> str:
 # and both are compared as they are. Checked on Coventry-Newcastle 2026-10-12: feed score 2-0 -> 2-1 at 22:28:15, OCR change 22:28:22.
 MAP_LINE = re.compile(TS + r" feed map tab (\d+) tile (\d+) -> (\S+) (\S+) \(")
 DROP_LINE = re.compile(TS + r" feed map tab (\d+) tile (\d+) dropped (\S+) (\S+):")
-SPORT_NAMES = {"soccer": "Football", "american football": "American football"}   # feed sport -> the daemon's name
 GOAL_KINDS = {"Football": ("goal", "penalty goal", "own goal"), "American football": ("touchdown", "field goal good")}
 BUILDUP_KINDS = ("yellow card", "red card", "penalty", "interception", "fumble", "big play")
 FEED_DEDUP_S = 120.0          # the feed repeats an event (the clock moves by a second, the key changes): same game, kind, team within this = one
@@ -274,8 +275,7 @@ BASE_RATE_MIN = 3             # fewer events than this: say too few
 
 
 def feed_sport(league: str) -> str:
-    from daemon import feed
-    return SPORT_NAMES.get(feed.LEAGUES[league][0], "unknown") if league in feed.LEAGUES else "unknown"
+    return sport_of_league(league) or "unknown"   # the shared league -> sport table (`sport_choice.sport_of_league`)
 
 
 @dataclasses.dataclass(frozen=True)
