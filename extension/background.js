@@ -163,10 +163,10 @@ async function expandTile(tabId, index) {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await chrome.debugger.attach(target, "1.3");
   try {
-    // Where the tile centre is right now (viewport coordinates), measured through the debugger.
-    const centre = async () => {
+    // Where the tile is right now (viewport coordinates), measured through the debugger.
+    const measure = async () => {
       const r = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
-        expression: `(() => { const v = document.querySelectorAll("video")[${index}]; if (!v) return null; const r = v.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()`,
+        expression: `(() => { const v = document.querySelectorAll("video")[${index}]; if (!v) return null; const r = v.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, l: r.left, t: r.top, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; })()`,
         returnByValue: true,
       });
       return r && r.result ? r.result.value : null;
@@ -174,11 +174,21 @@ async function expandTile(tabId, index) {
     const mouse = (type, [x, y], extra = {}, dx = 0, dy = 0) =>
       chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type, x: x + dx, y: y + dy, pointerType: "mouse", ...extra });
     await wait(500); // the debugging bar has appeared and the page has moved
-    let at = await centre();
-    if (!at) return;
-    await mouse("mouseMoved", at);
+    let m = await measure();
+    if (!m) return;
+    // DAZN shows its expand icon only when the pointer ENTERS a tile (found live 2026-10-18: the pointer this extension leaves behind stays
+    // inside the tile it clicked, so the next click on that tile got no icon and only selected it). So first leave the tile (a point just
+    // outside it, on the side with room), then glide in to the centre.
+    const out = m.l > 30 ? [m.l - 20, m.cy] : m.t > 30 ? [m.cx, m.t - 20] : m.r < m.w - 30 ? [m.r + 20, m.cy] : [m.cx, Math.min(m.h - 2, m.b + 20)];
+    await mouse("mouseMoved", out);
+    await wait(200);
+    for (let k = 1; k <= 8; k++) {
+      await mouse("mouseMoved", [out[0] + ((m.cx - out[0]) * k) / 8, out[1] + ((m.cy - out[1]) * k) / 8]);
+      await wait(50);
+    }
     await wait(700); // the tile shows its expand icon under the pointer
-    at = (await centre()) || at; // the page may have moved again meanwhile
+    m = (await measure()) || m; // the page may have moved again meanwhile
+    const at = [m.cx, m.cy];
     // The pointer has not moved since the icon appeared, so DAZN does not count it as over the icon and the
     // click only selects the tile. A second small move makes the icon hovered, and the click then expands.
     await mouse("mouseMoved", at, {}, 3, 2);
