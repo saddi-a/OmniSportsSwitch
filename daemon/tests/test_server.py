@@ -265,7 +265,7 @@ def test_a_confirmed_expand_swaps_the_records_of_the_two_slots():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
     server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
-    server.pending_expand[20] = (2, time.monotonic() + 8)
+    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)   # asked 3 s ago
     _report(server, 20, audible=0)                      # the sound is on the big slot: the stream moved there
     assert server.trackers[(20, 0)] == "tile2-game" and server.trackers[(20, 2)] == "main-game"
     assert 20 not in server.pending_expand
@@ -929,7 +929,7 @@ def test_a_confirmed_expand_clears_the_retry_mark():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
     server.expand_retried.add(20)
-    server.pending_expand[20] = (2, time.monotonic() + 8)
+    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)
     _report(server, 20, audible=0)
     assert 20 not in server.expand_retried
 
@@ -946,3 +946,25 @@ def test_a_click_that_only_selected_the_tile_is_sent_once_more():
     server.pending_expand[20] = (2, now + 8)
     _report(server, 20, audible=2)                          # selected again: no third try
     assert 20 not in server.expand_resend
+
+
+def test_a_report_taken_before_the_click_is_no_confirmation():
+    # found live 2026-10-18 02:22:52: the tile was asked for, the next report (170 ms later) still had the sound on the big slot, the
+    # old code read that as "the stream moved there", cleared the pending state, and the later move of the sound to the small tile
+    # (selected, never expanded) went unnoticed
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
+    server.pending_expand[20] = (2, time.monotonic() + 8)       # asked just now
+    _report(server, 20, audible=0)                              # the click has not happened yet
+    assert 20 in server.pending_expand and server.trackers[(20, 0)] == "main-game"
+
+
+def test_the_live_sequence_stale_report_then_only_selected_is_caught(caplog):
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.pending_expand[20] = (2, time.monotonic() + 8)
+    _report(server, 20, audible=0)                              # stale
+    with caplog.at_level(logging.WARNING):
+        _report(server, 20, audible=2)                          # one second later: the sound moved to the small tile
+    assert "only selected" in caplog.text and server.expand_resend == {20: 2}
