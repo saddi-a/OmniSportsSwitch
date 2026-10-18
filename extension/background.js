@@ -109,7 +109,9 @@ function installVideoReporter() {
     return info;
   }
   let tick = 0;
+  let zoom = null; // the tab's page zoom as the browser knows it (asked from the service worker; a second old at most)
   window.__omniReporter = setInterval(() => {
+    chrome.runtime.sendMessage({ type: "tab_zoom" }).then((z) => { if (typeof z === "number" && z > 0) zoom = z; }).catch(() => {});
     // Page order is kept (not sorted by size) so a tile keeps the same index while it stays on the page.
     const candidates = [...document.querySelectorAll("video")]
       .map((video, index) => ({ video, index, r: video.getBoundingClientRect() }))
@@ -125,9 +127,11 @@ function installVideoReporter() {
       top: Math.round((window.screenY + toolbar + r.top) * dpr),
       width: Math.round(r.width * dpr),
       height: Math.round(r.height * dpr),
+      css: { left: r.left, top: r.top },   // raw numbers: the daemon corrects left/top when the page is zoomed (`daemon/geometry.py`)
     }));
+    const win = { x: window.screenX, y: window.screenY, ow: window.outerWidth, oh: window.outerHeight, iw: window.innerWidth, ih: window.innerHeight, dpr, zoom };
     chrome.runtime
-      .sendMessage({ type: "video-rect", rects, visible: document.visibilityState === "visible", fullscreen: !!document.fullscreenElement,
+      .sendMessage({ type: "video-rect", rects, win, visible: document.visibilityState === "visible", fullscreen: !!document.fullscreenElement,
                     info: tick++ % 5 === 0 ? pageInfo() : undefined })
       .catch(() => {});
   }, 1000);
@@ -339,7 +343,11 @@ async function reconcile() {
 chrome.runtime.onInstalled.addListener(reconcile);
 chrome.runtime.onStartup.addListener(reconcile);
 
-chrome.runtime.onMessage.addListener((m) => {
+chrome.runtime.onMessage.addListener((m, sender, sendResponse) => {
+  if (m.type === "tab_zoom" && sender.tab) { // the video reporter asks for its tab's page zoom (the screen position math needs it)
+    chrome.tabs.getZoom(sender.tab.id).then(sendResponse).catch(() => sendResponse(null));
+    return true;
+  }
   if (m.type === "toggle_freeze") toggleFreeze();
   if (m.type === "toggle_freeze2") toggleFreeze2();
   if (m.type === "track") trackTab(m.tabId).catch((e) => console.error("track failed", e));

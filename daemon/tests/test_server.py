@@ -984,3 +984,13 @@ def test_a_report_right_after_the_second_click_is_not_a_second_failure(caplog):
     with caplog.at_level(logging.WARNING):
         _report(server, 20, audible=2)
     assert 20 not in server.pending_expand and "only selected" in caplog.text
+
+
+def test_a_zoomed_page_gets_its_rects_corrected_when_the_video_area_arrives():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 30})
+    win = {"x": 2560, "y": 100, "ow": 1440, "oh": 1000, "iw": 2848, "ih": 1784, "dpr": 0.5}     # a window zoomed to 50 %
+    rect = {"index": 0, "audible": True, "left": 978, "top": 154, "width": 476, "height": 330, "css": {"left": 100, "top": 216}}
+    server.handle_message({"type": "video_rect", "tab_id": 30, "rects": [rect], "win": win, "visible": True, "fullscreen": False})
+    stored = server.rects[30]["rects"][0]
+    assert (stored["left"], stored["top"]) == (2618, 308)
