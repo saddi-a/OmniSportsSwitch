@@ -126,6 +126,7 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === "video-rect" && sender.tab && captures.has(sender.tab.id)) {
     send({ type: "video_rect", tab_id: sender.tab.id, rects: m.rects, win: m.win, visible: m.visible, fullscreen: m.fullscreen, info: m.info });
   }
+  if (m.type === "expand_failed") send({ type: "expand_failed", tab_id: m.tab_id, index: m.index, error: String(m.error).slice(0, 200) });
   if (m.type === "start") startCapture(m).catch((e) => console.error("capture failed", e));
   if (m.type === "stop") stopCapture(m.tabId);
   if (m.type === "freeze") {

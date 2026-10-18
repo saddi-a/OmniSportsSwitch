@@ -994,3 +994,10 @@ def test_a_zoomed_page_gets_its_rects_corrected_when_the_video_area_arrives():
     server.handle_message({"type": "video_rect", "tab_id": 30, "rects": [rect], "win": win, "visible": True, "fullscreen": False})
     stored = server.rects[30]["rects"][0]
     assert (stored["left"], stored["top"]) == (2618, 308)
+
+
+def test_an_expand_that_failed_in_the_extension_is_logged_with_its_error(caplog):
+    server = Server()
+    with caplog.at_level(logging.WARNING):
+        server.handle_message({"type": "expand_failed", "tab_id": 20, "index": 2, "error": "Another debugger is already attached to the tab with id: 20."})
+    assert "expand of tab 20 tile 2 failed in the extension" in caplog.text and "Another debugger is already attached" in caplog.text
