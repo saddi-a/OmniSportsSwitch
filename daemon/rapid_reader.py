@@ -16,7 +16,7 @@ import numpy as np
 from daemon.game_state import AD_PHRASES, PROMO_PHRASES
 from daemon.score_slots import read_slots
 from daemon.score_watch import find_score_geo
-from daemon.screen_ocr import GAP_DIGIT_HEIGHT, find_clocks, find_name_pair, looks_like_team_name
+from daemon.screen_ocr import GAP_DIGIT_HEIGHT, NOT_TEAM_WORDS, TEAM_CODE_RE, find_clocks, find_name_pair, looks_like_team_name
 
 log = logging.getLogger("daemon")
 
@@ -95,6 +95,24 @@ def merge_items(base: list[dict], extra: list[dict]) -> list[dict]:
     return sorted(merged, key=lambda it: (round((it["y0"] + it["y1"]) / 2 / 10), it["x0"]))
 
 
+CODE_DIGIT_GAP = 2.5   # a team code and its score digit stand at most this many text heights apart, on one row
+CODE_DIGIT_CONFIDENCE = 0.7
+
+
+def code_beside_digit(items: list[dict]) -> bool:
+    """A three- or four-letter team code (SUN, LIV) with a sure single number right beside it on its row: the start of a compact scorebug
+    when no clock and no long team name was read (Man City-Sunderland)."""
+    codes = [it for it in items if TEAM_CODE_RE.fullmatch(it["text"].strip()) and it.get("conf", 1.0) >= CODE_DIGIT_CONFIDENCE
+             and it["text"].strip().casefold() not in NOT_TEAM_WORDS]
+    digits = [it for it in items if re.fullmatch(r"\d{1,2}", it["text"].strip()) and it.get("conf", 1.0) >= CODE_DIGIT_CONFIDENCE]
+    for c in codes:
+        h = max(1, c["y1"] - c["y0"])
+        for d in digits:
+            if abs((c["y0"] + c["y1"]) - (d["y0"] + d["y1"])) <= 1.2 * h and min(abs(d["x0"] - c["x1"]), abs(c["x0"] - d["x1"])) <= CODE_DIGIT_GAP * h:
+                return True
+    return False
+
+
 def has_scorebug_anchor(items: list[dict]) -> bool:
     """A clock, a down-and-distance text, a quarter or a team name is on screen: the frame shows (part of) a scorebug."""
     for it in items:
@@ -106,7 +124,7 @@ def has_scorebug_anchor(items: list[dict]) -> bool:
             continue   # a promo or an ad placeholder is no scorebug ("NFL GAME PASS" looks like a team name)
         if it.get("conf", 1.0) >= MIN_ANCHOR_CONFIDENCE and looks_like_team_name(text):
             return True
-    return False
+    return code_beside_digit(items)
 
 
 def needs_rescue(items: list[dict]) -> bool:
@@ -115,6 +133,12 @@ def needs_rescue(items: list[dict]) -> bool:
         return False
     clocks = find_clocks([it["text"] for it in items])
     return not clocks or find_score_geo(items, clocks) is None
+
+
+def _as_code(text: str) -> str:
+    """"McI" is a team code read with a lower-case letter: two or more capitals in three or four letters (never "The", "Sun") count as one."""
+    t = text.strip()
+    return t.upper() if re.fullmatch(r"[A-Za-z]{3,4}", t) and sum(c.isupper() for c in t) >= 2 else text
 
 
 def slot_items(left: dict, right: dict, left_score: int, right_score: int, conf: float = 0.9) -> list[dict]:
@@ -184,7 +208,7 @@ class RapidReader:
         merged = merge_items(items, self.read_items(image))
         clocks = find_clocks([it["text"] for it in merged])
         if find_score_geo(merged, clocks) is None:
-            pair = find_name_pair([dict(it, conf=max(it["conf"], 0.55)) for it in merged])
+            pair = find_name_pair([dict(it, conf=max(it["conf"], 0.55), text=_as_code(it["text"])) for it in merged])
             if pair is not None:
                 scores = read_slots(image, pair[0], pair[1], self.rec)
                 if scores is not None:

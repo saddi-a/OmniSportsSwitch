@@ -122,6 +122,16 @@ def test_the_rescue_adds_the_missing_score_digits_between_the_team_names():
     assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) == (17, 43)
 
 
+def test_a_mixed_case_team_code_still_gets_its_score_slots_read():
+    # Man City-Sunderland: the first reader read "McI" (conf 0.56) and "SUN"; the slot sweep must still find the pair
+    image = np.zeros((200, 900, 3), dtype=np.uint8)
+    items = [item("McI", 60, 48, 128, 80, conf=0.56), item("SUN", 400, 48, 470, 80), item("0", 340, 44, 372, 80, conf=1.0)]
+    n_left = len(windows(dict(items[0], text="MCI"), items[1], "left"))
+    reader = RapidReader(engine=FakeEngine({}, rec_answers=["1"] * n_left + ["0"] * 40))
+    rescued = reader.rescue(image, items)
+    assert find_score_geo(rescued, find_clocks([i["text"] for i in rescued])) == (1, 0)
+
+
 # ---- CPU or GPU --------------------------------------------------------------------------------------------------------------------
 
 def test_the_gpu_is_used_only_when_asked_for_and_directml_is_installed():
@@ -136,3 +146,15 @@ def test_the_reader_passes_the_gpu_choice_to_the_loader(monkeypatch):
     RapidReader(gpu=True)
     assert seen == [True]
     assert RapidReader(engine=FakeEngine({})).device == "cpu"
+
+
+def test_a_short_team_code_beside_a_digit_is_a_scorebug_anchor():
+    # Man City-Sunderland: the first reader read only "SUN" and one "0" (no clock, no 4-letter name), so the second reader never ran
+    assert has_scorebug_anchor([item("SUN", 256, 48, 330, 80, conf=0.9), item("0", 208, 44, 240, 80)])
+    assert has_scorebug_anchor([item("LIV", 56, 30, 98, 54), item("0", 114, 28, 138, 54)])
+
+
+def test_a_code_alone_or_a_digit_far_from_it_is_no_anchor():
+    assert not has_scorebug_anchor([item("FOX", 10, 10, 60, 30)])
+    assert not has_scorebug_anchor([item("SUN", 256, 48, 330, 80), item("5", 900, 400, 930, 440)])    # another row, far away
+    assert not has_scorebug_anchor([item("NFL", 256, 48, 330, 80), item("3", 340, 48, 360, 80, conf=0.3)])   # an unsure digit
