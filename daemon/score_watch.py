@@ -205,6 +205,20 @@ def clock_seconds(text: str) -> int | None:
     return int(m.group(1)) * 60 + int(m.group(2)) if m else None
 
 
+WIDE_PAIR_VS_HEIGHT = 2.2   # two digits are about 1.5 text heights wide; wider than this there is a crest between them
+
+
+def _wide_pair_halves(it: dict) -> list[dict]:
+    """Two scores read as ONE item with a crest between them ("03" spread over 85 px at 32 px tall, Liverpool-City 0-3): the two digits, each
+    at its own end of the box. Any other item comes back alone."""
+    text = it["text"].strip()
+    h = it["y1"] - it["y0"]
+    if len(text) != 2 or not text.isdigit() or h <= 0 or it["x1"] - it["x0"] < WIDE_PAIR_VS_HEIGHT * h:
+        return [it]
+    w = 0.75 * h
+    return [dict(it, text=text[0], x1=it["x0"] + w), dict(it, text=text[1], x0=it["x1"] - w)]
+
+
 def _without_glued_crest(it: dict) -> dict:
     """A score never starts with a zero: "04" is a real 0 with the crest beside it read as a 4 ("0" + Premier League crest, Liverpool-City
     bug). Keep the first digit and cut the box to its share of the item."""
@@ -222,6 +236,7 @@ def find_score_geo(items: list[dict], clocks: list[str]) -> tuple[int, int] | No
     """
     skip = set(clocks)
     items = [dict(it, text=m.group(1)) if (m := DIGIT_WITH_MARKS_RE.match(it["text"].strip())) else it for it in items]
+    items = [half for it in items for half in _wide_pair_halves(it)]
     items = [_without_glued_crest(it) for it in items]
     split = []
     for n, it in enumerate(items):

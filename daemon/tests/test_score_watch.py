@@ -672,3 +672,23 @@ def test_a_number_with_a_leading_zero_is_never_read_as_its_value():
     from daemon.score_watch import find_score_geo
     glued = [dict(it, text="07") if it["text"] == "04" else it for it in LIV_MCI_CREST_GLUED]
     assert find_score_geo(glued, ["34:01"]) == (0, 0)
+
+
+# ---- two scores read as ONE wide item with a crest between them (Liverpool-City 0-3) ----------------------------
+
+LIV_MCI_WIDE_PAIR = [   # real boxes of the second reader: "03" spans the 0, the crest and the 3 (85 px wide, 32 px tall)
+    {"text": "LIV", "x0": 56, "y0": 30, "x1": 98, "y1": 54}, {"text": "03", "x0": 104, "y0": 24, "x1": 189, "y1": 56},
+    {"text": "MCI", "x0": 194, "y0": 30, "x1": 240, "y1": 54}, {"text": "78:43", "x0": 127, "y0": 54, "x1": 166, "y1": 68}]
+
+
+def test_two_digits_read_as_one_item_spread_over_a_crest_are_two_scores():
+    from daemon.score_watch import find_score_geo
+    assert find_score_geo(LIV_MCI_WIDE_PAIR, ["78:43"]) == (0, 3)
+
+
+def test_a_normal_two_digit_score_is_not_split():
+    from daemon.score_watch import find_score_geo
+    # "10" is a score of ten: about 1.2 times as wide as it is tall, nothing between its digits
+    board = [{"text": "LIV", "x0": 56, "y0": 30, "x1": 98, "y1": 54}, {"text": "10", "x0": 104, "y0": 24, "x1": 142, "y1": 56},
+             {"text": "0", "x0": 152, "y0": 24, "x1": 178, "y1": 56}, {"text": "MCI", "x0": 194, "y0": 30, "x1": 240, "y1": 54}]
+    assert find_score_geo(board, []) == (10, 0)
