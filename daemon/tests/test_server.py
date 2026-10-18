@@ -968,3 +968,13 @@ def test_the_live_sequence_stale_report_then_only_selected_is_caught(caplog):
     with caplog.at_level(logging.WARNING):
         _report(server, 20, audible=2)                          # one second later: the sound moved to the small tile
     assert "only selected" in caplog.text and server.expand_resend == {20: 2}
+
+
+def test_a_zoomed_page_gets_its_rects_corrected_when_the_video_area_arrives():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 30})
+    win = {"x": 2560, "y": 100, "ow": 1440, "oh": 1000, "iw": 2848, "ih": 1784, "dpr": 0.5}     # a window zoomed to 50 %
+    rect = {"index": 0, "audible": True, "left": 978, "top": 154, "width": 476, "height": 330, "css": {"left": 100, "top": 216}}
+    server.handle_message({"type": "video_rect", "tab_id": 30, "rects": [rect], "win": win, "visible": True, "fullscreen": False})
+    stored = server.rects[30]["rects"][0]
+    assert (stored["left"], stored["top"]) == (2618, 308)

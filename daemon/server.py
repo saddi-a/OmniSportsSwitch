@@ -31,6 +31,7 @@ from daemon.arrange import SLOT_PREFERENCE, plan_fix, plan_move, plan_swap
 from daemon.favourites import match_multiplier, match_slots
 from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
+from daemon.geometry import fix_rects
 from daemon.feed_map import FeedMapper, parse_clock_s
 from daemon.logsetup import LOG_DIR, archive_rotated, prune_archive
 from daemon.recorder import DatasetRecorder, snapshot_rows
@@ -211,7 +212,7 @@ class Server:
             self.scorer.add_audio(msg["tab_id"], float(msg["rms"]), time.monotonic())
         elif kind == "video_rect":
             tab_id = msg["tab_id"]
-            info = {"rects": msg.get("rects") or [], "visible": bool(msg.get("visible")), "fullscreen": bool(msg.get("fullscreen"))}
+            info = {"rects": fix_rects(msg.get("rects") or [], msg.get("win")), "visible": bool(msg.get("visible")), "fullscreen": bool(msg.get("fullscreen"))}
             if self.rects.get(tab_id) != info:
                 log.info("video area tab %s: %s", tab_id, info)
             self.rects[tab_id] = info
