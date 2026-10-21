@@ -207,6 +207,8 @@ class Config:
     surge_rise_votes: float = 3.0   # ...on this many consecutive score readings (1 s apart): one reading is never enough...
     surge_rise_cooldown_s: float = 40.0   # ...and then not again for this long on the same stream
     panel_goal_cue: float = 1.0      # the CANAL+ multiplex results panel (every game of the night, next to the video): 1 = a score going up in it is a strong cue on the tab, 0 = log only
+    panel_goal_stale_s: float = 45.0   # ...a panel row not seen for this long (the channel shows a standings table or another graphic instead) only gets a new baseline when it returns: its goal is old news, no cue (0 = off)
+    panel_goal_repeat_s: float = 120.0  # ...and a goal to a score already reported for that game this recently (a VAR check took it back and gave it again) is the same goal (0 = off)
     panel_goal_readings: int = 2     # ...a new panel score must be read identically this many times in a row (one misread digit never counts)
     jingle_cue: float = 1.0          # the channel's goal jingle (needs models/jingle/jingle.npz, scripts/build_jingle_template.py): 1 = a hit is a strong cue on the tab, 0 = log only
     jingle_min_score: float = 0.40   # ...match score (0 to 1, normalised correlation) a window needs; speech, crowd and other music stay under about 0.2...

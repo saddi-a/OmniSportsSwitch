@@ -94,14 +94,20 @@ class PanelWatch:
     """Votes over the panel's rows: a game's score is believed after `readings` identical readings, a new score that goes up by exactly
     one goal on one side after `readings` identical readings is a goal; any other change (down, several goals, a misread digit that
     stuck) is only a new baseline, never an event. A game seen for the first time is a baseline too (nothing fires on a tab that was
-    just tracked)."""
+    just tracked). Two more guards (2026-10-21, the panel is replaced by a standings table for minutes at a time, and a VAR check can
+    take a score back): a row not seen for `stale_s` seconds is only re-baselined when it comes back (its goal is old news, no cue), and
+    a goal to a score already reported for that game within `repeat_s` seconds is not reported again. `now` None = no time rules."""
 
-    def __init__(self, readings: int = 2):
+    def __init__(self, readings: int = 2, stale_s: float = 45.0, repeat_s: float = 120.0):
         self.readings = max(int(readings), 1)
+        self.stale_s, self.repeat_s = stale_s, repeat_s
         self.base: dict[tuple, tuple[int, int]] = {}
         self._cand: dict[tuple, tuple[tuple[int, int], int]] = {}
+        self._seen: dict[tuple, float] = {}
+        self._reported: dict[tuple, float] = {}
+        self._quiet: set = set()
 
-    def update(self, panel: Panel | None) -> list[tuple[str, tuple[int, int], tuple[int, int]]]:
+    def update(self, panel: Panel | None, now: float | None = None) -> list[tuple[str, tuple[int, int], tuple[int, int]]]:
         """One reading. Returns [(game label, old score, new score)] for the goals confirmed on this reading."""
         if panel is None:
             return []
@@ -109,8 +115,15 @@ class PanelWatch:
         for row in panel.rows:
             score = (row.a, row.b)
             base = self.base.get(row.key)
+            if now is not None:
+                last = self._seen.get(row.key)
+                self._seen[row.key] = now
+                if last is not None and self.stale_s > 0 and now - last > self.stale_s:
+                    self._cand.pop(row.key, None)
+                    self._quiet.add(row.key)           # back after a long absence: whatever it shows now is old news, not a goal
             if score == base:
                 self._cand.pop(row.key, None)
+                self._quiet.discard(row.key)
                 continue
             cand, n = self._cand.get(row.key, (None, 0))
             n = n + 1 if cand == score else 1
@@ -119,6 +132,13 @@ class PanelWatch:
                 continue
             self._cand.pop(row.key, None)
             self.base[row.key] = score
+            if row.key in self._quiet:
+                self._quiet.discard(row.key)
+                continue
             if base is not None and ((score[0] == base[0] + 1 and score[1] == base[1]) or (score[1] == base[1] + 1 and score[0] == base[0])):
+                if now is not None and self.repeat_s > 0 and now - self._reported.get((row.key, score), float("-inf")) < self.repeat_s:
+                    continue                            # a goal taken back and given again: the same goal
+                if now is not None:
+                    self._reported[(row.key, score)] = now
                 goals.append((row.label, base, score))
         return goals

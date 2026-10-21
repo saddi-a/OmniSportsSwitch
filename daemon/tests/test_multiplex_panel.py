@@ -150,3 +150,45 @@ def test_an_american_football_tab_never_reads_a_panel(caplog):
         for i in range(2):
             server._update_game_states({(5, 0): _frame({**ROWS, ("BAY", "ARS"): (0, 1)})}, 120.0 + 3 * i)
     assert "panel goal" not in caplog.text and not server.panel_watch
+
+
+# ---- stale rows and repeated goals (2026-10-21 22:41-22:47: a standings table hid the panel for minutes, VAR took a goal back) -------------
+
+def test_a_row_that_comes_back_after_a_long_absence_is_a_new_baseline_not_a_goal():
+    w = PanelWatch(readings=2, stale_s=45.0)
+    t = 100.0
+    for i in range(2):
+        assert w.update(_reading(ROWS), t + 3 * i) == []
+    for i in range(2):                                    # the standings table replaces the panel for 3.5 minutes (no reading at all)
+        goal = {**ROWS, ("BAY", "ARS"): (0, 1)}
+        assert w.update(_reading(goal), t + 215 + 3 * i) == []
+    assert w.base[("BAY", "ARS")] == (0, 1)
+    nxt = {**ROWS, ("BAY", "ARS"): (0, 2)}                # a goal seen live afterwards still counts
+    assert w.update(_reading(nxt), t + 230) == []
+    assert w.update(_reading(nxt), t + 233) == [("BAY-ARS", (0, 1), (0, 2))]
+
+
+def test_a_goal_taken_back_and_given_again_is_reported_once():
+    w = PanelWatch(readings=2, repeat_s=120.0)
+    base = {**ROWS, ("AVL", "VFK"): (3, 0)}
+    up = {**base, ("AVL", "VFK"): (3, 1)}
+    t = 100.0
+    for i in range(2):
+        w.update(_reading(base), t + 3 * i)
+    got = []
+    for frame, at in ((up, 10), (up, 13), (base, 40), (base, 43), (up, 80), (up, 83)):    # goal, VAR takes it back, given again 80 s later
+        got += w.update(_reading(frame), t + at)
+    assert got == [("AVL-VFK", (3, 0), (3, 1))]
+    got = []
+    for frame, at in ((base, 300), (base, 303), (up, 340), (up, 343)):                    # minutes later (a new baseline first) it is a new goal
+        got += w.update(_reading(frame), t + at)
+    assert got == [("AVL-VFK", (3, 0), (3, 1))]
+
+
+def test_no_time_given_means_no_time_rules():
+    w = PanelWatch(readings=2)
+    up = {**ROWS, ("BAY", "ARS"): (1, 0)}
+    for _ in range(2):
+        w.update(_reading(ROWS))
+    w.update(_reading(up))
+    assert w.update(_reading(up)) == [("BAY-ARS", (0, 0), (1, 0))]

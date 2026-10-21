@@ -650,8 +650,8 @@ class Server:
             if panel is None:
                 return
             watch = self.panel_watch[(tab_id, index)] = PanelWatch()
-        watch.readings = max(1, int(cfg.panel_goal_readings))
-        for label, old, new in watch.update(panel):
+        watch.readings, watch.stale_s, watch.repeat_s = max(1, int(cfg.panel_goal_readings)), cfg.panel_goal_stale_s, cfg.panel_goal_repeat_s
+        for label, old, new in watch.update(panel, now):
             tile, sport = self._audible_target(tab_id)
             weight = self.scorer.tile_cfg(tab_id, tile).weights.panel_goal_cue_weight
             live = cfg.panel_goal_cue > 0 and weight > 0

@@ -260,6 +260,8 @@ LAYOUT = [
         ("scoring.surge_rise_votes", "Rising sound: readings in a row", "It must hold on this many score readings in a row (1 s apart): one reading is never enough."),
         ("scoring.surge_rise_cooldown_s", "Rising sound: cooldown (s)", "After the cue fires, not again on the same stream for this long."),
         ("scoring.panel_goal_cue", "Multiplex panel goal is a strong cue", "A score going up in the CANAL+ multiplex results panel counts as a strong cue on that tab. 0 = it is only logged."),
+        ("scoring.panel_goal_stale_s", "Multiplex panel: stale after (s, 0 = off)", "A panel row not seen for this long (the channel shows a standings table or another graphic instead of the panel) only gets a new baseline when it returns, so an old goal does not become a cue."),
+        ("scoring.panel_goal_repeat_s", "Multiplex panel: same goal again within (s, 0 = off)", "A goal to a score already reported for that game this recently (a VAR check took it back and gave it again) is the same goal."),
         ("scoring.panel_goal_readings", "Multiplex panel: readings for a goal", "A new panel score must be read identically this many times in a row before it counts (one misread digit never does)."),
         ("scoring.jingle_cue", "Goal jingle is a strong cue", "The channel's goal sting (CANAL+ multiplex) heard on a tab counts as a strong cue on that tab, before the commentators say who scored. 0 = it is only logged. Needs the template built with scripts/build_jingle_template.py."),
         ("scoring.jingle_min_score", "Goal jingle: match score needed", "How closely the recent sound must match the jingle (0 to 1). Speech, crowd and other music stay under about 0.2; lower it if the live jingle is missed, raise it after false hits."),
