@@ -41,7 +41,7 @@ OVERRIDABLE_SCORING = frozenset({
     "buildup_hold_s", "buildup_hold_cue_min", "buildup_hold_margin",                 # MAIN keeps its seat after its own cue / review
     "buildup_review_hold_s", "buildup_review_min", "buildup_review_margin",
     "surge_rise_min", "surge_rise_ratio", "surge_rise_window_s", "surge_rise_votes", "surge_rise_cooldown_s",   # the rising-loudness cue: the stream's sport
-    "blowout_goal_bonus", "blowout_goal_lev", "blowout_goal_event", "blowout_goal_quiet",                    # a goal in a decided game: the challenger's sport
+    "blowout_goal_bonus", "blowout_goal_lev", "blowout_goal_event", "blowout_goal_quiet", "blowout_goal_cue", "blowout_goal_floor",                    # a goal in a decided game: the challenger's sport
 })
 
 
@@ -144,7 +144,7 @@ class Config:
     audio_ad_votes: float = 3.0   # a music-only ad needs this many such readings...
     audio_ad_window: float = 5.0  # ...among the last this many (one reading is never enough: arena music, jingles)
     classifier_target_rms: float = 0.0  # >0: each stream's sound is scaled so its normal loudness equals this before the sound classifier hears it (0 = off)
-    speech_interval_s: float = 6.0       # the commentary listener (measuring only) transcribes each stream this often; 0 = off (needs a restart to load)
+    speech_interval_s: float = 3.0       # the commentary listener (measuring only) transcribes each stream this often; 0 = off (needs a restart to load)
     speech_window_s: float = 8.0         # ...the last this many seconds of its sound
     semantic_min_sim: float = 0.85       # semantic reading (measuring only): a piece of commentary this similar to the high / mid reference phrases counts...
     semantic_mid_sim: float = 0.99       # ...mid level: effectively off (0 of 5 mid alarms were true in Como-Roma)
@@ -213,7 +213,9 @@ class Config:
     blowout_goal_bonus: float = 0.25   # a goal in a decided game (leverage <= -blowout_goal_lev) adds this to its score, but only while every other stream is quiet (0 = off)
     blowout_goal_lev: float = 0.3      # ...a game counts as decided when its leverage is at most minus this (-1 = late blowout)...
     blowout_goal_event: float = 0.5    # ...the goal must still be this fresh (event 1 = just now)...
-    blowout_goal_quiet: float = 0.20   # ...and "quiet" means every other live stream scores below this and has no cue
+    blowout_goal_quiet: float = 0.30   # ...and "quiet" means every other live stream scores below this...
+    blowout_goal_cue: float = 0.25     # ...and has no cue at least this strong (a foul or a corner is not busy; a chance, VAR or a goal is)...
+    blowout_goal_floor: float = 0.40   # ...and the goal is then worth at least this score (a soft floor: music or a replay on its own stream cannot sink it; 0 = bonus only)
 
     def __post_init__(self):
         # Per-sport overrides {sport key: {name: value}}, filled from settings.toml. Plain attributes, not fields: the shared values
@@ -837,8 +839,9 @@ class Scorer:
     def blowout_goal_bonus(self, tab_id: int, c: dict | None, now: float) -> float:
         """The small bonus a goal in a DECIDED game gets (leverage takes most of its worth away): `blowout_goal_bonus` of the stream's sport
         when the stream has a fresh goal of its own (score change or goal banner, event >= `blowout_goal_event`), its leverage is at most
-        minus `blowout_goal_lev`, and every OTHER live stream (MAIN included) is quiet: a score below `blowout_goal_quiet` and no cue. Else 0.
-        So such a goal can win MAIN only when nothing else is going on."""
+        minus `blowout_goal_lev`, and every OTHER live stream (MAIN included) is quiet: a score below `blowout_goal_quiet` and no cue of
+        `blowout_goal_cue` or more. Else 0. The bonus lifts the goal to at least `blowout_goal_floor` (a soft floor: Como 3-0 on 2026-10-21 20:00
+        sat at 0.08 because its own replay music cut the score). So such a goal wins MAIN unless something real is going on elsewhere."""
         stream = self.streams.get(tab_id)
         tile = None if c is None else c.get("tile")   # the tile that scores (its goal, its leverage, its sport)
         cfg = self.tile_cfg(tab_id, tile)
@@ -853,9 +856,9 @@ class Scorer:
             oc = self.components(other, now)
             if oc is None or oc["ad"] or oc["status"] != "live":
                 continue   # no sound, an ad, a break or over: nothing going on there
-            if oc["score"] >= cfg.blowout_goal_quiet or oc["cue"] > 0:
+            if oc["score"] >= cfg.blowout_goal_quiet or oc["cue"] >= cfg.blowout_goal_cue:
                 return 0.0
-        return cfg.blowout_goal_bonus
+        return max(cfg.blowout_goal_bonus, cfg.blowout_goal_floor - c["score"])
 
     def _fresh_goal_streams(self, now: float) -> set:
         """The streams other than MAIN that have a fresh goal of its own (a score change or goal banner: `goal_at`, and its event still at

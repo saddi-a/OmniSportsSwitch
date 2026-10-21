@@ -267,7 +267,9 @@ LAYOUT = [
         ("scoring.blowout_goal_bonus", "Goal in a decided game: bonus (0 = off)", "A goal in a game that is decided (a late blowout) adds this to its score, but only while every other stream is quiet, so it can win Main only when nothing else is going on."),
         ("scoring.blowout_goal_lev", "Decided game: leverage at most minus", "A game counts as decided when its closeness / time-left value is at most minus this (-1 = late blowout)."),
         ("scoring.blowout_goal_event", "Decided game: how fresh the goal must be", "1 = just now; the goal's boost fades over the goal boost time."),
-        ("scoring.blowout_goal_quiet", "Decided game: other streams are quiet below", "Every other live stream must score below this and have no cue."),
+        ("scoring.blowout_goal_quiet", "Decided game: other streams are quiet below", "Every other live stream must score below this and have no strong cue."),
+        ("scoring.blowout_goal_cue", "Decided game: a cue this strong elsewhere blocks it", "A foul or a corner on another stream does not stop the goal; a chance, a VAR check or a goal does."),
+        ("scoring.blowout_goal_floor", "Decided game: the goal is worth at least (0 = off)", "A fresh goal in a decided game that is allowed through is lifted to at least this score, so that its own replay music or a quiet crowd cannot sink it."),
     ]),
     ("Manual control", [
         ("scoring.manual_hold_s", "Hold time for Make Main (s)", "How long a stream you put on Main with the popup button stays there."),

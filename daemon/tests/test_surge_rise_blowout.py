@@ -180,17 +180,18 @@ def test_the_bonus_lets_it_win_when_every_other_stream_is_quiet():
 
 def test_default_bonus_is_small_and_conservative():
     c = Config()
-    assert 0 < c.blowout_goal_bonus <= 0.3 and c.blowout_goal_quiet <= 0.25
+    assert 0 < c.blowout_goal_bonus <= 0.3 and c.blowout_goal_quiet <= 0.35 and c.blowout_goal_cue >= 0.2
+    assert c.min_score < c.blowout_goal_floor <= 0.5      # the soft floor: just above what a challenger needs
 
 
-def test_any_cue_or_activity_elsewhere_takes_the_bonus_away():
+def test_a_strong_cue_or_activity_elsewhere_takes_the_bonus_away():
     s, now = blowout_case(blowout_goal_bonus=0.5)
-    s.set_anticipation(3, now, 0.10)                      # a minor cue on another stream
+    s.set_anticipation(3, now, 0.35)                      # a strong cue (a chance, VAR) on another stream
     assert s.blowout_goal_bonus(2, s.components(2, now), now) == 0.0
     assert s.decide(now) is None
 
     s, now = blowout_case(blowout_goal_bonus=0.5)
-    s.set_anticipation(1, now, 0.10)                      # ...on MAIN counts too
+    s.set_anticipation(1, now, 0.35)                      # ...on MAIN counts too
     assert s.blowout_goal_bonus(2, s.components(2, now), now) == 0.0
 
     s, now = blowout_case(blowout_goal_bonus=0.5, blowout_goal_quiet=0.01)
@@ -231,3 +232,19 @@ def test_the_new_keys_may_be_overridden_per_sport():
     for key in ("surge_rise_min", "surge_rise_ratio", "surge_rise_window_s", "surge_rise_votes", "surge_rise_cooldown_s",
                 "blowout_goal_bonus", "blowout_goal_lev", "blowout_goal_event", "blowout_goal_quiet"):
         assert key in OVERRIDABLE_SCORING
+
+
+def test_a_minor_cue_elsewhere_no_longer_blocks_the_goal_and_the_floor_lifts_it():
+    """Como 3-0 (2026-10-21 20:00): MAIN had a minor foul cue and a score of 0.20, Como's own replay music cut its score to 0.08."""
+    s, now = blowout_case()
+    s.set_anticipation(1, now, 0.20)                      # a foul on MAIN: minor
+    c = s.components(2, now)
+    bonus = s.blowout_goal_bonus(2, c, now)
+    assert c["score"] + bonus == pytest.approx(s.config.blowout_goal_floor)
+    swap = s.decide(now)
+    assert swap is not None and swap.promote == 2 and "blowout goal" in swap.reason
+
+
+def test_the_floor_off_gives_the_plain_bonus_again():
+    s, now = blowout_case(blowout_goal_floor=0.0)
+    assert s.blowout_goal_bonus(2, s.components(2, now), now) == s.config.blowout_goal_bonus

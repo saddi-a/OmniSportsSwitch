@@ -23,7 +23,7 @@ audio_ad_margin = 0.15  # ...and music must exceed speech by this much (music un
 audio_ad_votes = 3     # a music-only ad needs this many music readings...
 audio_ad_window = 5    # ...among the last this many (a single reading is never enough)
 classifier_target_rms = 0.0   # above 0: the sound is levelled to this normal loudness (try 0.05) before the crowd/speech/music classifier hears it; 0 = off
-speech_interval_s = 6.0       # the commentary listener (measuring only: it only logs) transcribes each stream this often; 0 = off
+speech_interval_s = 3.0       # the commentary listener (measuring only: it only logs) transcribes each stream this often; 0 = off
 speech_window_s = 8.0         # ...the last this many seconds of sound
 semantic_min_sim = 0.85       # semantic reading of the commentary (measuring only): this similar to the high / mid reference phrases counts...
 semantic_mid_sim = 0.99       # ...mid level: effectively off (0 of 5 mid alarms were true in Como-Roma)
@@ -92,7 +92,9 @@ jingle_interval_s = 0.4  # how often each tab's recent audio is compared with th
 blowout_goal_bonus = 0.25   # a goal in a decided game adds this to its score, but only while every other stream is quiet (0 = off)
 blowout_goal_lev = 0.3      # ...a game is decided when its leverage is at most minus this (-1 = late blowout)...
 blowout_goal_event = 0.5    # ...the goal must still be this fresh (1 = just now)...
-blowout_goal_quiet = 0.20   # ...quiet = every other live stream scores below this and has no cue
+blowout_goal_quiet = 0.30   # ...quiet = every other live stream scores below this...
+blowout_goal_cue = 0.25     # ...and has no cue at least this strong (a foul or corner is not busy)...
+blowout_goal_floor = 0.40   # ...and the goal is then worth at least this score (soft floor, 0 = bonus only)
 field_goal_strength = 0.6   # American football: a field goal or safety counts this much of a touchdown (1.0 = same)
 extra_point_s = 30.0    # an extra point or two-point conversion this soon after a touchdown is not a new event
 anticipation_s = 18.0       # a cue boosts a stream this long (fading)
