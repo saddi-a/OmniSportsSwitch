@@ -38,6 +38,11 @@ TEAM_CODE_RE = re.compile(r"[A-Z]{3,4}")
 CLOCK_WITH_CODE_RE = re.compile(r"\d{1,3}\s?[:.,]\s?\d{2}\s+\W?[A-Z]{2,4}\W?")
 DOWN_MEMORY_S = 20.0
 OVERLAY_TEXTS = ("OmniSportsSwitch", "Freeze MAIN", "Re-track this tab", "held on")   # the extension's own overlay: its countdowns are not a game clock
+
+
+def overlay_on_screen(texts: list[str]) -> bool:
+    """The extension's own overlay is over the video area: any clock read now (its countdowns, '0:25') is not the game clock."""
+    return any(o.casefold() in t.casefold() for t in texts for o in OVERLAY_TEXTS)
 IN_PLAY_MEMORY_S = 15.0   # a "Final" caption is ignored this long after the scorebug of a game in play was seen
 PERIOD_OF = {"1st": 1, "ist": 1, "isr": 1, "lst": 1, "2nd": 2, "znd": 2, "3rd": 3, "3r0": 3, "jrd": 3, "4th": 4, "ath": 4, "q1": 1, "q2": 2, "q3": 3, "q4": 4}
 PERIOD_VOTES, PERIOD_NEEDED = 5, 3   # the period is the value most of the last readings agree on
@@ -241,7 +246,7 @@ class GameTracker:
         time allows (another match's scorebug). An odd clock that keeps running for `foreign_clock_accept_s` is believed (the viewer rewound)."""
         if self.sport != "football" or not clocks:
             return clocks
-        if any(o.casefold() in t.casefold() for t in texts for o in OVERLAY_TEXTS):
+        if overlay_on_screen(texts):
             return []
         lone = not has_scoreboard_text(texts, clocks)   # no scoreboard beside the clock: perhaps an ad countdown (judged by the ad rules)
         cfg, kept = self.config, []

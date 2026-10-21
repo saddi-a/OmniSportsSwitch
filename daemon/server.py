@@ -41,7 +41,7 @@ from daemon.sport_detect import sport_from_title
 from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
 from daemon.game_identity import GameIdentity, key_text, team_pair
-from daemon.game_state import GameTracker, combine
+from daemon.game_state import GameTracker, combine, overlay_on_screen
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score_geo
 from daemon.sport_detect import SportDetector
@@ -1038,6 +1038,8 @@ class Server:
             self.scorer.set_tiles(tab_id, self._tab_indices(tab_id, indices) if tab_id in multi else [])
         for (tab_id, index), r in results.items():
             tk = index if tab_id in multi else None   # the tile argument of every scorer call below
+            if r["clocks"] and overlay_on_screen(r["texts"]):   # our own overlay on the video: its countdowns must not reach the score watcher, feed map or rewind gate
+                r = {**r, "clocks": []}
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id), self.scorer.config))
             new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(team_pair(r["texts"]))
             if new_game is not None and self.multiplex.get(tab_id):   # only on a tab the user flagged; the identity is tracked everywhere (dataset game_key)
