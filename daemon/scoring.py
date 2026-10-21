@@ -67,6 +67,7 @@ class Weights:
     cue_chance: float = 0.25        # red zone, goal to go, field goal attempt, penalty kick (soccer)
     cue_minor: float = 0.10         # corner, flag, 4th down, big gain, added time, timeout...
     cue_free_kick: float = 0.25     # a free kick (soccer): the user finds minor (0.10) too low
+    panel_goal_cue_weight: float = 0.40   # a game of the CANAL+ multiplex results panel went up by a goal (a strong tab-level cue, like the jingle but weaker)
     jingle_cue_weight: float = 0.50   # the channel's goal jingle heard (a strong cue: a goal was just scored in some game of the channel); default = cue_review_top
     cue_surge_rise: float = 0.20    # soccer: the crowd noise is rising fast (a medium cue, heard BEFORE the commentator's words); 0 = off
     cue_zone_far: float = 0.15      # American football: a goal-to-go / yard line cue with the ball ~10 yards from the end zone
@@ -205,6 +206,8 @@ class Config:
     surge_rise_window_s: float = 6.0   # ...(the reading it is compared with is at least half this old)...
     surge_rise_votes: float = 3.0   # ...on this many consecutive score readings (1 s apart): one reading is never enough...
     surge_rise_cooldown_s: float = 40.0   # ...and then not again for this long on the same stream
+    panel_goal_cue: float = 1.0      # the CANAL+ multiplex results panel (every game of the night, next to the video): 1 = a score going up in it is a strong cue on the tab, 0 = log only
+    panel_goal_readings: int = 2     # ...a new panel score must be read identically this many times in a row (one misread digit never counts)
     jingle_cue: float = 1.0          # the channel's goal jingle (needs models/jingle/jingle.npz, scripts/build_jingle_template.py): 1 = a hit is a strong cue on the tab, 0 = log only
     jingle_min_score: float = 0.40   # ...match score (0 to 1, normalised correlation) a window needs; speech, crowd and other music stay under about 0.2...
     jingle_votes: float = 2.0        # ...on this many windows in a row that agree where the sting ended (one reading is never enough)...

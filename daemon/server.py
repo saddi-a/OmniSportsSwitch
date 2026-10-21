@@ -41,6 +41,7 @@ from daemon.sport_detect import sport_from_title
 from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
 from daemon.game_identity import GameIdentity, key_text, team_pair
+from daemon.multiplex_panel import PanelWatch, find_panel
 from daemon.game_state import GameTracker, combine, overlay_on_screen
 from daemon.multiview import TileFocuser
 from daemon.score_watch import ScoreWatcher, find_score_geo
@@ -125,6 +126,7 @@ class Server:
         self.team_text: dict[int, str] = {}         # tab id -> teams typed in the popup
         self.multiplex: dict[int, bool] = {}        # tab id -> the user flagged it: one video jumps between several games of the same sport
         self.identities: dict[tuple[int, int], GameIdentity] = {}   # (tab, video) -> the game it shows, from the team codes of its scorebug
+        self.panel_watch: dict[tuple[int, int], PanelWatch] = {}    # (tab, video) -> votes over the rows of the CANAL+ multiplex results panel
         self.page_text: dict[int, str] = {}         # tab id -> what the page says about the game (media session, player header text)
         self.fav_seen: dict[tuple[int, int], tuple[float, float]] = {}  # (tab, video) -> (multiplier, when seen on screen)
         self.roles: dict[int, str] = {}             # tab id -> slot its window currently has
@@ -203,7 +205,7 @@ class Server:
             self.rects.pop(msg["tab_id"], None)
             self.audible_seen.pop(msg["tab_id"], None)
             for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen,
-                          self.sport_choice_seen, self.held_change, self.fed, self.identities, self.td_try_at, self.td_watch):
+                          self.sport_choice_seen, self.held_change, self.fed, self.identities, self.td_try_at, self.td_watch, self.panel_watch):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
@@ -639,6 +641,26 @@ class Server:
             self.buildup.note(self._bkey(tab_id, tile), now, weight, "jingle")
         return True
 
+    def _check_panel_goals(self, tab_id: int, index: int, panel, now: float) -> None:
+        """A game of the CANAL+ multiplex results panel went up by one goal (`PanelWatch`: identical readings, never a single one). The
+        picture usually cuts to it a few seconds later, so with `scoring.panel_goal_cue` on it is a strong tab-level cue like the jingle."""
+        cfg = self.scorer.config
+        watch = self.panel_watch.get((tab_id, index))
+        if watch is None:
+            if panel is None:
+                return
+            watch = self.panel_watch[(tab_id, index)] = PanelWatch()
+        watch.readings = max(1, int(cfg.panel_goal_readings))
+        for label, old, new in watch.update(panel):
+            tile, sport = self._audible_target(tab_id)
+            weight = self.scorer.tile_cfg(tab_id, tile).weights.panel_goal_cue_weight
+            live = cfg.panel_goal_cue > 0 and weight > 0
+            log.info("panel goal tab %s: %s %d-%d -> %d-%d%s", tab_id, label, old[0], old[1], new[0], new[1], "" if live else " (log only)")
+            self._rec_event("panel_goal", tab_id, tile, game=label, old=list(old), new=list(new), weight=round(weight, 3), live=live)
+            if live:
+                self.scorer.set_anticipation(tab_id, now, weight, strong=True, tile=tile)
+                self.buildup.note(self._bkey(tab_id, tile), now, weight, "panel_goal")
+
     async def _jingle_loop(self) -> None:
         """Compares each tab's recent audio with the goal jingle's template (CPU, a few ms per tab)."""
         while True:
@@ -1041,7 +1063,12 @@ class Server:
             if r["clocks"] and overlay_on_screen(r["texts"]):   # our own overlay on the video: its countdowns must not reach the score watcher, feed map or rewind gate
                 r = {**r, "clocks": []}
             tracker = self.trackers.setdefault((tab_id, index), GameTracker(self.sports.get(tab_id), self.scorer.config))
-            new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(team_pair(r["texts"]))
+            # The CANAL+ multiplex shows a results panel of every game next to its video: the game identity and the feed mapping look at
+            # the scorebug side only (a panel of 14 codes gives no pair), and a panel score going up is a goal somewhere in the channel.
+            panel = None if self.tile_sport(tab_id, index) == "american football" else find_panel(r.get("items"))
+            sb_texts = [it["text"] for it in panel.rest] if panel is not None else r["texts"]
+            self._check_panel_goals(tab_id, index, panel, now)
+            new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(team_pair(sb_texts))
             if new_game is not None and self.multiplex.get(tab_id):   # only on a tab the user flagged; the identity is tracked everywhere (dataset game_key)
                 self._on_new_game(tab_id, index, new_game[0], new_game[1], now, multi=tab_id in multi)
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])
@@ -1113,7 +1140,7 @@ class Server:
                                      sport=self.tile_sport(tab_id, index))
             if watcher.candidate and per_tab[tab_id][-1] == "live":   # a higher score the vote has not confirmed yet: an early goal signal for the music rule
                 self.scorer.set_goal_pending(tab_id, now, tile=tk)
-            for line in self.feed_map.observe(tab_id, index, r["texts"], watcher.score, r["clocks"]):
+            for line in self.feed_map.observe(tab_id, index, sb_texts, watcher.score, r["clocks"]):
                 log.info("%s", line)
             mapped = self.feed_map.mapping(tab_id, index)
             self.feed_gate.lead_s = self.scorer.config.feed_lead_s
@@ -1343,7 +1370,7 @@ class Server:
         if target == main:
             return
         for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen, self.sport_choice_seen,
-                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities, self.td_try_at, self.td_watch):
+                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities, self.td_try_at, self.td_watch, self.panel_watch):
             a, b = (tab_id, target), (tab_id, main)
             moved_a, moved_b = store.pop(a, None), store.pop(b, None)
             if moved_b is not None:
