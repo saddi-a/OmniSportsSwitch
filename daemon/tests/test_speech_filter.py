@@ -22,6 +22,9 @@ def test_recaps_and_negations_are_dropped(text):
     ("il tente sa chance", "chance"), ("coup franc pour Grimes", "free kick"),
     ("hors-jeu, le drapeau est levé", "offside"), ("une faute dans la surface", "foul"), ("avec Greenlaw a été expulsé", "card"),
     ("va obtenir un coup franc", "free kick"),
+    # real Whisper spellings of "pénalty" heard live (2026-10-22 UEL, JUV-REN), the cue came 20 s late without them
+    ("Le pénatif est flagrant et qui doit", "penalty"), ("Encore une fois le pénatier est flagrant", "penalty"),
+    ("et qui d'autre pourrait obtenir ce pénalité sur une superbe reprise", "penalty"),
 ])
 def test_genuine_cues_still_fire(text, cue):
     assert cue in find_speech_cues(text, SOCCER)
@@ -94,3 +97,8 @@ def test_a_shot_then_a_save_is_still_a_chance(text):
 
 def test_the_shot_must_be_in_the_same_clause():
     assert "chance" not in find_speech_cues("Belle frappe tout à l'heure. Centre, c'est capté par le gardien", SOCCER)
+
+
+def test_penalty_spellings_are_still_filtered_as_recaps():
+    assert find_speech_cues("sans pénatif cette fois", SOCCER) == []
+    assert find_speech_cues("ce pénalité obtenu justement", SOCCER) == []

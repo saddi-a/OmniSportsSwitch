@@ -26,7 +26,8 @@ CUES = {
     "flag": [r"\bflag\b", r"\bpenalty flag\b", r"drapeau jaune"],
     "review": [r"\breview\b", r"challenge", r"vidéo ?review", r"assistance vidéo"],
     "interception": [r"intercept", r"fumble", r"\bsacked\b", r"\bsack (?:by|on|for)\b"],   # not a bare "sack": "and not take that sack" is a miss
-    "penalty": [r"\bpenalt(y|ies|i)\b", r"pénalty", r"point de penalty"],
+    "penalty": [r"\bpenalt(y|ies|i)\b", r"pénalty", r"point de penalty",
+                r"\bp[ée]nalit[ée]s?\b", r"\bp[ée]nat(if|ier|y)\b"],  # Whisper's spellings of pénalty heard live (JUV-REN 2026-10-22)
     # a penalty GIVEN (not a mention of an old one): the strongest build-up sign in football, so it has its own cue (see cues.SPEECH_SCORING)
     "penalty awarded": [r"p[ée]nalty (sifflé|accordé|accordée|pour)\b", r"(siffle|accorde|donne|accordent) (un |le )?p[ée]nalty",
                         r"(il y a|c'est|ce sera|ce serait) (un |le )?p[ée]nalty", r"(awards?|awarded|gives?|given) (a |the )?penalty",
