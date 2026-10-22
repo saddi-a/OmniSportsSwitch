@@ -26,7 +26,7 @@ CUES = {
     "flag": [r"\bflag\b", r"\bpenalty flag\b", r"drapeau jaune"],
     "review": [r"\breview\b", r"challenge", r"vidéo ?review", r"assistance vidéo"],
     "interception": [r"intercept", r"fumble", r"\bsacked\b", r"\bsack (?:by|on|for)\b"],   # not a bare "sack": "and not take that sack" is a miss
-    "penalty": [r"\bpenalt(y|ies|i)\b", r"pénalty", r"point de penalty",
+    "penalty": [r"\bpenalt(y|ies|i)\b", r"pénalty", r"point de penalty", r"\bp[ée]nalt(is|ys)\b",
                 r"\bp[ée]nalit[ée]s?\b", r"\bp[ée]nat(if|ier|y)\b"],  # Whisper's spellings of pénalty heard live (JUV-REN 2026-10-22)
     # a penalty GIVEN (not a mention of an old one): the strongest build-up sign in football, so it has its own cue (see cues.SPEECH_SCORING)
     "penalty awarded": [r"p[ée]nalty (sifflé|accordé|accordée|pour)\b", r"(siffle|accorde|donne|accordent) (un |le )?p[ée]nalty",
@@ -102,25 +102,61 @@ _BEFORE_WORDS, _BEFORE_CHARS = 4, 30      # only the last few words of the same 
 _AFTER_CHARS = 28
 # words just before a cue that make it a negation, a hypothetical or a recap (French and English)
 NEGATION_OR_RECAP = [r"\bpas (de|du|d'|un|une|le|la|l')", r"\bne pas\b", r"\bn'y a (pas|aucun|aucune)\b", r"\baucune?\b", r"\bsans\b", r"\bjamais\b",
-                     r"\bavait\b", r"\bavaient\b", r"\bobtenu\b", r"\ba été obtenir\b", r"\ba pu\b", r"\bont pu\b", r"\bce qui amène\b", r"\bsur ce\b",
+                     r"\btoujours pas\b", r"\bde pas\b", r"\bn'a pas\b", r"\ba pas\b",
+                     # "avait" alone silenced "qui avait jailli au premier poteau"; only a recap verb after it counts
+                     r"\bava(it|ient)\b(?! (jaill|surgi|fil[ée]|gliss|bondi|débord))", r"\bobtenu\b", r"\ba été obtenir\b", r"\ba pu\b", r"\bont pu\b", r"\bce qui amène\b",
                      r"\bno\b", r"\bnot\b", r"n't\b", r"\bwithout\b", r"\bwas\b", r"\bwere\b", r"\bhad\b", r"\bnever\b",
-                     r"\battend(s|ons)?\b", r"\bwaiting for\b"]  # "on attend une frappe cadrée": the chance has not come (2026-10-22)
+                     # "on attend une frappe cadrée": the chance has not come (2026-10-22); a bare "attends" ("attends sur la vilaine faute") is "hold on"
+                     r"\bon attend\b", r"\battendons\b", r"\bwaiting for\b"]
+# cues a generic pattern above does NOT apply to: "il a obtenu le coup franc" / "obtenu le corner" is the event itself
+NEGATION_EXEMPT = {r"\bobtenu\b": frozenset({"free kick", "corner"})}
+# extra patterns for ONE cue, tested on the last words before the match (the window ends right at the match, so `$` = directly before it)
+BEFORE_BY_CUE = {
+    "penalty": [r"\bpoint de$", r"\bsur (le|la|son|sa|ce|cette|un|une)$", r"\bavec (le|la|ce|cette|son)$", r"\b(hors|de|du|après|avant|depuis|ce|cette|son)$",
+                r"\bsur ce\b"],
+}
+# a "ce penalty" right after these words is the live call ("attention ce penalty", "obtenir ce penalty")
+BEFORE_LIVE_BY_CUE = {"penalty": [r"\b(attention|obtenir|sifflé|siffle|regardez|voyez|voilà|transformer|tirer|frapper)( ce| cette| un| le)?$"]}
+# ... and a penalty "tiré par X" is being taken now ("parfait ce pénalité tiré par Boussaïs")
+AFTER_LIVE_BY_CUE = {"penalty": [r"^\W*tir[ée]s? par"]}
 # words just after a cue that make it a recap of something already played
 RECAP_AFTER = [r"^\W*(justement|déjà|obtenu|obtenue|avait été|qu'il avait|qu'ils avaient)", r"^\W*(was|had been|already) ",
-              r"^[^.!?;:\n]*\bn'y en (a|avait)\b"]  # "une frappe cadrée aussi parce qu'il n'y en a (pas eu)"
-_NEG_RE = [re.compile(p, re.IGNORECASE) for p in NEGATION_OR_RECAP]
+               r"^[^.!?;:\n]*\bn'y en (a|avait)\b"]  # "une frappe cadrée aussi parce qu'il n'y en a (pas eu)"
+# the same for ONE cue; case SENSITIVE (a capital letter after "de" is a player's name: "le penalty de Guéry"), (?i:...) where case does not matter
+AFTER_BY_CUE = {
+    "penalty": [r"^\W*d(e |')\s*[A-ZÀ-Ý]", r"(?i:^\W*(manqu|transform|frapp|rat[ée]|arrêt[ée]|obtenu))",
+                r"(?i:^\W*(à l'heure|de tout à l'heure|de la saison|en début|de la dernière|de ce week))"],
+}
+# a negation that reaches over a comma or a few filler words: "pas du tout, du tout hors jeu", "ne va absolument pas en position hors-jeu"
+WIDE_NEGATION = {"offside": (8, r"\b(pas|jamais|aucun|aucune)\b")}
+_NEG_RE = [(re.compile(p, re.IGNORECASE), NEGATION_EXEMPT.get(p, frozenset())) for p in NEGATION_OR_RECAP]
 _RECAP_AFTER_RE = [re.compile(p, re.IGNORECASE) for p in RECAP_AFTER]
+_BEFORE_BY_CUE = {c: [re.compile(p, re.IGNORECASE) for p in ps] for c, ps in BEFORE_BY_CUE.items()}
+_BEFORE_LIVE_BY_CUE = {c: [re.compile(p, re.IGNORECASE) for p in ps] for c, ps in BEFORE_LIVE_BY_CUE.items()}
+_AFTER_LIVE_BY_CUE = {c: [re.compile(p, re.IGNORECASE) for p in ps] for c, ps in AFTER_LIVE_BY_CUE.items()}
+_AFTER_BY_CUE = {c: [re.compile(p) for p in ps] for c, ps in AFTER_BY_CUE.items()}
+_WIDE_NEGATION = {c: (n, re.compile(p, re.IGNORECASE)) for c, (n, p) in WIDE_NEGATION.items()}
 _CLAUSE_END = re.compile(r"[.!?;:,\n]|\.\.\.")
+_CLAUSE_END_HARD = re.compile(r"[.!?;:\n]")
 
 
-def is_recap_or_negation(text: str, start: int, end: int) -> bool:
-    """True when the cue match text[start:end] sits in a negation or a recap (see NEGATION_OR_RECAP / RECAP_AFTER). Pure; `text` is lower-cased or not."""
+def is_recap_or_negation(text: str, start: int, end: int, cue: str | None = None) -> bool:
+    """True when the cue match text[start:end] sits in a negation or a recap (see NEGATION_OR_RECAP / RECAP_AFTER and the per-`cue` tables
+    BEFORE_BY_CUE / AFTER_BY_CUE / WIDE_NEGATION). Pure; `text` is lower-cased or not."""
     clause = _CLAUSE_END.split(text[:start])[-1]
     window = " ".join(clause.split()[-_BEFORE_WORDS:])[-_BEFORE_CHARS:]
-    if any(r.search(window) for r in _NEG_RE):
+    if any(r.search(window) for r, exempt in _NEG_RE if cue not in exempt):
         return True
+    if cue in _WIDE_NEGATION:
+        words, rx = _WIDE_NEGATION[cue]
+        if rx.search(" ".join(_CLAUSE_END_HARD.split(text[:start])[-1].split()[-words:])):
+            return True
     after = text[end:end + _AFTER_CHARS]
-    return any(r.search(after) for r in _RECAP_AFTER_RE)
+    if (cue in _BEFORE_BY_CUE and not any(r.search(window) for r in _BEFORE_LIVE_BY_CUE.get(cue, ()))
+            and not any(r.search(after) for r in _AFTER_LIVE_BY_CUE.get(cue, ()))):
+        if any(r.search(window) for r in _BEFORE_BY_CUE[cue]):
+            return True
+    return any(r.search(after) for r in _RECAP_AFTER_RE) or any(r.search(after) for r in _AFTER_BY_CUE.get(cue, ()))
 
 
 def cue_hits(cue: str, text: str, filtered: bool = True) -> bool:
@@ -128,7 +164,7 @@ def cue_hits(cue: str, text: str, filtered: bool = True) -> bool:
     use = filtered and cue in FILTERED_CUES
     for p in _COMPILED[cue]:
         for m in p.finditer(text):
-            if not use or not is_recap_or_negation(text, m.start(), m.end()):
+            if not use or not is_recap_or_negation(text, m.start(), m.end(), cue):
                 return True
     return False
 

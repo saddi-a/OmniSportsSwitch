@@ -111,3 +111,28 @@ def test_waiting_for_a_chance_that_has_not_come_is_no_chance():
     assert "chance" not in find_speech_cues("On attend une frappe cadrée", SOCCER)
     assert "chance" not in find_speech_cues("une frappe cadrée, il n'y en a pas eu", SOCCER)
     assert "chance" in find_speech_cues("Quelle frappe cadrée, le gardien est battu", SOCCER)
+
+
+# scoring-bugs-117: labelled live transcripts (2026-10-11..22), short extracts only
+@pytest.mark.parametrize("text", [
+    "pas du tout, du tout hors jeu, ça va être confirmé", "il ne va absolument pas en position hors-jeu", "toujours pas eu de carton dans cette rencontre",
+    "Il avait décidé de pas siffler faute", "autour du point de penalty", "tout le monde entre les 50 et le point de pénalty",
+    "le penalty de Guéry, raté mais il a bien suivi", "très serein sur son penalty en début de rencontre",
+    "avec ce penalty de El Ouazzani qui réduit l'écart",
+])
+def test_labelled_recaps_and_mentions_stay_silent(text):
+    assert find_speech_cues(text, SOCCER) == []
+
+
+@pytest.mark.parametrize("text,cue", [
+    ("il manque de maîtrise sur ce tackle", "foul"), ("là ce sera un corner pour l'Espanyol, sur ce corner", "corner"),
+    ("centre d'Araujo, qui avait jailli au premier poteau", "post area"), ("au moins il a obtenu le coup franc", "free kick"),
+    ("Bon attends sur la vilaine faute là", "foul"), ("Attention ce penalty", "penalty"), ("va-t-il se charger de transformer ce penalty ?", "penalty"),
+    ("parfait, ce pénalité tiré par Boussaïs", "penalty"), ("il réclame deux pénaltis", "penalty"), ("c'est un penalty", "penalty"),
+])
+def test_labelled_live_calls_still_fire(text, cue):
+    assert cue in find_speech_cues(text, SOCCER)
+
+
+def test_pénalité_is_still_a_flag_in_american_football():
+    assert "penalty" in find_speech_cues("une pénalité sur la défense", AMERICAN)
