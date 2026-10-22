@@ -57,3 +57,21 @@ def test_tries_his_luck_phrases_are_football_chances_only():
         assert "chance" not in find_speech_cues(text, AMERICAN), text
         assert "chance" not in find_speech_cues(text, "hockey"), text
     assert "chance" not in find_speech_cues("he shoots from the corner of the box", SOCCER)
+
+
+# scoring-bugs-118 proposal: three LOG-ONLY cue families for phrases no cue matched (measured on the held-out game, see speech.py)
+NEW_CUES = {"goal call": "Le Barça va faire le break", "check call": "ce but est en train d'être vérifié à la vidéo", "chance call": "une occasion pour Yamal"}
+
+
+@pytest.mark.parametrize("cue", sorted(NEW_CUES))
+def test_proposal_cues_fire_in_soccer_and_feed_no_score(cue):
+    from daemon.cues import speech_cue_weight, tracker_note_weight
+    from daemon.settings import Weights
+    assert cue in find_speech_cues(NEW_CUES[cue], SOCCER)
+    assert cue not in find_speech_cues(NEW_CUES[cue], AMERICAN)
+    assert speech_cue_weight(cue, SOCCER, Weights(), 1.0) is None and tracker_note_weight(cue, SOCCER, Weights(), 1.0) is None
+
+
+def test_proposal_cues_keep_the_recap_filter():
+    assert "goal call" not in find_speech_cues("Il n'y a pas moyen de faire le break", SOCCER)
+    assert "chance call" not in find_speech_cues("sans aucune occasion", SOCCER)
