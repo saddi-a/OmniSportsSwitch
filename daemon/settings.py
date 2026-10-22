@@ -152,6 +152,8 @@ LAYOUT = [
         ("scoring.semantic_margin", "Semantic match: margin over ordinary talk", "...and it must beat its similarity to ordinary match talk by this much."),
         ("scoring.speech_cue_cooldown_s", "Spoken cue cooldown (s)", "The same spoken cue on the same stream is logged at most this often."),
         ("scoring.speech_cue_factor", "Spoken cue strength", "Soccer: a commentator calling a free kick, a chance, a shot on the post, a penalty or a goal counts this much of the same cue read from a banner. 0 = off (only logged)."),
+        ("scoring.speech_veto_shadow", "Spoken-cue veto, shadow (1 = log, 0 = off)", "Shadow only: a small learned filter judges each spoken cue and the log line `speech veto` says whether it would have dropped it. It changes no cue, score or swap."),
+        ("scoring.speech_veto_threshold", "Spoken-cue veto threshold", "Shadow only: a cue would be dropped when the filter's probability of a real moment right now is below this."),
         ("scoring.classifier_max_gain", "Levelling limit (x)", "The levelling never raises or lowers the sound by more than this factor."),
         ("scoring.event_s", "Goal boost (s)", "How long a goal or touchdown boosts a stream (it fades)."),
         ("scoring.big_play_strength", "Big play strength", "A big play banner counts this much of a goal (1.0 = the same as a goal)."),

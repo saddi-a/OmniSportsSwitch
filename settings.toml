@@ -30,6 +30,8 @@ semantic_mid_sim = 0.99       # ...mid level: effectively off (0 of 5 mid alarms
 semantic_margin = 0.10        # ...and must beat the similarity to ordinary match talk by this much
 speech_cue_cooldown_s = 20.0  # the same spoken cue on the same stream is logged at most this often
 speech_cue_factor = 1.0       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
+speech_veto_shadow = 1        # 1 = log what the learned spoken-cue veto would drop (`speech veto` lines; shadow only, it changes no cue, score or swap), 0 = off
+speech_veto_threshold = 0.39  # ...a cue is "would_veto" when the mean of its two models (P a real moment is called now) is below this
 classifier_max_gain = 8.0     # ...by at most this factor up or down
 feed_mode = 0           # outside game data (ESPN): 0 = local only, nothing starts; 1 = record only (measuring, changes no score); needs a daemon restart
 ocr_assist = 1         # 1 = a second OCR reader (PaddleOCR through rapidocr-onnxruntime, CPU) fills in a score or clock the first reader missed on a tile whose scorebug is on screen, 0 = off

@@ -72,6 +72,7 @@ Common: `v`, `t`, `mono`, `kind`, `tab`, `tile` (null when not about a tile), `s
 | `goal_banner`, `big_play` | `text` (banner text), `strength` |
 | `banner_cue` | `cue`, `banner` (text), `weight` |
 | `speech_cue` | `cue`, `text` (what the commentators said), `language` |
+| `speech_veto` | `p` (mean), `p_c`, `p_g`, `would_veto` (shadow only: what the learned spoken-cue veto would have said about the window that yielded these `cues`; changes nothing) |
 | `surge_rise` | `weight`, `surge`, `crowd`, `level` (soccer: the crowd sound rose fast, a medium cue heard before the words; also a build-up cue of kind `surge_rise`) |
 | `game_state` | `old`, `new` |
 | `buildup` | `level`, `main_score`, `surge`, `crowd`, `outcome` (`moved MAIN`, `log only`, `not moved: <why>`), `moved` |

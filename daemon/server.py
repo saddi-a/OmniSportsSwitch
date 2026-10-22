@@ -92,12 +92,14 @@ def leveling_gain(baseline: float | None, target: float, max_gain: float) -> flo
 
 class Server:
     def __init__(self, scorer: Scorer | None = None, classifier=None, screen_reader=None, focuser: TileFocuser | None = None, settings=None,
-                 speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None, rapid_reader=None, jingle: JingleMatcher | None = None):
+                 speech=None, semantic=None, sport_memory_path=None, recorder: DatasetRecorder | None = None, rapid_reader=None, jingle: JingleMatcher | None = None, speech_veto=None):
         self.scorer = scorer or Scorer()
         self.scorer.sport_of = self._tab_sport   # per-sport settings overrides: the scorer asks which sport a stream is
         self.scorer.tile_sport_of = self.scoring_sport   # ...and, in a multiview, which sport each tile is
         self.scorer.audible_of = self._audible_index     # ...and which tile has the sound (the audio terms belong to it)
         self.speech = speech                    # SpeechListener or None: the commentary listener (measuring only)
+        self.speech_veto = speech_veto          # SpeechVeto or None: the learned spoken-cue veto, SHADOW only (logs `speech veto`, changes nothing)
+        self._veto_tasks: set = set()           # background shadow-veto tasks (kept referenced until done)
         self.semantic = semantic                # SemanticMatcher or None: how close the commentary is to big-moment phrases (measuring only)
         self.jingle = jingle                    # JingleMatcher or None (no template file): the channel's goal jingle; None = the daemon behaves as before
         self.jingle_buffers: dict[int, np.ndarray] = {}   # tab id -> the last stretch of audio the jingle is looked for in
@@ -774,6 +776,23 @@ class Server:
                         if note is not None:   # a set piece is a build-up sign for the tracker only: no score, no anticipation
                             log.info("buildup note %s tab %s%s weight %.2f", cue, tab_id, where, note)
                             self.buildup.note(bkey, now, note, "note:" + cue)
+                if cues and self.speech_veto is not None and cfg.speech_veto_shadow > 0:   # shadow: after the cues are decided, in the background, only logs
+                    task = asyncio.create_task(self._speech_veto_shadow(tab_id, tile, text, list(cues), cfg.speech_veto_threshold))
+                    self._veto_tasks.add(task)
+                    task.add_done_callback(self._veto_tasks.discard)
+
+    async def _speech_veto_shadow(self, tab_id: int, tile: int | None, text: str, cues: list[str], threshold: float) -> None:
+        """Log what the learned veto would say about a window that yielded cues. Never changes a cue, score or swap; never raises."""
+        try:
+            result = await asyncio.to_thread(self.speech_veto.score, text, cues, threshold)
+            if result is None:
+                return
+            log.info("speech veto tab %s: p=%.2f (C=%.2f G=%.2f) would_veto=%d cues=%s | %s", tab_id, result["p_mean"], result["p_c"],
+                     result["p_g"], int(result["veto"]), cues, text[:120])
+            self._rec_event("speech_veto", tab_id, tile, p=round(result["p_mean"], 3), p_c=round(result["p_c"], 3), p_g=round(result["p_g"], 3),
+                            would_veto=bool(result["veto"]), cues=cues)
+        except Exception as error:
+            log.warning("speech veto shadow failed: %s: %s", type(error).__name__, error)
 
     def _feed_text(self, tab_id: int) -> str:
         """The text the feed mapper looks for team names in: what the user typed in the popup, else what the page says. On a multiplex tab only
@@ -1537,6 +1556,8 @@ if __name__ == "__main__":
             log.info("semantic matcher ready (cpu)")
         except Exception as error:
             log.warning("semantic matcher not available (%s: %s); continuing without it", type(error).__name__, error)
+    from daemon.speech_veto import SpeechVeto
+    speech_veto = SpeechVeto(threshold=settings.scoring.speech_veto_threshold)   # shadow only; loads lazily on the first cue, no weights = one warning and off
     from daemon.jingle import load_template
     template = load_template()
     jingle = JingleMatcher(template) if template is not None else None
@@ -1547,6 +1568,6 @@ if __name__ == "__main__":
     try:
         asyncio.run(Server(Scorer(settings.scoring), classifier=classifier, screen_reader=screen_reader,
                            focuser=TileFocuser(settings.focus), settings=settings, speech=speech, semantic=semantic,
-                           recorder=recorder, rapid_reader=rapid_reader, jingle=jingle).run())
+                           recorder=recorder, rapid_reader=rapid_reader, jingle=jingle, speech_veto=speech_veto).run())
     except KeyboardInterrupt:
         pass

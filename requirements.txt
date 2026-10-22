@@ -25,3 +25,14 @@ nvidia-cublas-cu12==12.9.2.10
 nvidia-cudnn-cu12==9.27.0.42
 pytest==9.1.1
 pytest-asyncio==1.4.0
+
+# Spoken-cue veto (shadow, CPU): scikit-learn and its deps are plain; install transformers, safetensors, regex with --no-deps so torch is never replaced (huggingface_hub, tokenizers, tqdm, filelock, packaging, requests come with the other packages).
+scikit-learn==1.9.1
+scipy==1.18.1
+joblib==1.6.0
+threadpoolctl==3.7.0
+transformers==5.20.2  # install with --no-deps
+safetensors==0.8.0  # install with --no-deps
+regex==2026.9.29  # install with --no-deps
+tokenizers==0.23.3  # install with --no-deps
+huggingface_hub==2.2.0  # install with --no-deps

@@ -152,6 +152,8 @@ class Config:
     semantic_margin: float = 0.10        # ...and must beat its similarity to ordinary match talk by this much
     speech_cue_cooldown_s: float = 20.0  # the same cue on the same stream is logged at most this often
     speech_cue_factor: float = 1.0       # soccer: a spoken free kick / chance / post / penalty / goal call counts this much of the banner cue (0 = off)
+    speech_veto_shadow: float = 1.0      # 1 = log what the learned spoken-cue veto would drop (`speech veto` lines, changes nothing), 0 = off
+    speech_veto_threshold: float = 0.39  # ...it would drop a cue when the mean of its two models says "a real moment right now" below this
     classifier_max_gain: float = 8.0    # ...but never louder than this factor, or quieter than 1/this
     feed_mode: float = 0.0          # outside game data (ESPN): 0 = local only (nothing starts), 1 = record only (measuring, changes no score); needs a restart
     ocr_assist: float = 1.0          # 1 = a second OCR reader (PaddleOCR via rapidocr-onnxruntime, CPU) fills in a missing score or clock on a tile whose scorebug is on screen, 0 = off
