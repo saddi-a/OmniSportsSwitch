@@ -103,9 +103,11 @@ _AFTER_CHARS = 28
 # words just before a cue that make it a negation, a hypothetical or a recap (French and English)
 NEGATION_OR_RECAP = [r"\bpas (de|du|d'|un|une|le|la|l')", r"\bne pas\b", r"\bn'y a (pas|aucun|aucune)\b", r"\baucune?\b", r"\bsans\b", r"\bjamais\b",
                      r"\bavait\b", r"\bavaient\b", r"\bobtenu\b", r"\ba été obtenir\b", r"\ba pu\b", r"\bont pu\b", r"\bce qui amène\b", r"\bsur ce\b",
-                     r"\bno\b", r"\bnot\b", r"n't\b", r"\bwithout\b", r"\bwas\b", r"\bwere\b", r"\bhad\b", r"\bnever\b"]
+                     r"\bno\b", r"\bnot\b", r"n't\b", r"\bwithout\b", r"\bwas\b", r"\bwere\b", r"\bhad\b", r"\bnever\b",
+                     r"\battend(s|ons)?\b", r"\bwaiting for\b"]  # "on attend une frappe cadrée": the chance has not come (2026-10-22)
 # words just after a cue that make it a recap of something already played
-RECAP_AFTER = [r"^\W*(justement|déjà|obtenu|obtenue|avait été|qu'il avait|qu'ils avaient)", r"^\W*(was|had been|already) "]
+RECAP_AFTER = [r"^\W*(justement|déjà|obtenu|obtenue|avait été|qu'il avait|qu'ils avaient)", r"^\W*(was|had been|already) ",
+              r"^[^.!?;:\n]*\bn'y en (a|avait)\b"]  # "une frappe cadrée aussi parce qu'il n'y en a (pas eu)"
 _NEG_RE = [re.compile(p, re.IGNORECASE) for p in NEGATION_OR_RECAP]
 _RECAP_AFTER_RE = [re.compile(p, re.IGNORECASE) for p in RECAP_AFTER]
 _CLAUSE_END = re.compile(r"[.!?;:,\n]|\.\.\.")

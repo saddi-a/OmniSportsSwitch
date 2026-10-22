@@ -102,3 +102,12 @@ def test_the_shot_must_be_in_the_same_clause():
 def test_penalty_spellings_are_still_filtered_as_recaps():
     assert find_speech_cues("sans pénatif cette fois", SOCCER) == []
     assert find_speech_cues("ce pénalité obtenu justement", SOCCER) == []
+
+
+def test_waiting_for_a_chance_that_has_not_come_is_no_chance():
+    # heard 2026-10-22 19:30 (STG-OLM): the commentator says the match still waits for a shot on target; it moved Main for nothing
+    text = "Allez on attend une vraie occasion, on attend un but bien sûr mais une vraie occasion, une frappe cadrée aussi parce qu'il n'y en a..."
+    assert "chance" not in find_speech_cues(text, SOCCER)
+    assert "chance" not in find_speech_cues("On attend une frappe cadrée", SOCCER)
+    assert "chance" not in find_speech_cues("une frappe cadrée, il n'y en a pas eu", SOCCER)
+    assert "chance" in find_speech_cues("Quelle frappe cadrée, le gardien est battu", SOCCER)
