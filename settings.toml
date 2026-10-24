@@ -134,6 +134,7 @@ rewind_high_slack_s = 120.0   # a stream cannot be ahead of the feed clock: a re
 rewind_ignores_score = 1.0   # 1 = a score change on a tile whose stream is replaying its past (feed rewind) makes no event, goal hold or swap bonus unless the feed shows that score at the stream clock (0 = old behaviour: counted)
 ad_sticky_s = 120.0        # a picture ad break stays an ad this long unless the scoreboard is read again (0 = only the short 8 s memory)
 ad_exit_readings = 3       # ...this many scoreboard readings (down/quarter, clock with a team code, two team codes) end it
+ad_copy_weak_needed = 2    # a frame is a TV commercial when this many different weak ad-copy words (injection, treatment, specialist...) are on it; a strong phrase (prescription medicine, side effects...) needs one
 audio_ad_memory_s = 12.0   # a stream that sounded like an ad stays flagged this long (the music probability flickers)
 goal_pending_s = 6.0         # a first new-score reading (before the vote) backs the goal-music exemption this long unless the vote confirms it (0 = off)
 goal_pending_surge = 0.5    # ...only with a clear surge (loudness over normal) or...
@@ -189,6 +190,10 @@ ad_penalty = 0.5     # a tile showing an ad gets negative interest, so focus mov
 break_phrases = ["commercial break", "publicitaria", "intervalo comercial", "publicité", "publicite", "publicitaire", "publicidade", "pausa comercial", "ad break", "advertisement", "right back", "volvemos", "de retour dans", "watch now", "ondazn", "event break", "evento em intervalo", "interrupcion del evento", "interrupción del evento", "stream live matches", "schedule for availability"]
 # Promo screens between games (DAZN). They count as an ad only when NO scoreboard is on screen: a live game frame shows "US advertising" or a Game Pass logo beside its scorebug.
 promo_phrases = ["advertising", "on dazn", "nfl game pass", "watchevery", "daznboxing", "dazn boxing"]
+
+# Ad copy of TV commercials (drug ads...): one strong phrase, or ad_copy_weak_needed different weak words on two readings in a row.
+ad_copy_strong = ["prescription medic", "prescripticn medic", "ask your doctor", "talk to your doctor", "ask your healthcare", "tell your provider", "side effects", "per office visit", "approved for patients", "demandez à votre médecin", "demandez a votre medecin", "consultez votre médecin", "pregunte a su médico", "aflibercept", "dosing may vary", "terms apply", "while supplies last"]
+ad_copy_weak = ["injection", "injectlon", "treatment", "specialist", "patients", "allergic", "may cause", "risk of", "infection", "swelling", "prescri", "copyright 20", "ask about"]
 
 # Banners flashed for a big play. A text item counts when it is just that phrase (a few extra characters are
 # allowed), so sentences and stat labels like "TURNOVERS" do not trigger it.

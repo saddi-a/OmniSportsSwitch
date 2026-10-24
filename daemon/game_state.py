@@ -63,6 +63,14 @@ AD_PHRASES = ["commercial break", "publicitaria", "intervalo comercial", "public
 # Promo screens a service shows between games (DAZN: tiles with no game in them). They count as an ad ONLY with no scoreboard on screen: a live game
 # frame carries "This programme contains US advertising..." or a Game Pass logo beside its scorebug. Matched inside a longer text item, lower case.
 PROMO_PHRASES = ["advertising", "on dazn", "nfl game pass", "watchevery", "daznboxing", "dazn boxing"]
+# Ad copy of a TV commercial (US drug ads: live 2026-10-25 00:06 and 00:15, DAZN multiview tile showing FS1; it scored 0.30 with the ad's music as a "surge").
+# One STRONG phrase is enough (an ad-only wording, matched inside a text item); WEAK words count only when `ad_copy_weak_needed` DIFFERENT ones are on
+# screen (a lone "injection" in a commentary caption or "treatment" in an injury report is no ad). Both still need 2 readings in a row.
+AD_COPY_STRONG = ["prescription medic", "prescripticn medic", "ask your doctor", "talk to your doctor", "ask your healthcare", "tell your provider", "side effects",
+                  "per office visit", "approved for patients", "demandez à votre médecin", "demandez a votre medecin", "consultez votre médecin",
+                  "pregunte a su médico", "aflibercept", "dosing may vary", "terms apply", "while supplies last"]
+AD_COPY_WEAK = ["injection", "injectlon", "treatment", "specialist", "patients", "allergic", "may cause", "risk of", "infection", "swelling", "prescri",
+                "copyright 20", "ask about"]
 # Banners the broadcast flashes for a big play. A text item counts only if it is (nearly) just that phrase, so
 # sentences and stat labels ("TURNOVERS") do not. Seen live: "TAKEAWAY!" after an interception.
 BIG_PLAY_WORDS = ["takeaway", "interception", "intercepted", "fumble", "sack", "red card", "carton rouge", "penalty kick"]
@@ -340,8 +348,10 @@ class GameTracker:
         if scoreboard and clocks and (game_s := clock_seconds(clocks[0])) is not None:
             self._game_clock = (game_s, now)
         promo = not scoreboard and any(p in t for t in lowered for p in PROMO_PHRASES)   # a promo screen with no game on it
+        ad_copy = len({w for w in AD_COPY_WEAK if any(w in t for t in lowered)}) >= self.config.ad_copy_weak_needed
+        ad_copy = ad_copy or any(p in t for t in lowered for p in AD_COPY_STRONG)   # a TV commercial's legal copy
         if texts or clocks:   # a frame the OCR read as completely empty says nothing: it must not reset the 2-in-a-row count (a DAZN carousel is read empty every other frame)
-            self._ad_hits = self._ad_hits + 1 if lone_clock or promo or any(p in t for t in lowered for p in AD_PHRASES) else 0
+            self._ad_hits = self._ad_hits + 1 if lone_clock or promo or ad_copy or any(p in t for t in lowered for p in AD_PHRASES) else 0
         if self._ad_hits >= AD_CONFIRMATIONS:
             self._ad_seen = now
             self._board_since_ad = 0

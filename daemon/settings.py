@@ -125,7 +125,7 @@ def _read_sport_overrides(store: dict, section_data: dict, section: str, names: 
 # ---------------------------------------------------------------------------------------------------------------
 LOCAL_NAME = "settings.local.json"
 _DEFAULT_PROFILES = dict(game_state.PROFILES)
-_PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "promo_phrases": game_state.PROMO_PHRASES, "big_play_words": game_state.BIG_PLAY_WORDS, "replay_words": game_state.REPLAY_WORDS,
+_PHRASE_LISTS = {"break_phrases": game_state.AD_PHRASES, "promo_phrases": game_state.PROMO_PHRASES, "ad_copy_strong": game_state.AD_COPY_STRONG, "ad_copy_weak": game_state.AD_COPY_WEAK, "big_play_words": game_state.BIG_PLAY_WORDS, "replay_words": game_state.REPLAY_WORDS,
                  "anticipation_words": game_state.ANTICIPATION_WORDS}
 _DEFAULT_PHRASES = {key: list(target) for key, target in _PHRASE_LISTS.items()}
 
@@ -200,6 +200,7 @@ LAYOUT = [
         ("scoring.rewind_ignores_score", "Ignore score changes while rewinding (1 = on)", "1 = when you rewind a stream (the feed gate sees its clock far behind) a score change on screen is a replayed goal and makes no event or swap, unless the feed shows that same score at the stream clock (then the rewind flag was stale). 0 = count it as before."),
         ("scoring.audio_ad_margin", "Music over speech for an ad", "A music-only ad needs music to exceed speech by this much, so stadium music under commentary is not taken for an ad."),
         ("scoring.ad_sticky_s", "Ad break stays an ad (s, 0 = off)", "A commercial seen in the picture stays an ad until the scoreboard is read again, or this long. Stops the stream flickering between ad, break and live inside one ad break."),
+        ("scoring.ad_copy_weak_needed", "Commercial words needed", "Different weak commercial words (injection, treatment, specialist...) that make a frame an ad."),
         ("scoring.ad_exit_readings", "Scoreboard readings that end an ad", "This many readings of a scorebug end the ad at once."),
         ("scoring.audio_ad_memory_s", "Ad memory (s)", "A stream that sounded like an ad stays flagged this long."),
         ("scoring.goal_pending_s", "Early goal reading (s, 0 = off)", "A first new-score reading, before the vote confirms it, already backs the goal-music exemption this long, if the sound was loud just before. It lapses when the vote does not confirm it."),
@@ -322,6 +323,8 @@ LAYOUT = [
     ]),
     ("Banner phrases", [
         ("banners.promo_phrases", "Promo screen wording", "Text of a promo screen between games. Counts as an ad only when no scoreboard is on screen."),
+        ("banners.ad_copy_strong", "TV commercial wording (one is enough)", "Legal copy only commercials show ('prescription medicine', 'side effects'). One of them on two readings in a row is an ad."),
+        ("banners.ad_copy_weak", "TV commercial words (several needed)", "Words common in commercials; this many different ones on screen make an ad."),
         ("banners.break_phrases", "Ad break wording", "Text a player shows during an ad break (any case, inside a text). Add your service's wording."),
         ("banners.big_play_words", "Big play banners", "Banners flashed for a big play (the text must be just that phrase)."),
         ("banners.anticipation_words", "Anticipation banners", "Banners that come before a likely score: red zone, VAR, corner, penalty, review... (the text must be just that phrase)."),
