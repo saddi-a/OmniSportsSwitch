@@ -944,6 +944,7 @@ def test_a_click_that_only_selected_the_tile_is_sent_once_more():
     now = time.monotonic()
     assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 20, "index": 2}]
     assert 20 not in server.expand_resend and server.pending_expand[20][0] == 2
+    assert server.expand_from[20] == 2                      # the sound was on the clicked tile when the click was sent
     server.pending_expand[20] = (2, now + 8 - 3)
     _report(server, 20, audible=2)                          # selected again: no third try
     assert 20 not in server.expand_resend
@@ -1054,3 +1055,22 @@ async def test_a_spoken_touchdown_is_strong_only_in_american_football_and_with_a
         rec = server.scorer.streams[5]
         assert rec.anticipation_value > 0 or sport == "football", sport
         assert rec.anticipation_strong is strong, (sport, loud)
+
+
+def test_a_click_on_an_already_big_audible_tile_is_no_confirmation(caplog):
+    # found live 2026-10-25 00:02-00:15: tile 0 was big and audible, the focus click on tile 2/3 changed nothing, and "the sound is on the
+    # big slot" was read as an expand: no warning, and the records of the two slots were swapped
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
+    server.expand_from[20] = 0                                  # the sound was on the big slot when the click was sent
+    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)
+    _report(server, 20, audible=0)
+    assert server.trackers[(20, 0)] == "main-game" and server.trackers[(20, 2)] == "tile2-game"
+    assert 20 in server.pending_expand                          # still waiting: nothing proves the click worked
+    server.pending_expand[20] = (2, time.monotonic() - 1)       # deadline passed
+    with caplog.at_level(logging.WARNING):
+        _report(server, 20, audible=0)
+    assert "did not happen" in caplog.text and 20 not in server.pending_expand and 20 in server.expand_retried
+    assert server.trackers[(20, 0)] == "main-game"
+

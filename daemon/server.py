@@ -163,6 +163,7 @@ class Server:
         self.skip_logged_at: dict[str, float] = {}   # reason -> when a skipped swap (Window 2 fixed) was last logged
         self.swap_refusal: str | None = None         # why the last `_perform_swap` refused (for the popup), None if it did not
         self.pending_expand: dict[int, tuple[int, float]] = {}  # tab id -> (tile asked for, deadline): waiting to see the result
+        self.expand_from: dict[int, int | None] = {}  # tab id -> the tile that had the sound when the click was sent (a sound already on the big slot proves no expand)
         self.clients = set()
         self.buffers: dict[int, np.ndarray] = {}  # tab id -> last 3 s of audio
         self.rects: dict[int, dict] = {}          # tab id -> where its playing videos are on screen
@@ -1328,6 +1329,7 @@ class Server:
                 log.info("focus tile: tab %s -> tile %s again (the first click only selected it)", tab_id, again)
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": again})
                 self.pending_expand[tab_id] = (again, now + EXPAND_CHECK_S)
+                self.expand_from[tab_id] = next((r.get("index", pos) for pos, r in enumerate(info["rects"]) if r.get("audible")), None)
                 continue
             scores = self.scorer.tile_scores(tab_id, now)   # the wanted tile: the one the scorer rates highest (None while the tab has no score)
             tiles = []
@@ -1350,6 +1352,7 @@ class Server:
                 log.info("focus tile: tab %s -> tile %s | %s", tab_id, target, tiles)
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": target})
                 self.pending_expand[tab_id] = (target, now + EXPAND_CHECK_S)
+                self.expand_from[tab_id] = next((r.get("index", pos) for pos, r in enumerate(info["rects"]) if r.get("audible")), None)
         return commands
 
     def _check_expand(self, tab_id: int, info: dict) -> None:
@@ -1365,15 +1368,16 @@ class Server:
         main = areas[0][1]
         audible = next((r.get("index", pos) for pos, r in enumerate(rects) if r.get("audible")), None)
         settled = time.monotonic() >= deadline - EXPAND_CHECK_S + EXPAND_SETTLE_S
+        proves_expand = audible == main and self.expand_from.get(tab_id) != main   # the sound was elsewhere before and is on the big slot now
         if audible == target and target != main and settled:
             log.warning("expand of tab %s tile %s did not happen: the tile was only selected", tab_id, target)
             del self.pending_expand[tab_id]
             if tab_id not in self.expand_retried:   # fallback: the focuser would not ask (the tile already has the sound), so click it again directly
                 self.expand_retried.add(tab_id)
                 self.expand_resend[tab_id] = target
-        elif (audible == main and settled) or time.monotonic() > deadline:
+        elif (proves_expand and settled) or time.monotonic() > deadline:
             del self.pending_expand[tab_id]
-            if audible == main:
+            if proves_expand:
                 self.expand_retried.discard(tab_id)
                 self._expand_swap(tab_id, rects, target)
             else:

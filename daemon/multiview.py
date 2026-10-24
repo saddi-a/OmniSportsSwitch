@@ -20,6 +20,7 @@ STATUS_MULT = {"live": 1.0, "break": 0.25, "over": 0.0}
 class FocusConfig:
     switch_ratio: float = 1.5     # another tile must beat the focused one by this factor
     min_dwell_s: float = 30.0     # minimum time between focus changes in one tab
+    break_dwell_s: float = 10.0   # the same while the focused tile shows an ad or a break/over (leave it soon, but a failing click is no loop)
     event_weight: float = 1.0     # how much a fresh score change counts
     crowd_weight: float = 1.0     # how much crowd noise on the focused tile counts
     floor: float = 0.05           # every live tile has at least this much, so scores never reach zero
@@ -48,7 +49,10 @@ class TileFocuser:
             tiles = [{k: v for k, v in t.items() if k != "score"} for t in tiles]
         focused = next((t for t in tiles if t.get("audible")), None)
         best = max(tiles, key=self.tile_score)
-        if now - self._last_change.get(tab_id, float("-inf")) < self.config.min_dwell_s:
+        dwell = self.config.min_dwell_s
+        if focused is not None and (focused.get("ad") or focused.get("state") in ("break", "over")):
+            dwell = self.config.break_dwell_s
+        if now - self._last_change.get(tab_id, float("-inf")) < dwell:
             return None
         if focused is None:
             return None if self.tile_score(best) <= 0 else self._switch(tab_id, now, best["index"])

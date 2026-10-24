@@ -71,3 +71,20 @@ def test_a_tile_on_an_ad_has_negative_interest_and_loses_focus():
 def test_a_tile_on_an_ad_never_takes_focus():
     f = TileFocuser()
     assert f.decide(1, 100, tiles(t2={"ad": True, "event": 1.0})) is None
+
+
+def test_the_dwell_is_skipped_when_the_focused_tile_is_on_an_ad_or_a_break():
+    # user decision 2026-10-25: leave an ad or a break at once (a short pause of break_dwell_s stays so a failing click is no loop)
+    for bad in ({"ad": True, "state": "break"}, {"state": "break"}, {"state": "over"}):
+        f = TileFocuser()
+        assert f.decide(1, 100, tiles(t2={"event": 1.0})) == 2
+        stuck = tiles(t0={"audible": False}, t2={"audible": True, "event": 0.0, **bad}, t1={"event": 1.0})
+        assert f.decide(1, 105, stuck) is None            # 5 s after the last switch: still too soon
+        assert f.decide(1, 112, stuck) == 1               # 12 s after: no need to wait the full 30 s
+
+
+def test_the_dwell_stays_when_the_focused_tile_is_live():
+    f = TileFocuser()
+    assert f.decide(1, 100, tiles(t2={"event": 1.0})) == 2
+    live = tiles(t0={"audible": False}, t2={"audible": True, "event": 0.0}, t1={"event": 1.0})
+    assert f.decide(1, 112, live) is None
