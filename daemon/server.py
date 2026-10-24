@@ -40,7 +40,7 @@ from daemon.sport_choice import choose_sport, sport_from_feed
 from daemon.sport_detect import sport_from_title
 from daemon.sport_memory import SportMemory
 from daemon.leverage import tab_leverage
-from daemon.game_identity import GameIdentity, key_text, team_pair
+from daemon.game_identity import GameIdentity, key_text, known_pair, team_pair
 from daemon.multiplex_panel import PanelWatch, find_panel
 from daemon.game_state import GameTracker, combine, overlay_on_screen
 from daemon.multiview import TileFocuser
@@ -1087,7 +1087,10 @@ class Server:
             panel = None if self.tile_sport(tab_id, index) == "american football" else find_panel(r.get("items"))
             sb_texts = [it["text"] for it in panel.rest] if panel is not None else r["texts"]
             self._check_panel_goals(tab_id, index, panel, now)
-            new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(team_pair(sb_texts))
+            pair = team_pair(sb_texts)
+            if pair is not None and self.multiplex.get(tab_id):   # a multiplex tab needs both codes in the team tables (a calendar graphic is no game)
+                pair = known_pair(pair)
+            new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(pair)
             if new_game is not None and self.multiplex.get(tab_id):   # only on a tab the user flagged; the identity is tracked everywhere (dataset game_key)
                 self._on_new_game(tab_id, index, new_game[0], new_game[1], now, multi=tab_id in multi)
             detected = self.sport_detectors.setdefault((tab_id, index), SportDetector()).update(r["texts"], r["clocks"])

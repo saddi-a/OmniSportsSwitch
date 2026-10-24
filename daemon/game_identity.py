@@ -6,6 +6,7 @@ a ticker with many codes, a lone misread) changes nothing: the old game is kept.
 import re
 
 from daemon.game_state import NOT_TEAM_CODES, TEAM_CODE_RE
+from daemon.team_names import CLUBS, fold
 
 
 def team_pair(texts: list[str]) -> frozenset | None:
@@ -42,3 +43,19 @@ class GameIdentity:
             return None
         old, self.key, self._candidate, self._count = self.key, pair, None, 0
         return (old, pair) if old is not None else None
+
+
+def known_pair(pair: frozenset | None) -> frozenset | None:
+    """The pair only if BOTH codes are team codes of the team tables (ESPN abbreviation or active alias), else None. Used on multiplex
+    tabs: a calendar or standings graphic with two code-like words (CALL-EPIG) must not count as a new game; the old game is kept."""
+    return pair if pair is not None and all(code in known_codes() for code in pair) else None
+
+
+def known_codes() -> frozenset:
+    global _KNOWN
+    if _KNOWN is None:
+        _KNOWN = frozenset(fold(c.abbr) for c in CLUBS) | frozenset(a for c in CLUBS for a in c.aliases)
+    return _KNOWN
+
+
+_KNOWN: frozenset | None = None

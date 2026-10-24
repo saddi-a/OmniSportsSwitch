@@ -35,15 +35,15 @@ def game(a, b, n, score=(0, 0), clock="9:30"):
 # -- identity ------------------------------------------------------------------------------------------------------------
 def test_team_pair_needs_exactly_two_codes():
     assert team_pair(["KC", "BUF", "7", "3"]) is None            # one code is no pair
-    assert team_pair(["KCC", "7", "BUF", "3"]) == frozenset({"KCC", "BUF"})
-    assert team_pair(["KCC", "BUF", "DAL", "NYG"]) is None       # a results ticker
+    assert team_pair(["MIA", "7", "BUF", "3"]) == frozenset({"MIA", "BUF"})
+    assert team_pair(["MIA", "BUF", "DAL", "NYG"]) is None       # a results ticker
     assert team_pair(["REDZONE", "LIVE", "MORE"]) is None        # no scorebug
-    assert key_text(frozenset({"KCC", "BUF"})) == "BUF-KCC"
+    assert key_text(frozenset({"MIA", "BUF"})) == "BUF-MIA"
 
 
 def test_identity_needs_a_stable_new_pair():
     ident = GameIdentity(3)
-    a, b = frozenset({"KCC", "BUF"}), frozenset({"DAL", "NYG"})
+    a, b = frozenset({"MIA", "BUF"}), frozenset({"DAL", "NYG"})
     assert ident.update(a) is None and ident.update(a) is None and ident.update(a) is None and ident.key == a   # the first game is no change
     assert ident.update(b) is None and ident.update(None) is None and ident.update(a) is None   # a flicker, a studio shot, back to A
     assert ident.update(b) is None and ident.update(b) is None   # not three in a row yet
@@ -55,7 +55,7 @@ def test_identity_needs_a_stable_new_pair():
 def test_watcher_new_game_forgets_the_old_scores_and_sees_the_new_goal():
     w = ScoreWatcher(Config())
     for i in range(4):
-        w.update(["KCC", "21", "BUF", "14"], ["9:30"], 100.0 + 3 * i)
+        w.update(["MIA", "21", "BUF", "14"], ["9:30"], 100.0 + 3 * i)
     assert w.score == (21, 14)
     w.new_game()
     quiet = [w.update(["DAL", "0", "NYG", "0"], ["5:00"], 120.0 + 3 * i) for i in range(4)]
@@ -99,18 +99,18 @@ def test_scorer_reset_tile_clears_event_and_goal_hold():
 def test_flagged_tab_new_game_is_logged_and_gives_no_false_goal(caplog):
     server = make(True)
     caplog.set_level("INFO", logger="daemon")
-    now = feed(server, game("KCC", "BUF", 5, (3, 0), "9:30"))
+    now = feed(server, game("MIA", "BUF", 5, (3, 0), "9:30"))
     server.scorer.set_event(2, now, 1.0, goal=True)
     feed(server, game("DAL", "NYG", 5, (7, 3), "9:30"), start=now)
     assert (2, 0) not in server.event_at
-    assert "new game on tab 2: BUF-KCC -> DAL-NYG" in caplog.text
+    assert "new game on tab 2: BUF-MIA -> DAL-NYG" in caplog.text
     assert server.scorer.streams[2].goal_at == float("-inf")
     assert server.watchers[(2, 0)].score == (7, 3)
 
 
 def test_flagged_tab_blind_spot_below_the_old_peak_is_gone():
     server = make(True)
-    now = feed(server, game("KCC", "BUF", 5, (21, 14), "9:30"))
+    now = feed(server, game("MIA", "BUF", 5, (21, 14), "9:30"))
     now = feed(server, game("DAL", "NYG", 5, (0, 0), "9:30"), start=now)
     feed(server, game("DAL", "NYG", 5, (7, 0), "9:30"), start=now)
     assert (2, 0) in server.event_at                             # the new game's touchdown is seen
@@ -118,7 +118,7 @@ def test_flagged_tab_blind_spot_below_the_old_peak_is_gone():
 
 def test_unflagged_tab_behaves_as_before():
     server = make(False)
-    now = feed(server, game("KCC", "BUF", 5, (21, 14), "9:30"))
+    now = feed(server, game("MIA", "BUF", 5, (21, 14), "9:30"))
     feed(server, game("DAL", "NYG", 5, (0, 0), "9:30"), start=now)
     assert server.watchers[(2, 0)]._peak == (21, 14)             # the old behaviour: 0-0 is a misread below the peak
     assert server.identities[(2, 0)].key == frozenset({"DAL", "NYG"})   # the identity is only tracked (dataset)
@@ -126,11 +126,11 @@ def test_unflagged_tab_behaves_as_before():
 
 def test_a_studio_shot_or_ticker_does_not_reset():
     server = make(True)
-    now = feed(server, game("KCC", "BUF", 5, (21, 14), "9:30"))
+    now = feed(server, game("MIA", "BUF", 5, (21, 14), "9:30"))
     studio = [{"texts": ["REDZONE", "LIVE"], "clocks": []}] * 4
     ticker = [board("DAL", 7, "NYG", 3, extra=("MIA", "NEP", "LAC", "DEN"))] * 4
     feed(server, studio + ticker, start=now)
-    assert server.watchers[(2, 0)]._peak == (21, 14) and server.identities[(2, 0)].key == frozenset({"KCC", "BUF"})
+    assert server.watchers[(2, 0)]._peak == (21, 14) and server.identities[(2, 0)].key == frozenset({"MIA", "BUF"})
 
 
 def test_a_flagged_tab_still_honours_the_teams_the_user_typed():
@@ -154,7 +154,7 @@ def test_a_flagged_tab_ignores_the_page_text_but_not_the_typed_teams():
 
 def test_new_game_drops_fav_seen_rule_seen_and_buildup():
     server = make(True)
-    now = feed(server, game("KCC", "BUF", 5, (3, 0)))
+    now = feed(server, game("MIA", "BUF", 5, (3, 0)))
     server.fav_seen[(2, 0)] = (2.0, now)
     server.rule_seen[(2, 0)] = ({"MAIN"}, now)
     server.buildup.note(2, now, 0.5)
@@ -165,9 +165,9 @@ def test_new_game_drops_fav_seen_rule_seen_and_buildup():
 
 def test_dataset_rows_carry_the_game_key():
     server = make(True)
-    feed(server, game("KCC", "BUF", 5, (3, 0)))
+    feed(server, game("MIA", "BUF", 5, (3, 0)))
     rows = snapshot_rows(server, 200.0, 1.0)
-    assert next(r for r in rows if r["tab"] == 2)["tiles"][0]["game_key"] == "BUF-KCC"
+    assert next(r for r in rows if r["tab"] == 2)["tiles"][0]["game_key"] == "BUF-MIA"
 
 
 def test_a_channel_label_is_not_a_team_code():
@@ -183,4 +183,36 @@ def test_league_and_channel_labels_are_not_team_codes_on_redzone():
     # team codes and gave `new game ... MAX-NFL -> MRX-NFL` resets
     assert team_pair(["NFL", "MAX", "bein SPORTS", "REDZONE"]) is None
     assert team_pair(["NFL", "MRX", "7", "0"]) is None
-    assert team_pair(["NFL", "KCC", "7", "BUF", "3", "MAX"]) == frozenset({"KCC", "BUF"})
+    assert team_pair(["NFL", "MIA", "7", "BUF", "3", "MAX"]) == frozenset({"MIA", "BUF"})
+
+
+# -- known codes only on a multiplex tab (a calendar graphic is no game) --------------------------------------------------
+def test_known_pair_needs_both_codes_in_the_team_tables():
+    from daemon.game_identity import known_pair
+    assert known_pair(frozenset({"CRY", "BHA"})) == frozenset({"CRY", "BHA"})
+    assert known_pair(frozenset({"CALL", "EPIG"})) is None           # 2026-10-21 22:48 calendar graphic
+    assert known_pair(frozenset({"CRY", "EPIG"})) is None            # one unknown code is enough to refuse
+    assert known_pair(None) is None
+
+
+def test_unknown_pair_never_confirms_a_new_game():
+    from daemon.game_identity import known_pair
+    ident = GameIdentity(3)
+    a, junk = frozenset({"CRY", "BHA"}), frozenset({"CALL", "EPIG"})
+    for _ in range(3):
+        ident.update(known_pair(a))
+    assert ident.key == a
+    assert [ident.update(known_pair(junk)) for _ in range(5)] == [None] * 5 and ident.key == a
+
+
+def test_flagged_tab_ignores_an_unknown_pair_but_unflagged_tab_still_tracks_it(monkeypatch):
+    calls = []
+    monkeypatch.setattr(Server, "_on_new_game", lambda self, *a, **k: calls.append(a))
+    flagged = make(True)
+    now = feed(flagged, game("MIA", "BUF", 5, (3, 0)))
+    feed(flagged, game("CALL", "EPIG", 6, (0, 0)), start=now)       # 2026-10-21 22:48 calendar graphic
+    assert calls == [] and flagged.identities[(2, 0)].key == frozenset({"MIA", "BUF"})
+    plain = make(False)
+    now = feed(plain, game("MIA", "BUF", 5, (3, 0)))
+    feed(plain, game("CALL", "EPIG", 6, (0, 0)), start=now)         # tracked as before (dataset game_key)
+    assert plain.identities[(2, 0)].key == frozenset({"CALL", "EPIG"}) and calls == []
