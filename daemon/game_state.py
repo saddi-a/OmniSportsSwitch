@@ -236,6 +236,11 @@ class GameTracker:
         self.big_play = ""   # set on the one reading where a new big-play banner appears (else "")
         self._big_play_at = float("-inf")
 
+    @property
+    def game_seen_at(self) -> float:
+        """When a scorebug (down / quarter, clock, two team codes) was last read: evidence that a game is on this picture."""
+        return max(self._scorebug_seen, self._codes_seen, self._last_clock_seen if self._last_clock_seen is not None else float("-inf"))
+
     def new_game(self) -> None:
         """A different game is on this video (multiplex): the old game's FINAL / HALF TIME memory, frozen clock, period votes, down, clock
         filter and replay memory are dropped, and its clock and codes are accepted at once. The player's ad state is not the game's, it stays."""

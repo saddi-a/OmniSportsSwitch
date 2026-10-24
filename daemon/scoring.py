@@ -136,6 +136,7 @@ class Config:
     scorebug_memory_s: float = 60.0  # ...if it was seen within this long before; a later first sight of the gap is stale and not logged
     replay_dampen: float = 0.3  # during a replay inside a live game, crowd and loudness count this much (old cheers heard twice)
     recent_ad_s: float = 30.0  # an idle MAIN is not handed to a stream that was on an ad this recently (no hopping between ads)
+    idle_evidence_s: float = 300.0   # an idle MAIN (ad / break / over) is only handed to a stream whose picture showed a scorebug or game clock within this long (a new or re-registered tab is "live" by default, with no evidence); 0 = off
     new_game_readings: int = 3   # multiplex tabs: a different pair of team codes must be read this many times in a row to count as a new game (a lone misread, a ticker or a studio shot never does)
     held_change_s: float = 30.0  # a score change read while the game looked like a break is kept this long and counts if the game is live again (0 = drop it at once)
     rewind_high_slack_s: float = 120.0  # a stream cannot be ahead of the feed clock: a rewind high point (or reading) more than this many seconds above the feed's current game time is a scrub/misread and is dropped (0 = no cap; no fresh feed clock = no cap)
@@ -281,6 +282,7 @@ class _Tile:
     leverage: float = 0.0   # -1 (late blowout) .. +1 (late close game), set from the scoreboard; 0 = unknown
     replay: bool = False    # the picture shows a replay over a live scorebug
     auto_state: str = "live"     # status detected from the picture
+    game_seen_at: float = float("-inf")   # when the picture last showed a scorebug / game clock (evidence that a game is really there)
 
 
 @dataclass
@@ -675,6 +677,18 @@ class Scorer:
                 for _, rec in self._recs(self.streams[tab_id]):
                     self._hot_end(rec)
 
+    def note_game_seen(self, tab_id: int, now: float, tile: int | None = None) -> None:
+        if tab_id in self.streams:
+            self._write_rec(self.streams[tab_id], tile).game_seen_at = now
+
+    def has_game_evidence(self, tab_id: int, now: float) -> bool:
+        """True if the picture of the tab showed a scorebug / game clock within `idle_evidence_s` (or the user set the status by hand)."""
+        stream = self.streams.get(tab_id)
+        if stream is None:
+            return False
+        return (self.config.idle_evidence_s <= 0 or stream.override is not None
+                or any(now - rec.game_seen_at <= self.config.idle_evidence_s for _, rec in self._recs(stream)))
+
     def set_auto_state(self, tab_id: int, state: str, tile: int | None = None) -> None:
         if tab_id in self.streams and state in STATUS_MULT:
             rec = self._write_rec(self.streams[tab_id], tile)
@@ -793,7 +807,7 @@ class Scorer:
                 c = self.components(tab_id, now, warmup=not warming)
                 if c is None:
                     continue
-                if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music
+                if idle and (c["status"] != "live" or c["ad"] or c["music"] >= cfg.idle_music or not self.has_game_evidence(tab_id, now)
                              or (hold_off and now - self.streams[tab_id].ad_at < cfg.recent_ad_s)):
                     continue   # not an ad, and (first choice) not one that was on an ad a moment ago
                 if best_c is None or c["score"] > best_c["score"]:

@@ -1115,6 +1115,8 @@ class Server:
                 self.sport_seen[(tab_id, index)] = detected
             tile_states[(tab_id, index)] = tracker.update(now, r["texts"], r["clocks"], quiet=self._tile_quiet(tab_id, index, tab_id in multi, now))
             per_tab.setdefault(tab_id, []).append(tile_states[(tab_id, index)])
+            if tracker.game_seen_at >= now:
+                self.scorer.note_game_seen(tab_id, now, tile=index if tab_id in multi else None)
             if tracker.scorebug_note:   # measuring only: DAZN hides the scorebug during replays
                 kind, secs = tracker.scorebug_note
                 log.info("scorebug %s tab %s tile %s: %.0f s", kind, tab_id, index, secs)

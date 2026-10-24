@@ -127,6 +127,7 @@ replay_clock_max_s = 30.0     # the largest step back that counts (more is the v
 scorebug_hidden_s = 6.0   # measuring only: a scorebug missing this long is logged as 'scorebug hidden' (DAZN hides it in replays)
 scorebug_memory_s = 60.0  # ...if it was seen within this long before the gap
 replay_dampen = 0.3     # during a replay inside a live game, crowd noise and loudness count this much (the replay's old cheers)
+idle_evidence_s = 300.0 # an idle MAIN is only handed to a stream that showed a scorebug / game clock this recently (0 = off)
 recent_ad_s = 30.0     # an idle MAIN is not handed to a stream that was on an ad this recently (stops hopping between ads)
 new_game_readings = 3   # multiplex tabs (flagged in the popup): a different pair of team codes read this many times in a row is a new game and resets that video's score, clock, game state and goal memory
 held_change_s = 30.0   # a score change read while the game looked like a break is kept this long and counts if the game is live again (0 = drop it at once)

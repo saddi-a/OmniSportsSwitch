@@ -13,6 +13,7 @@ def steady(scorer, tab_id, level, start, seconds, step=0.5):
 
 
 def make(**cfg):
+    cfg.setdefault("idle_evidence_s", 0.0)   # tested on its own below
     cfg.setdefault("confirm_s", 0.0)   # confirmation is tested on its own below
     s = Scorer(Config(**cfg))
     s.register(1, is_main=True)
@@ -1712,3 +1713,28 @@ def test_a_later_stronger_cue_is_not_made_strong_by_the_pending_touchdown():
     s.set_anticipation(2, 62.0, 0.50)               # stronger non-strong cue replaces it
     steady(s, 2, 0.08, 62.5, 4)
     assert not s.streams[2].anticipation_strong
+
+
+# ---- an idle MAIN is not handed to a stream with no evidence of a game (live 2026-10-25 01:31) ---------------------
+
+def test_idle_main_is_not_handed_to_a_fresh_tab_with_no_scoreboard_evidence():
+    s = make(min_dwell_s=20, idle_evidence_s=300)
+    now = warm_up(s)
+    quiet_play(s, 1, now); s.set_auto_state(1, "break")
+    quiet_play(s, 2, now)
+    assert s.decide(now + 5) is None               # tab 2 is "live" by default, but nothing ever showed a game there
+
+
+def test_idle_main_goes_to_a_tab_whose_picture_showed_a_scorebug():
+    s = make(min_dwell_s=20, idle_evidence_s=300)
+    now = warm_up(s)
+    quiet_play(s, 1, now); s.set_auto_state(1, "break")
+    quiet_play(s, 2, now)
+    s.note_game_seen(2, now, tile=None)
+    assert s.decide(now + 5).promote == 2
+    s2 = make(min_dwell_s=20, idle_evidence_s=300)  # ...but not on evidence that is older than the limit
+    now = warm_up(s2)
+    quiet_play(s2, 1, now); s2.set_auto_state(1, "break")
+    s2.note_game_seen(2, now - 400)
+    quiet_play(s2, 2, now)
+    assert s2.decide(now + 5) is None
