@@ -32,6 +32,7 @@ from daemon.favourites import match_multiplier, match_slots
 from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
 from daemon.geometry import fix_rects
+from daemon.gpu import free_gpu_cache
 from daemon.feed_map import FeedMapper, parse_clock_s
 from daemon.jingle import HOP as JINGLE_HOP, N_FFT as JINGLE_FFT, JingleMatcher, JingleWatch
 from daemon.logsetup import LOG_DIR, archive_rotated, prune_archive
@@ -230,6 +231,7 @@ class Server:
             self.limits.pop(msg["tab_id"], None)
             self.tags.pop(msg["tab_id"], None)
             log.info("unregistered tab %s", msg["tab_id"])
+            free_gpu_cache()   # PyTorch keeps freed VRAM reserved; give it back when a window closes
         elif kind == "audio":
             self.scorer.add_audio(msg["tab_id"], float(msg["rms"]), time.monotonic())
         elif kind == "expand_failed":   # the extension could not send the real click (its error text is logged): only a script click that selects the tile was sent
