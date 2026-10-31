@@ -44,6 +44,13 @@ CUES = {
              r"prend les devants", r"ouvre la marque", r"double la mise", r"inscrit son \d+\s?(e|è|ème|eme|er)? but", r"revient au score", r"met le deuxi[eè]me",
              r"porte le score [àa]", r"what a goal", r"\bhe scores\b", r"\btakes the lead\b(?! pass)", r"\bdoubles (the|their) lead\b", r"\bpull(s|ed)? one back\b",
              r"\bgo{3,}l\b", r"\bgolazo\b", r"\bgo{2,}l[oa]\b"],   # plain "goal" is too common (first and goal)
+    # PROPOSAL scoring-bugs-118, LOG ONLY (not in cues.SPEECH_SCORING: no score, no anticipation, no build-up note): phrases the commentators use that no
+    # cue above matches. Measured on the held-out game GAL-BAR (windows no current cue fires on): real / hits = goal call 6/9, check call 6/8, chance call 8/15 (a call cue is dropped when its base cue fired).
+    "goal call": [r"\bprend(re)? l'avantage", r"\breprend(re)? l'avantage", r"\bredonne l'avantage", r"\b(fait|faire|fais) le break\b",
+                  r"\bcreuse (encore plus )?l'écart\b", r"\baggrave la marque\b", r"\bprenez le but\b", r"\bmène(nt)? désormais\b"],
+    "check call": [r"\b(vérifi(é|ée|er)|contrôlé|revu) à la vidéo\b", r"\b(il est|est) annulé\b", r"\bbut annulé\b", r"\bpas encore (complètement )?officiel\b",
+                   r"\bon va (le |la |les )?revoir\b", r"\bon (le |la )?revoit\b", r"\bon revient sur (cette|la) situation\b"],
+    "chance call": [r"\bopportunité\b", r"\barrêt\b", r"\brepouss\w*", r"\boccasion\b"],
     # the ball hits the woodwork. "premier/second poteau" is a position (a cross, marking): its own cue below. "sous la barre" is a goal already scored.
     "post": [r"\bthe post\b", r"\bthe bar\b", r"\bcrossbar\b",
              r"(?<!premier )(?<!second )(?<!seconde )(?<!deuxième )(?<!deuxieme )(?<!1er )(?<!1ère )(?<!2e )(?<!2ème )\bpoteaux?\b(?! (sortant|rentrant))",
@@ -90,14 +97,17 @@ CUE_SPORTS = {
     "post": frozenset({_SOCCER}),               # "the post" / "la barre" is a position or a bar
     "post area": frozenset({_SOCCER}),          # near/far post: a cross is coming
     "chance": frozenset({_SOCCER}),
-    "timeout": None,                            # every sport with timeouts
+    "goal call": frozenset({_SOCCER}), "check call": frozenset({_SOCCER}), "chance call": frozenset({_SOCCER}),   # proposal, log only
+    "timeout": None,                           # every sport with timeouts
 }
 assert set(CUE_SPORTS) == set(CUES), "every cue needs a sports entry"
+CALL_BASE = {"goal call": ("goal",), "check call": ("var", "review", "replay"), "chance call": ("chance", "post", "post area")}
 _COMPILED = {cue: [re.compile(p, re.IGNORECASE) for p in patterns] for cue, patterns in CUES.items()}
 
 # Recap / negation filter for the soccer cues that feed scoring ("il n'y a pas de faute", "un penalty obtenu", "ce qui amène ce penalty" are not
 # a build-up). Applied per MATCH, on soccer streams only; review, replay, var and the American football cues are never filtered.
-FILTERED_CUES = frozenset({"penalty", "penalty awarded", "foul", "offside", "chance", "post", "post area", "goal", "free kick", "card", "corner"})
+FILTERED_CUES = frozenset({"penalty", "penalty awarded", "foul", "offside", "chance", "post", "post area", "goal", "free kick", "card", "corner",
+                          "goal call", "check call", "chance call"})
 _BEFORE_WORDS, _BEFORE_CHARS = 4, 30      # only the last few words of the same clause BEFORE the match count (text after the match never does)
 _AFTER_CHARS = 28
 # words just before a cue that make it a negation, a hypothetical or a recap (French and English)
@@ -174,8 +184,10 @@ def find_speech_cues(text: str, sport: str | None = None) -> list[str]:
     (sport not detected yet) all of them, as before. On a soccer stream the scoring cues also skip negations and recaps (see is_recap_or_negation)."""
     sport = " ".join((sport or "").lower().split())
     soccer = sport == _SOCCER
-    return [cue for cue in _COMPILED
-            if (not sport or cue_valid_for(cue, sport)) and cue_hits(cue, text, filtered=soccer)]
+    found = [cue for cue in _COMPILED
+             if (not sport or cue_valid_for(cue, sport)) and cue_hits(cue, text, filtered=soccer)]
+    # a proposal "call" cue only reports what the real cues missed (measured that way): drop it when its base cue fired in the same text
+    return [cue for cue in found if not any(base in found for base in CALL_BASE.get(cue, ()))]
 
 
 def cue_valid_for(cue: str, sport: str | None) -> bool:
