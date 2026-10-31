@@ -215,7 +215,9 @@ def test_a_clock_that_jumps_back_is_a_rewind_not_an_ocr_only_change():
     change = g.real_change(1, 0, 9.5)
     assert change.verdict == "rewind" and "rewind" in change.lines[0]
     see(g, s, "53:05", 12.0)                                   # back at the live edge
-    assert g.real_change(1, 0, 12.5).verdict == "ocr-only"
+    assert g.real_change(1, 0, 12.5).verdict == "rewind"       # just over: the OCR baseline may still be from the past (rewind_over_grace_s)
+    g.rewind_over_grace_s = 0.2
+    assert g.real_change(1, 0, 12.6).verdict == "ocr-only"
 
 
 def test_nothing_fires_during_a_rewind():

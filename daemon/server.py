@@ -1171,6 +1171,7 @@ class Server:
             self.feed_gate.lead_s = self.scorer.config.feed_lead_s
             self.feed_gate.confirm_s = self.scorer.config.feed_confirm_s
             self.feed_gate.rewind_high_slack_s = self.scorer.config.rewind_high_slack_s
+            self.feed_gate.rewind_over_grace_s = self.scorer.config.rewind_over_grace_s
             self.feed_gate.field_goal_strength = self.scorer.config.field_goal_strength
             self.feed_gate.big_play_strength = self.scorer.config.big_play_strength
             clock_now = parse_clock_s(r["clocks"])
@@ -1191,7 +1192,7 @@ class Server:
                 log.info("score change ignored on tab %s tile %s: the game is %s", tab_id, index, per_tab[tab_id][-1])   # results tickers, countdowns
                 if self.scorer.config.held_change_s > 0 and per_tab[tab_id][-1] == "break":   # kept (not for "over": a finished game): a wrong break reading right after a touchdown must not lose it
                     self.held_change[(tab_id, index)] = (watcher.strength, now)
-            elif held is not None and not changed and per_tab[tab_id][-1] == "live" and self._rewind_ignores(tab_id, index, watcher.score, clock_now, tracker.period):   # held during a break, but the stream is replaying its past
+            elif held is not None and not changed and per_tab[tab_id][-1] == "live" and self._rewind_ignores(tab_id, index, watcher.score, clock_now, tracker.period, now):   # held during a break, but the stream is replaying its past
                 del self.held_change[(tab_id, index)]
                 log.info("score change tab %s tile %s dropped: it was read %.0f s ago in a break and the stream is replaying its past (rewind)", tab_id, index, now - held[1])
                 self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=0.0, note="rewind")
@@ -1203,7 +1204,7 @@ class Server:
                 self._rec_event("score_change", tab_id, index, home=(watcher.score or (None, None))[0], away=(watcher.score or (None, None))[1], strength=held[0], note="counted late")
             elif changed:
                 self.held_change.pop((tab_id, index), None)
-                rewound = self._rewind_ignores(tab_id, index, watcher.score, clock_now, tracker.period)   # before real_change: it may clear a stale rewind
+                rewound = self._rewind_ignores(tab_id, index, watcher.score, clock_now, tracker.period, now)   # before real_change: it may clear a stale rewind
                 change = self.feed_gate.real_change(tab_id, index, now)
                 for line in change.lines:
                     log.info("%s", line)
@@ -1270,11 +1271,13 @@ class Server:
         log.info("touchdown banner tab %s tile %s", tab_id, index)
         self._rec_event("touchdown_banner", tab_id, index, text="TOUCHDOWN", strength=strength)
 
-    def _rewind_ignores(self, tab_id: int, index: int, score: tuple | None, clock_s: float | None, period: int | None) -> bool:
+    def _rewind_ignores(self, tab_id: int, index: int, score: tuple | None, clock_s: float | None, period: int | None, now: float | None = None) -> bool:
         """A score change on a tile whose stream is rewinding is a replayed goal: ignore it (`scoring.rewind_ignores_score`),
         unless the feed shows this very score at the stream clock; the rewind flag is then stale and is dropped."""
-        if self.scorer.config.rewind_ignores_score <= 0 or not self.feed_gate.is_rewinding(tab_id, index):
+        if self.scorer.config.rewind_ignores_score <= 0:
             return False
+        if not self.feed_gate.is_rewinding(tab_id, index):   # just over: the stale OCR baseline meets the real score, never a goal (even if the feed shows that score)
+            return now is not None and self.feed_gate.recently_rewound(tab_id, index, now)
         mapped = self.feed_map.mapping(tab_id, index)
         if mapped is not None and clock_s is not None and score is not None:
             allowed = self.feed_map.allowed_scores(mapped.game_id, clock_s, period)

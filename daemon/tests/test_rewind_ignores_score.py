@@ -115,3 +115,33 @@ def test_is_rewinding_and_the_setting_in_the_popup():
     assert not server.feed_gate.is_rewinding(TAB, 0) and not server.feed_gate.is_rewinding(1, 1)
     assert Config().rewind_ignores_score == 1.0
     assert "scoring.rewind_ignores_score" in {key for _, rows in LAYOUT for key, _, _ in rows}
+
+
+def _rewind_just_over(server, ended):
+    st = server.feed_gate.rewind[(TAB, 0)]
+    st.active, st.high, st.ended = False, 3000.0, ended
+
+
+def test_change_right_after_a_rewind_ends_is_old_even_if_the_feed_shows_the_score(caplog):
+    """Milan-Inter 2026-10-31 22:28:03: the rewind ended on the frame the watcher's stale baseline met the real score (3-1 since the 43rd minute)."""
+    server, read = _mapped_server()
+    _rewind_just_over(server, 100.0 + 3 * 16 - 1.0)
+    with caplog.at_level(logging.INFO, logger="daemon"):
+        now = read((1, 0))                    # the feed has 1-0 at this stream clock
+    assert not _goal_counted(server, now)
+    assert "the stream is replaying its past" in caplog.text
+
+
+def test_change_long_after_a_rewind_ended_counts():
+    server, read = _mapped_server()
+    _rewind_just_over(server, 100.0 + 3 * 16 - 500.0)
+    now = read((1, 0))
+    assert _goal_counted(server, now)
+
+
+def test_grace_zero_keeps_the_old_behaviour():
+    server, read = _mapped_server()
+    server.scorer.config.rewind_over_grace_s = 0.0
+    _rewind_just_over(server, 100.0 + 3 * 16 - 1.0)
+    now = read((1, 0))
+    assert _goal_counted(server, now)

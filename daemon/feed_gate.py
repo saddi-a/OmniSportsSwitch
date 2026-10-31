@@ -86,6 +86,7 @@ class _Rewind:
     low_n: int = 0
     active: bool = False
     since: float = 0.0
+    ended: float = float("-inf")   # when the last rewind ended (a score change soon after it is the stale baseline meeting the real score)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -123,6 +124,7 @@ class FeedGate:
         self.sport_of: dict[str, str] = {}           # game id -> sport (set by the server)
         self.stream: dict[tuple, tuple] = {}         # (tab, tile) -> (clock_s, period, when) of the last readable stream clock
         self.rewind: dict[tuple, _Rewind] = {}
+        self.rewind_over_grace_s = 20.0              # scoring.rewind_over_grace_s: a score change this soon after a rewind ended is old (0 = off)
         self.rewind_high_slack_s = 120.0             # scoring.rewind_high_slack_s: readings/high points this far above the feed clock are dropped (0 = off)
         self.feed_now: dict[str, float] = {}         # game id -> the feed's current game time (live games only, game_elapsed_s scale)
         self.claimed: set[tuple] = set()             # (tab, tile, event key) already used to confirm an OCR change
@@ -350,7 +352,7 @@ class FeedGate:
         if st.active:
             if cur >= st.high - 5.0 or now - st.since > REWIND_MAX_S:
                 st.high = max(st.high, cur) if cur >= st.high - 5.0 else cur
-                st.active, st.low_n = False, 0
+                st.active, st.low_n, st.ended = False, 0, now
                 return [f"feed rewind over tab {tab_id} tile {tile}: the stream is back at {_clock_text(clock_s)}"]
             return []
         if cur < st.high - REWIND_S:
@@ -427,6 +429,10 @@ class FeedGate:
         """The tile's stream is replaying its past (the clock fell far behind its high point and has not come back)."""
         return self.rewind.get((tab_id, tile), _Rewind()).active
 
+    def recently_rewound(self, tab_id: int, tile: int, now: float) -> bool:
+        """A rewind ended `rewind_over_grace_s` ago or less (the OCR baseline may still be from the replayed past)."""
+        return self.rewind_over_grace_s > 0 and now - self.rewind.get((tab_id, tile), _Rewind()).ended <= self.rewind_over_grace_s
+
     def distrust_rewind(self, tab_id: int, tile: int, clock_s: float | None, period: int | None) -> list[str]:
         """The rewind flag was stale (the feed shows the OCR score at the stream clock): end it and restart the high point
         from the current clock, so an inflated high point (the viewer scrubbed far ahead) cannot re-trigger it."""
@@ -449,7 +455,7 @@ class FeedGate:
         if game_id is None or game_id not in self.fresh or seen is None or now - seen[2] > CLOCK_FRESH_S:
             return Change("unknown", [])
         where = f"tab {tab_id} tile {tile}"
-        if self.rewind.get(tile_key, _Rewind()).active:
+        if self.rewind.get(tile_key, _Rewind()).active or self.recently_rewound(tab_id, tile, now):
             return Change("rewind", [f"feed rewind score change {where}: the stream is replaying its past, not a new goal"])
         for f in self.fires.get(tile_key, ()):
             if not f.confirmed and f.pending.event.kind in SCORING and now - f.at <= CONFIRM_S:
