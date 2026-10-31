@@ -139,6 +139,7 @@ class Config:
     idle_evidence_s: float = 300.0   # an idle MAIN (ad / break / over) is only handed to a stream whose picture showed a scorebug or game clock within this long (a new or re-registered tab is "live" by default, with no evidence); 0 = off
     new_game_readings: int = 3   # multiplex tabs: a different pair of team codes must be read this many times in a row to count as a new game (a lone misread, a ticker or a studio shot never does)
     held_change_s: float = 30.0  # a score change read while the game looked like a break is kept this long and counts if the game is live again (0 = drop it at once)
+    rewind_over_grace_s: float = 20.0  # a score change within this many seconds after a rewind ended is the stale OCR baseline meeting the real score (Milan-Inter 2026-10-31 22:28:03, 3-1 since the 43rd minute): no event (0 = off)
     rewind_high_slack_s: float = 120.0  # a stream cannot be ahead of the feed clock: a rewind high point (or reading) more than this many seconds above the feed's current game time is a scrub/misread and is dropped (0 = no cap; no fresh feed clock = no cap)
     rewind_ignores_score: float = 1.0  # 1 = a score change on a tile whose stream is replaying its past (feed rewind) makes no event, goal hold or swap bonus unless the feed shows that score at the stream clock (0 = old behaviour: counted)
     idle_music: float = 0.5   # a reading with music probability at least this (and no crowd) looks like an ad
