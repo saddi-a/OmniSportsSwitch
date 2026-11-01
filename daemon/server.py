@@ -32,7 +32,7 @@ from daemon.favourites import match_multiplier, match_slots
 from daemon.feed import LEAGUES, FeedRecorder, FeedSession
 from daemon.feed_gate import FeedGate
 from daemon.geometry import fix_rects
-from daemon.gpu import free_gpu_cache
+from daemon.gpu import free_gpu_cache, gpu_stats
 from daemon.feed_map import FeedMapper, parse_clock_s
 from daemon.jingle import HOP as JINGLE_HOP, N_FFT as JINGLE_FFT, JingleMatcher, JingleWatch
 from daemon.logsetup import LOG_DIR, archive_rotated, prune_archive
@@ -61,6 +61,7 @@ DECIDE_INTERVAL_S = 0.25
 SCORE_LOG_INTERVAL_S = 1.0   # the scoring tick: cue checks, build-up, surge rise. Was 2.0 until 2026-10-17: the rules that count readings (surge_rise_votes, CROWD_NOTE_READINGS) went 2 -> 3 to keep their 2 s hold
 SNAPSHOT_INTERVAL_S = 1.0    # the score lines of daemon.log and the dataset rows (logging only, changes no decision)
 MAINTENANCE_INTERVAL_S = 3600.0   # the log archive is completed and pruned this often (and once at the start)
+GPU_CHECK_S = 120.0   # how often the idle PyTorch VRAM cache is released and logged
 CLASSIFY_INTERVAL_S = 1.0
 OCR_INTERVAL_S = 2.0
 GAP_RETRY_S = 1.5          # the gap pass (strip between two team codes) looks again this often on a tile where it found no score
@@ -1518,10 +1519,21 @@ class Server:
                 log.warning("log maintenance failed: %s: %s", type(e).__name__, e)
             await asyncio.sleep(MAINTENANCE_INTERVAL_S)
 
+    async def _gpu_loop(self) -> None:
+        """Every GPU_CHECK_S: log PyTorch's allocated/reserved VRAM and give the idle cache back (the cache grows to the peak and never shrinks by itself)."""
+        while True:
+            await asyncio.sleep(GPU_CHECK_S)
+            before = gpu_stats()
+            if before is None:
+                return
+            free_gpu_cache()
+            after = gpu_stats() or before
+            log.info("gpu torch: allocated %d MiB, reserved %d MiB -> %d MiB after releasing the idle cache", after[0] >> 20, before[1] >> 20, after[1] >> 20)
+
     async def run(self, host: str = HOST, port: int = PORT) -> None:
         async with serve(self._client, host, port):
             log.info("listening on ws://%s:%d", host, port)
-            loops = [self._decide_loop(), self._maintenance_loop()]
+            loops = [self._decide_loop(), self._maintenance_loop(), self._gpu_loop()]
             if self.classifier is not None:
                 loops.append(self._classify_loop())
             if self.screen_reader is not None:

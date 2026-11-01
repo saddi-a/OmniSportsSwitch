@@ -32,3 +32,13 @@ def test_no_cuda_or_error_is_harmless(monkeypatch):
 def test_does_not_import_torch(monkeypatch):
     monkeypatch.delitem(sys.modules, "torch", raising=False)
     assert gpu.free_gpu_cache() is False
+
+
+def test_stats_are_allocated_and_reserved(monkeypatch):
+    torch, _ = _fake_torch()
+    torch.cuda.memory_allocated = lambda: 5
+    torch.cuda.memory_reserved = lambda: 9
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    assert gpu.gpu_stats() == (5, 9)
+    monkeypatch.delitem(sys.modules, "torch")
+    assert gpu.gpu_stats() is None

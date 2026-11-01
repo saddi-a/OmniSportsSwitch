@@ -16,3 +16,14 @@ def free_gpu_cache() -> bool:
         return True
     except Exception:
         return False
+
+
+def gpu_stats() -> tuple[int, int] | None:
+    """(allocated, reserved) bytes of PyTorch's CUDA memory in this process, None without torch/CUDA. Reserved minus allocated is the idle cache."""
+    torch = sys.modules.get("torch")
+    try:
+        if torch is None or not torch.cuda.is_available():
+            return None
+        return int(torch.cuda.memory_allocated()), int(torch.cuda.memory_reserved())
+    except Exception:
+        return None
