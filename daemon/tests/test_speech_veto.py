@@ -150,9 +150,11 @@ class Spy(Scorer):
         super().set_anticipation(tab_id, now, value, strong, tile)
 
 
-async def run_loop(veto, shadow, caplog):
+async def run_loop(veto, shadow, caplog, sport=None):
     scorer = Spy(Config(speech_interval_s=0.01, speech_window_s=1.0, speech_cue_cooldown_s=60.0, speech_veto_shadow=shadow))
     server = Server(scorer, speech=Listener(), speech_veto=veto)
+    if sport:
+        server._audible_target = lambda tab_id: (None, sport)
     server.speech_buffers[5] = np.zeros(32000, dtype=np.float32)
     caplog.clear()
     with caplog.at_level(logging.INFO):
@@ -185,3 +187,12 @@ async def test_a_broken_veto_does_not_touch_the_cues(caplog):
 
     cues, calls, lines, _ = await run_loop(Boom(), 1, caplog)
     assert cues == ["speech cue corner", "speech cue penalty"] and calls and lines == []
+
+
+@pytest.mark.asyncio
+async def test_no_veto_lines_on_american_football_it_is_trained_on_soccer(caplog):
+    veto = SpeechVeto(c_model=Fixed(0.1), g_model=Fixed(0.2))
+    _, _, lines, _ = await run_loop(veto, 1, caplog, sport="american football")
+    assert lines == []
+    _, _, lines, _ = await run_loop(veto, 1, caplog, sport="football")
+    assert len(lines) == 1
