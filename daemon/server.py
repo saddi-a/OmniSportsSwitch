@@ -780,7 +780,7 @@ class Server:
                         if note is not None:   # a set piece is a build-up sign for the tracker only: no score, no anticipation
                             log.info("buildup note %s tab %s%s weight %.2f", cue, tab_id, where, note)
                             self.buildup.note(bkey, now, note, "note:" + cue)
-                if cues and self.speech_veto is not None and cfg.speech_veto_shadow > 0:   # shadow: after the cues are decided, in the background, only logs
+                if cues and self.speech_veto is not None and cfg.speech_veto_shadow > 0 and sport != "american football":   # shadow (trained on French soccer: it vetoes real American football calls, 2026-10-31): after the cues are decided, in the background, only logs
                     task = asyncio.create_task(self._speech_veto_shadow(tab_id, tile, text, list(cues), cfg.speech_veto_threshold))
                     self._veto_tasks.add(task)
                     task.add_done_callback(self._veto_tasks.discard)
