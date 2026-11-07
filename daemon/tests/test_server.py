@@ -1074,3 +1074,62 @@ def test_a_click_on_an_already_big_audible_tile_is_no_confirmation(caplog):
     assert "did not happen" in caplog.text and 20 not in server.pending_expand and 20 in server.expand_retried
     assert server.trackers[(20, 0)] == "main-game"
 
+
+
+# ---- expand confirmation by team identity (live 2026-11-07: the sound is already on the big slot, so it proves nothing) ----
+
+def _asked(server, tab, target, idents, ago=3.0):
+    """The expand of `target` was asked `ago` s ago; the target tile showed `idents` then, and the sound was on the big slot 0."""
+    server.pending_expand[tab] = (target, time.monotonic() + 8 - ago)
+    server.expand_from[tab] = 0
+    server.expand_idents[tab] = (time.monotonic() - ago, frozenset(idents))
+
+
+def test_an_expand_is_confirmed_when_the_big_slot_now_shows_the_clicked_games_teams():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
+    _asked(server, 20, 2, {"game:77"})
+    server.tile_idents[(20, 0)] = (time.monotonic(), frozenset({"game:77"}))   # read after the click: the clicked game is in the big slot
+    _report(server, 20, audible=0)                      # the sound was on the big slot before and is there now: no proof by itself
+    assert server.trackers[(20, 0)] == "tile2-game" and server.trackers[(20, 2)] == "main-game"
+    assert 20 not in server.pending_expand
+
+
+def test_a_team_reading_older_than_the_click_proves_nothing(caplog):
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    _asked(server, 20, 2, {"game:77"})
+    server.tile_idents[(20, 0)] = (time.monotonic() - 10, frozenset({"game:77"}))   # read before the click
+    _report(server, 20, audible=0)
+    assert 20 in server.pending_expand                  # still waiting
+
+
+def test_unknown_teams_keep_todays_behaviour(caplog):
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.pending_expand[20] = (2, time.monotonic() - 1)
+    server.expand_from[20] = 0
+    with caplog.at_level(logging.WARNING):
+        _report(server, 20, audible=0)
+    assert "did not happen: no tile took the big slot" in caplog.text
+
+
+def test_another_game_in_the_big_slot_is_not_a_confirmation():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    _asked(server, 20, 2, {"game:77"})
+    server.tile_idents[(20, 0)] = (time.monotonic(), frozenset({"game:5"}))
+    _report(server, 20, audible=0)
+    assert 20 in server.pending_expand
+
+
+def test_a_confirmed_expand_moves_the_team_readings_with_their_videos():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    _asked(server, 20, 2, {"game:77"})
+    t = time.monotonic()
+    server.tile_idents[(20, 0)] = (t, frozenset({"game:77"}))
+    server.tile_idents[(20, 2)] = (t, frozenset({"game:5"}))      # the old main game, now in the small slot
+    _report(server, 20, audible=0)
+    assert server.tile_idents[(20, 0)][1] == {"game:5"} and server.tile_idents[(20, 2)][1] == {"game:77"}

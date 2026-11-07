@@ -161,6 +161,8 @@ class Server:
         self.sport_memory = SportMemory(sport_memory_path if sport_memory_path is not None else LOG_DIR / "sports.json")         # last sport seen per tab: a start guess after a restart
         self.focuser = focuser or TileFocuser()
         self.expand_resend: dict[int, int] = {}   # tab -> tile whose click only selected it: the expand click is sent once more
+        self.tile_idents: dict[tuple[int, int], tuple[float, frozenset]] = {}   # (tab, video) -> (when, ids of the game its scorebug showed: 'game:<feed id>', 'pair:<codes>')
+        self.expand_idents: dict[int, tuple[float, frozenset]] = {}   # tab -> (when the expand was asked, ids of the game the clicked tile showed then)
         self.expand_retried: set[int] = set()   # tabs whose last expand failed and was already asked again once
         self.skip_logged_at: dict[str, float] = {}   # reason -> when a skipped swap (Window 2 fixed) was last logged
         self.swap_refusal: str | None = None         # why the last `_perform_swap` refused (for the popup), None if it did not
@@ -210,7 +212,7 @@ class Server:
             self.rects.pop(msg["tab_id"], None)
             self.audible_seen.pop(msg["tab_id"], None)
             for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen,
-                          self.sport_choice_seen, self.held_change, self.fed, self.identities, self.td_try_at, self.td_watch, self.panel_watch):
+                          self.sport_choice_seen, self.held_change, self.fed, self.identities, self.td_try_at, self.td_watch, self.panel_watch, self.tile_idents):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
@@ -1095,6 +1097,9 @@ class Server:
             pair = team_pair(sb_texts)
             if pair is not None and self.multiplex.get(tab_id):   # a multiplex tab needs both codes in the team tables (a calendar graphic is no game)
                 pair = known_pair(pair)
+            idents = frozenset({f"game:{g}" for g in self.feed_map.shown(tab_id, index)} | ({"pair:" + key_text(pair)} if pair is not None else set()))
+            if idents:
+                self.tile_idents[(tab_id, index)] = (time.monotonic(), idents)
             new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(pair)
             if new_game is not None and self.multiplex.get(tab_id):   # only on a tab the user flagged; the identity is tracked everywhere (dataset game_key)
                 self._on_new_game(tab_id, index, new_game[0], new_game[1], now, multi=tab_id in multi)
@@ -1338,6 +1343,7 @@ class Server:
                 log.info("focus tile: tab %s -> tile %s again (the first click only selected it)", tab_id, again)
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": again})
                 self.pending_expand[tab_id] = (again, now + EXPAND_CHECK_S)
+                self.expand_idents[tab_id] = (time.monotonic(), self.tile_idents.get((tab_id, again), (0.0, frozenset()))[1])
                 self.expand_from[tab_id] = next((r.get("index", pos) for pos, r in enumerate(info["rects"]) if r.get("audible")), None)
                 continue
             scores = self.scorer.tile_scores(tab_id, now)   # the wanted tile: the one the scorer rates highest (None while the tab has no score)
@@ -1361,6 +1367,7 @@ class Server:
                 log.info("focus tile: tab %s -> tile %s | %s", tab_id, target, tiles)
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": target})
                 self.pending_expand[tab_id] = (target, now + EXPAND_CHECK_S)
+                self.expand_idents[tab_id] = (time.monotonic(), self.tile_idents.get((tab_id, target), (0.0, frozenset()))[1])
                 self.expand_from[tab_id] = next((r.get("index", pos) for pos, r in enumerate(info["rects"]) if r.get("audible")), None)
         return commands
 
@@ -1378,7 +1385,11 @@ class Server:
         audible = next((r.get("index", pos) for pos, r in enumerate(rects) if r.get("audible")), None)
         settled = time.monotonic() >= deadline - EXPAND_CHECK_S + EXPAND_SETTLE_S
         proves_expand = audible == main and self.expand_from.get(tab_id) != main   # the sound was elsewhere before and is on the big slot now
-        if audible == target and target != main and settled:
+        asked_at, wanted = self.expand_idents.get(tab_id, (0.0, frozenset()))
+        shown_at, shown = self.tile_idents.get((tab_id, main), (0.0, frozenset()))
+        if target != main and wanted and shown_at > asked_at and wanted & shown:
+            proves_expand = True   # the big slot reads the clicked game's teams, after the click: the stream moved there (the sound may have been on the big slot all along)
+        if audible == target and target != main and settled and not proves_expand:
             log.warning("expand of tab %s tile %s did not happen: the tile was only selected", tab_id, target)
             del self.pending_expand[tab_id]
             if tab_id not in self.expand_retried:   # fallback: the focuser would not ask (the tile already has the sound), so click it again directly
@@ -1386,6 +1397,7 @@ class Server:
                 self.expand_resend[tab_id] = target
         elif (proves_expand and settled) or time.monotonic() > deadline:
             del self.pending_expand[tab_id]
+            self.expand_idents.pop(tab_id, None)
             if proves_expand:
                 self.expand_retried.discard(tab_id)
                 self._expand_swap(tab_id, rects, target)
@@ -1405,7 +1417,7 @@ class Server:
         if target == main:
             return
         for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen, self.sport_choice_seen,
-                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities, self.td_try_at, self.td_watch, self.panel_watch):
+                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities, self.td_try_at, self.td_watch, self.panel_watch, self.tile_idents):
             a, b = (tab_id, target), (tab_id, main)
             moved_a, moved_b = store.pop(a, None), store.pop(b, None)
             if moved_b is not None:
