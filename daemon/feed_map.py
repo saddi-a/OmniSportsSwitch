@@ -105,6 +105,7 @@ class _Tile:
         self.window: collections.deque = collections.deque(maxlen=WINDOW)   # per reading: {game_id: True/False/None}
         self.lock: Mapping | None = None
         self.bad = 0                  # readings in a row that disagree with the locked game
+        self.shown: frozenset = frozenset()   # the feed games whose two teams the latest reading that showed any one of them read
         self.away = 0                 # readings in a row with a scorebug score where the locked game's teams are missing
         self.ambiguous = False
 
@@ -148,6 +149,12 @@ class FeedMapper:
         if t is not None:
             t.lock, t.bad, t.ambiguous = None, 0, False
             t.window.clear()
+
+    def shown(self, tab_id: int, tile: int) -> frozenset:
+        """The feed games whose two teams this tile's latest readable scorebug showed (empty when none yet): what the tile shows NOW, unlike
+        the lock, which follows only after several readings."""
+        t = self.tiles.get((tab_id, tile))
+        return t.shown if t is not None else frozenset()
 
     def mapping(self, tab_id: int, tile: int) -> Mapping | None:
         t = self.tiles.get((tab_id, tile))
@@ -203,6 +210,7 @@ class FeedMapper:
                 reading[gid] = self.fits(snap, score, clock_s)
         if reading:
             t.window.append(reading)
+            t.shown = frozenset(reading)
         msgs: list[str] = []
         if t.lock is not None:
             msgs += self._follow_lock(tab_id, tile, t, reading, score)
