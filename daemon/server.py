@@ -21,6 +21,7 @@ import asyncio
 import datetime
 import json
 import logging
+import re
 import struct
 import time
 
@@ -71,6 +72,9 @@ FIX_INTERVAL_S = 10.0     # how often tabs sitting in a slot they may not use ar
 SKIP_LOG_S = 10.0      # a swap skipped because Window 2 is fixed is said at most this often
 WINDOW2 = "LEFT"       # the internal id of Window 2 (the user only ever sees "Window 2")
 EXPAND_CHECK_S = 8.0   # how long to wait for the next video report to confirm an expand
+WORD_RE = re.compile(r"[A-Z]{4,}")   # the names on a scorebug: the long words of its texts
+WORDS_KEEP_S = 45.0   # a tile's words are those it showed this lately
+WORDS_NEEDED = 2   # an expand is confirmed by this many of the clicked tile's own words now in the big slot
 EXPAND_SETTLE_S = 2.0   # a report this soon after the ask may be older than the click (the extension needs a moment): where the sound sits proves nothing yet
 FAVOURITE_MEMORY_S = 60.0
 RULE_MEMORY_S = 600.0     # slot rules are remembered longer: a team stays on its tab through ads and breaks  # a favourite read on screen keeps counting for this long
@@ -162,6 +166,8 @@ class Server:
         self.focuser = focuser or TileFocuser()
         self.expand_resend: dict[int, int] = {}   # tab -> tile whose click only selected it: the expand click is sent once more
         self.tile_idents: dict[tuple[int, int], tuple[float, frozenset]] = {}   # (tab, video) -> (when, ids of the game its scorebug showed: 'game:<feed id>', 'pair:<codes>')
+        self.tile_words: dict[tuple[int, int], dict[str, float]] = {}   # (tab, video) -> {word of 4+ letters its scorebug text showed: when}: a game's names, for games the feed does not list
+        self.expand_words: dict[int, tuple[float, frozenset]] = {}   # tab -> (when the expand was asked, the words only the clicked tile showed lately)
         self.expand_idents: dict[int, tuple[float, frozenset]] = {}   # tab -> (when the expand was asked, ids of the game the clicked tile showed then)
         self.expand_retried: set[int] = set()   # tabs whose last expand failed and was already asked again once
         self.skip_logged_at: dict[str, float] = {}   # reason -> when a skipped swap (Window 2 fixed) was last logged
@@ -212,7 +218,7 @@ class Server:
             self.rects.pop(msg["tab_id"], None)
             self.audible_seen.pop(msg["tab_id"], None)
             for store in (self.ocr, self.trackers, self.watchers, self.event_at, self.replay_signal, self.sport_detectors, self.sport_seen,
-                          self.sport_choice_seen, self.held_change, self.fed, self.identities, self.td_try_at, self.td_watch, self.panel_watch, self.tile_idents):
+                          self.sport_choice_seen, self.held_change, self.fed, self.identities, self.td_try_at, self.td_watch, self.panel_watch, self.tile_idents, self.tile_words):
                 for key in [k for k in store if k[0] == msg["tab_id"]]:
                     del store[key]
             self.sports.pop(msg["tab_id"], None)
@@ -1100,6 +1106,13 @@ class Server:
             idents = frozenset({f"game:{g}" for g in self.feed_map.shown(tab_id, index)} | ({"pair:" + key_text(pair)} if pair is not None else set()))
             if idents:
                 self.tile_idents[(tab_id, index)] = (time.monotonic(), idents)
+            words = self.tile_words.setdefault((tab_id, index), {})
+            stamp = time.monotonic()
+            for text in sb_texts:
+                for w in WORD_RE.findall(text.upper()):
+                    words[w] = stamp
+            for w in [w for w, t in words.items() if stamp - t > WORDS_KEEP_S]:
+                del words[w]
             new_game = self.identities.setdefault((tab_id, index), GameIdentity(self.scorer.config.new_game_readings)).update(pair)
             if new_game is not None and self.multiplex.get(tab_id):   # only on a tab the user flagged; the identity is tracked everywhere (dataset game_key)
                 self._on_new_game(tab_id, index, new_game[0], new_game[1], now, multi=tab_id in multi)
@@ -1344,6 +1357,7 @@ class Server:
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": again})
                 self.pending_expand[tab_id] = (again, now + EXPAND_CHECK_S)
                 self.expand_idents[tab_id] = (time.monotonic(), self.tile_idents.get((tab_id, again), (0.0, frozenset()))[1])
+                self.expand_words[tab_id] = (time.monotonic(), self._expand_words(tab_id, again))
                 self.expand_from[tab_id] = next((r.get("index", pos) for pos, r in enumerate(info["rects"]) if r.get("audible")), None)
                 continue
             scores = self.scorer.tile_scores(tab_id, now)   # the wanted tile: the one the scorer rates highest (None while the tab has no score)
@@ -1368,8 +1382,19 @@ class Server:
                 commands.append({"type": "focus_tile", "tab_id": tab_id, "index": target})
                 self.pending_expand[tab_id] = (target, now + EXPAND_CHECK_S)
                 self.expand_idents[tab_id] = (time.monotonic(), self.tile_idents.get((tab_id, target), (0.0, frozenset()))[1])
+                self.expand_words[tab_id] = (time.monotonic(), self._expand_words(tab_id, target))
                 self.expand_from[tab_id] = next((r.get("index", pos) for pos, r in enumerate(info["rects"]) if r.get("audible")), None)
         return commands
+
+    def _expand_words(self, tab_id: int, target: int) -> frozenset:
+        """The words the clicked tile showed lately and the big slot did not: the names of the game that should move into the big slot."""
+        rects = (self.rects.get(tab_id) or {}).get("rects") or []
+        if len(rects) < 2:
+            return frozenset()
+        main = max(((r["width"] * r["height"], r.get("index", pos)) for pos, r in enumerate(rects)))[1]
+        stamp = time.monotonic()
+        recent = lambda idx: {w for w, t in self.tile_words.get((tab_id, idx), {}).items() if stamp - t <= WORDS_KEEP_S}
+        return frozenset(recent(target) - recent(main)) if target != main else frozenset()
 
     def _check_expand(self, tab_id: int, info: dict) -> None:
         """After a tile was asked to expand, look at where the sound went. Slots keep their size and the streams
@@ -1389,6 +1414,11 @@ class Server:
         shown_at, shown = self.tile_idents.get((tab_id, main), (0.0, frozenset()))
         if target != main and wanted and shown_at > asked_at and wanted & shown:
             proves_expand = True   # the big slot reads the clicked game's teams, after the click: the stream moved there (the sound may have been on the big slot all along)
+        words_at, wanted_words = self.expand_words.get(tab_id, (0.0, frozenset()))
+        if target != main and len(wanted_words) >= WORDS_NEEDED:
+            seen_now = {w for w, t in self.tile_words.get((tab_id, main), {}).items() if t > words_at}
+            if len(wanted_words & seen_now) >= WORDS_NEEDED:
+                proves_expand = True   # the same, for a game the feed does not list: names only the clicked tile showed lately now stand in the big slot
         if audible == target and target != main and settled and not proves_expand:
             log.warning("expand of tab %s tile %s did not happen: the tile was only selected", tab_id, target)
             del self.pending_expand[tab_id]
@@ -1398,6 +1428,7 @@ class Server:
         elif (proves_expand and settled) or time.monotonic() > deadline:
             del self.pending_expand[tab_id]
             self.expand_idents.pop(tab_id, None)
+            self.expand_words.pop(tab_id, None)
             if proves_expand:
                 self.expand_retried.discard(tab_id)
                 self._expand_swap(tab_id, rects, target)
@@ -1417,7 +1448,7 @@ class Server:
         if target == main:
             return
         for store in (self.trackers, self.watchers, self.event_at, self.ocr, self.sport_detectors, self.sport_seen, self.sport_choice_seen,
-                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities, self.td_try_at, self.td_watch, self.panel_watch, self.tile_idents):
+                      self.held_change, self.unconfirmed, self.fed, self.fav_seen, self.rule_seen, self.identities, self.td_try_at, self.td_watch, self.panel_watch, self.tile_idents, self.tile_words):
             a, b = (tab_id, target), (tab_id, main)
             moved_a, moved_b = store.pop(a, None), store.pop(b, None)
             if moved_b is not None:
