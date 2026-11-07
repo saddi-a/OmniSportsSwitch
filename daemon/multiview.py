@@ -24,6 +24,7 @@ class FocusConfig:
     event_weight: float = 1.0     # how much a fresh score change counts
     crowd_weight: float = 1.0     # how much crowd noise on the focused tile counts
     floor: float = 0.05           # every live tile has at least this much, so scores never reach zero
+    backoff_max_s: float = 120.0  # failed expands double the wait before the next ask, up to this (a tile that will not expand is not asked every 10 s)
     ad_penalty: float = 0.5       # a tile showing an ad has negative interest, so focus moves off it
 
 
@@ -31,6 +32,7 @@ class FocusConfig:
 class TileFocuser:
     config: FocusConfig = field(default_factory=FocusConfig)
     _last_change: dict[int, float] = field(default_factory=dict)
+    _failures: dict[int, int] = field(default_factory=dict)   # tab -> expands in a row that did not happen
 
     def tile_score(self, tile: dict) -> float:
         c = self.config
@@ -52,6 +54,7 @@ class TileFocuser:
         dwell = self.config.min_dwell_s
         if focused is not None and (focused.get("ad") or focused.get("state") in ("break", "over")):
             dwell = self.config.break_dwell_s
+        dwell = min(dwell * 2 ** self._failures.get(tab_id, 0), max(dwell, self.config.backoff_max_s))
         if now - self._last_change.get(tab_id, float("-inf")) < dwell:
             return None
         if focused is None:
@@ -61,6 +64,13 @@ class TileFocuser:
         if self.tile_score(best) <= self.tile_score(focused) * self.config.switch_ratio:
             return None
         return self._switch(tab_id, now, best["index"])
+
+    def failed(self, tab_id: int) -> None:
+        """The last expand of this tab did not happen: the next ask waits twice as long (see `backoff_max_s`)."""
+        self._failures[tab_id] = min(self._failures.get(tab_id, 0) + 1, 10)
+
+    def succeeded(self, tab_id: int) -> None:
+        self._failures.pop(tab_id, None)
 
     def _switch(self, tab_id: int, now: float, index: int) -> int:
         self._last_change[tab_id] = now
