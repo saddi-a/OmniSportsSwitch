@@ -646,7 +646,7 @@ class ScoreWatcher:
         previous = self._stable
         if self._above_since is None or current != self._stable:
             self._above_since = t
-            fired = any(1 <= n - o <= MAX_RISE for o, n in zip(self._peak, current))
+            fired = any(1 <= n - o <= MAX_RISE for o, n in zip(self._peak, current)) and all(n >= o for o, n in zip(self._stable, current))
             if fired and self._fired is not None and self._fired[0] == current and t - self._fired[1] < FIRED_MEMORY_S:
                 fired = False
             if fired:
