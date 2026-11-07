@@ -1133,3 +1133,45 @@ def test_a_confirmed_expand_moves_the_team_readings_with_their_videos():
     server.tile_idents[(20, 2)] = (t, frozenset({"game:5"}))      # the old main game, now in the small slot
     _report(server, 20, audible=0)
     assert server.tile_idents[(20, 0)][1] == {"game:5"} and server.tile_idents[(20, 2)][1] == {"game:77"}
+
+
+# ---- expand confirmation by words (games the feed does not list have no identity: Iowa St-Baylor, Maryland-Purdue on 2026-11-07) ----
+
+def _asked_words(server, tab, target, words, ago=3.0):
+    server.pending_expand[tab] = (target, time.monotonic() + 8 - ago)
+    server.expand_from[tab] = 0
+    server.expand_words[tab] = (time.monotonic() - ago, frozenset(words))
+
+
+def _say(server, tab, tile, words, ago=0.0):
+    server.tile_words.setdefault((tab, tile), {}).update({w: time.monotonic() - ago for w in words})
+
+
+def test_an_expand_is_confirmed_when_the_big_slot_now_shows_two_words_only_the_clicked_tile_had():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
+    _asked_words(server, 20, 2, {"IOWA", "BAYLOR", "CYCLONES"})
+    _say(server, 20, 0, {"IOWA", "BAYLOR"})
+    _report(server, 20, audible=0)
+    assert server.trackers[(20, 0)] == "tile2-game" and 20 not in server.pending_expand
+
+
+def test_one_shared_word_or_words_seen_before_the_click_are_no_confirmation():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    _asked_words(server, 20, 2, {"IOWA", "BAYLOR", "CYCLONES"})
+    _say(server, 20, 0, {"IOWA"})                         # only one word
+    _say(server, 20, 0, {"BAYLOR", "CYCLONES"}, ago=10)   # read before the click
+    _report(server, 20, audible=0)
+    assert 20 in server.pending_expand
+
+
+def test_the_words_of_a_tile_are_what_it_showed_lately_minus_what_the_big_slot_showed():
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    _say(server, 20, 0, {"MARYLAND", "PURDUE", "NETWORK"})
+    _say(server, 20, 2, {"IOWA", "BAYLOR", "NETWORK"})
+    _say(server, 20, 2, {"OLDWORD"}, ago=100)             # too old
+    server.rects[20] = {"visible": True, "rects": _tiles(0)}
+    assert server._expand_words(20, 2) == frozenset({"IOWA", "BAYLOR"})
