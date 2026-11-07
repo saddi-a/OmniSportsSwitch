@@ -10,7 +10,7 @@ from websockets.asyncio.client import connect
 
 from daemon.arrange import plan_swap
 from daemon.scoring import Config, Scorer
-from daemon.server import Server
+from daemon.server import EXPAND_CHECK_S, Server
 
 PORT = 8799
 
@@ -265,7 +265,7 @@ def test_a_confirmed_expand_swaps_the_records_of_the_two_slots():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
     server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
-    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)   # asked 3 s ago
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S - 3)   # asked 3 s ago
     _report(server, 20, audible=0)                      # the sound is on the big slot: the stream moved there
     assert server.trackers[(20, 0)] == "tile2-game" and server.trackers[(20, 2)] == "main-game"
     assert 20 not in server.pending_expand
@@ -275,7 +275,7 @@ def test_a_click_that_only_selected_the_tile_swaps_nothing_and_warns(caplog):
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
     server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
-    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)   # asked 3 s ago
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S - 3)   # asked 3 s ago
     with caplog.at_level(logging.WARNING):
         _report(server, 20, audible=2)                  # the sound went to the clicked tile: only selected
     assert server.trackers[(20, 0)] == "main-game" and server.trackers[(20, 2)] == "tile2-game"
@@ -285,7 +285,7 @@ def test_a_click_that_only_selected_the_tile_swaps_nothing_and_warns(caplog):
 def test_an_unclear_report_keeps_waiting_until_the_deadline():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
-    server.pending_expand[20] = (2, time.monotonic() + 8)
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S)
     _report(server, 20, audible=1)                      # the sound is on a third tile: neither case
     assert 20 in server.pending_expand
 
@@ -930,7 +930,7 @@ def test_a_confirmed_expand_clears_the_retry_mark():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
     server.expand_retried.add(20)
-    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S - 3)
     _report(server, 20, audible=0)
     assert 20 not in server.expand_retried
 
@@ -938,14 +938,14 @@ def test_a_confirmed_expand_clears_the_retry_mark():
 def test_a_click_that_only_selected_the_tile_is_sent_once_more():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
-    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S - 3)
     _report(server, 20, audible=2)                          # only selected: the focuser would not ask (tile 2 has the sound)
     assert server.expand_resend == {20: 2}
     now = time.monotonic()
     assert server._focus_commands(now) == [{"type": "focus_tile", "tab_id": 20, "index": 2}]
     assert 20 not in server.expand_resend and server.pending_expand[20][0] == 2
     assert server.expand_from[20] == 2                      # the sound was on the clicked tile when the click was sent
-    server.pending_expand[20] = (2, now + 8 - 3)
+    server.pending_expand[20] = (2, now + EXPAND_CHECK_S - 3)
     _report(server, 20, audible=2)                          # selected again: no third try
     assert 20 not in server.expand_resend
 
@@ -957,7 +957,7 @@ def test_a_report_taken_before_the_click_is_no_confirmation():
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
     server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
-    server.pending_expand[20] = (2, time.monotonic() + 8)       # asked just now
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S)       # asked just now
     _report(server, 20, audible=0)                              # the click has not happened yet
     assert 20 in server.pending_expand and server.trackers[(20, 0)] == "main-game"
 
@@ -965,7 +965,7 @@ def test_a_report_taken_before_the_click_is_no_confirmation():
 def test_the_live_sequence_stale_report_then_only_selected_is_caught(caplog):
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
-    server.pending_expand[20] = (2, time.monotonic() + 8)
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S)
     _report(server, 20, audible=0)                              # stale
     server.pending_expand[20] = (2, server.pending_expand[20][1] - 3)   # three seconds go by
     with caplog.at_level(logging.WARNING):
@@ -978,11 +978,11 @@ def test_a_report_right_after_the_second_click_is_not_a_second_failure(caplog):
     # (it was already there from the first click): that said nothing about the second click and was counted as a failure
     server = Server()
     server.handle_message({"type": "register", "tab_id": 20})
-    server.pending_expand[20] = (2, time.monotonic() + 8)           # the second click was just sent
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S)           # the second click was just sent
     with caplog.at_level(logging.WARNING):
         _report(server, 20, audible=2)
     assert 20 in server.pending_expand and "only selected" not in caplog.text
-    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)       # three seconds later it is still not expanded: now it is a failure
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S - 3)       # three seconds later it is still not expanded: now it is a failure
     with caplog.at_level(logging.WARNING):
         _report(server, 20, audible=2)
     assert 20 not in server.pending_expand and "only selected" in caplog.text
@@ -1064,7 +1064,7 @@ def test_a_click_on_an_already_big_audible_tile_is_no_confirmation(caplog):
     server.handle_message({"type": "register", "tab_id": 20})
     server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
     server.expand_from[20] = 0                                  # the sound was on the big slot when the click was sent
-    server.pending_expand[20] = (2, time.monotonic() + 8 - 3)
+    server.pending_expand[20] = (2, time.monotonic() + EXPAND_CHECK_S - 3)
     _report(server, 20, audible=0)
     assert server.trackers[(20, 0)] == "main-game" and server.trackers[(20, 2)] == "tile2-game"
     assert 20 in server.pending_expand                          # still waiting: nothing proves the click worked
@@ -1080,7 +1080,7 @@ def test_a_click_on_an_already_big_audible_tile_is_no_confirmation(caplog):
 
 def _asked(server, tab, target, idents, ago=3.0):
     """The expand of `target` was asked `ago` s ago; the target tile showed `idents` then, and the sound was on the big slot 0."""
-    server.pending_expand[tab] = (target, time.monotonic() + 8 - ago)
+    server.pending_expand[tab] = (target, time.monotonic() + EXPAND_CHECK_S - ago)
     server.expand_from[tab] = 0
     server.expand_idents[tab] = (time.monotonic() - ago, frozenset(idents))
 
@@ -1138,7 +1138,7 @@ def test_a_confirmed_expand_moves_the_team_readings_with_their_videos():
 # ---- expand confirmation by words (games the feed does not list have no identity: Iowa St-Baylor, Maryland-Purdue on 2026-11-07) ----
 
 def _asked_words(server, tab, target, words, ago=3.0):
-    server.pending_expand[tab] = (target, time.monotonic() + 8 - ago)
+    server.pending_expand[tab] = (target, time.monotonic() + EXPAND_CHECK_S - ago)
     server.expand_from[tab] = 0
     server.expand_words[tab] = (time.monotonic() - ago, frozenset(words))
 
@@ -1175,3 +1175,18 @@ def test_the_words_of_a_tile_are_what_it_showed_lately_minus_what_the_big_slot_s
     _say(server, 20, 2, {"OLDWORD"}, ago=100)             # too old
     server.rects[20] = {"visible": True, "rects": _tiles(0)}
     assert server._expand_words(20, 2) == frozenset({"IOWA", "BAYLOR"})
+
+
+def test_an_expand_that_shows_in_the_readings_12_s_after_the_click_is_still_confirmed():
+    """Live 2026-11-07 20:40:29: asked; the next readings of the big slot came 6 s and 14 s later and showed the clicked game by the second one."""
+    server = Server()
+    server.handle_message({"type": "register", "tab_id": 20})
+    server.trackers[(20, 0)], server.trackers[(20, 2)] = "main-game", "tile2-game"
+    _asked_words(server, 20, 2, {"UCLA", "MINNESOTA", "BRUINS"}, ago=12.0)
+    _say(server, 20, 0, {"UCLA", "MINNESOTA"})
+    _report(server, 20, audible=0)
+    assert server.trackers[(20, 0)] == "tile2-game" and 20 not in server.pending_expand
+
+
+def test_the_expand_check_waits_longer_than_one_tile_reading():
+    assert EXPAND_CHECK_S >= 14.0
