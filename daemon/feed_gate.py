@@ -433,6 +433,11 @@ class FeedGate:
         """A rewind ended `rewind_over_grace_s` ago or less (the OCR baseline may still be from the replayed past)."""
         return self.rewind_over_grace_s > 0 and now - self.rewind.get((tab_id, tile), _Rewind()).ended <= self.rewind_over_grace_s
 
+    def live_fire(self, tab_id: int, tile: int, now: float) -> bool:
+        """The stream just reached a feed scoring event that no score change has claimed yet (a `would-fire` within CONFIRM_S): a score change now is
+        that event, even right after a replay ended (the replay grace is for the stale baseline meeting an OLD score, never for a goal the stream has just reached)."""
+        return any(not f.confirmed and f.pending.event.kind in SCORING and now - f.at <= CONFIRM_S for f in self.fires.get((tab_id, tile), ()))
+
     def distrust_rewind(self, tab_id: int, tile: int, clock_s: float | None, period: int | None) -> list[str]:
         """The rewind flag was stale (the feed shows the OCR score at the stream clock): end it and restart the high point
         from the current clock, so an inflated high point (the viewer scrubbed far ahead) cannot re-trigger it."""
@@ -455,7 +460,7 @@ class FeedGate:
         if game_id is None or game_id not in self.fresh or seen is None or now - seen[2] > CLOCK_FRESH_S:
             return Change("unknown", [])
         where = f"tab {tab_id} tile {tile}"
-        if self.rewind.get(tile_key, _Rewind()).active or self.recently_rewound(tab_id, tile, now):
+        if self.rewind.get(tile_key, _Rewind()).active or (self.recently_rewound(tab_id, tile, now) and not self.live_fire(tab_id, tile, now)):
             return Change("rewind", [f"feed rewind score change {where}: the stream is replaying its past, not a new goal"])
         for f in self.fires.get(tile_key, ()):
             if not f.confirmed and f.pending.event.kind in SCORING and now - f.at <= CONFIRM_S:
