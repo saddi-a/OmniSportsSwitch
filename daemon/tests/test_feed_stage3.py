@@ -299,3 +299,33 @@ def test_the_server_wires_the_referee_and_the_feed_goal(caplog):
             server._update_game_states({(5, 0): {"texts": ["COMO", "0", "ROMA", "0"], "clocks": [f"50:{10 + i:02d}"]}}, 100.0 + 3 * i)
     assert server.feed_map.mapping(5, 0) is not None
     assert "feed referee tab 5 tile 0: OCR 0-0, feed 1-0" in caplog.text
+
+
+def test_a_change_just_after_a_rewind_counts_when_the_stream_just_reached_a_feed_goal():
+    """Live 2026-11-07 21:15:02 MIZ-TEX: a replay (rewind) ended at 21:14:45; at 21:15:02 the stream reached the feed's 5:03 touchdown (would-fire,
+    event 0 s ahead) and its scoreboard changed. The grace after a rewind swallowed that real touchdown."""
+    s = snap()
+    g = gate(s)
+    see(g, s, "53:00", 0.0)
+    see(g, s, "53:03", 3.0)
+    see(g, s, "40:00", 6.0)
+    see(g, s, "40:03", 9.0)                                    # rewinding
+    see(g, s, "53:05", 12.0)                                   # back at the live edge: just over
+    g.add(goal(s, 3180.0 + 25.0), s, 12.5)                     # a feed goal ahead of the stream
+    lines = see(g, s, "53:24", 13.0)
+    lines += see(g, s, "53:25", 14.0)                          # the stream reaches it: would-fire
+    assert any("would-fire" in l for l in lines)
+    assert g.live_fire(1, 0, 14.5)
+    assert g.real_change(1, 0, 14.5).verdict == "confirmed"    # not 'rewind'
+
+
+def test_a_change_just_after_a_rewind_is_still_old_when_no_feed_goal_was_reached():
+    s = snap()
+    g = gate(s)
+    see(g, s, "53:00", 0.0)
+    see(g, s, "53:03", 3.0)
+    see(g, s, "40:00", 6.0)
+    see(g, s, "40:03", 9.0)
+    see(g, s, "53:05", 12.0)
+    assert not g.live_fire(1, 0, 12.5)
+    assert g.real_change(1, 0, 12.5).verdict == "rewind"

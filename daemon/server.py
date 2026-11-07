@@ -1299,7 +1299,7 @@ class Server:
         if self.scorer.config.rewind_ignores_score <= 0:
             return False
         if not self.feed_gate.is_rewinding(tab_id, index):   # just over: the stale OCR baseline meets the real score, never a goal (even if the feed shows that score)
-            return now is not None and self.feed_gate.recently_rewound(tab_id, index, now)
+            return now is not None and self.feed_gate.recently_rewound(tab_id, index, now) and not self.feed_gate.live_fire(tab_id, index, now)
         mapped = self.feed_map.mapping(tab_id, index)
         if mapped is not None and clock_s is not None and score is not None:
             allowed = self.feed_map.allowed_scores(mapped.game_id, clock_s, period)
