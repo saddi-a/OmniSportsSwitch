@@ -1421,6 +1421,7 @@ class Server:
                 proves_expand = True   # the same, for a game the feed does not list: names only the clicked tile showed lately now stand in the big slot
         if audible == target and target != main and settled and not proves_expand:
             log.warning("expand of tab %s tile %s did not happen: the tile was only selected", tab_id, target)
+            self.focuser.failed(tab_id)
             del self.pending_expand[tab_id]
             if tab_id not in self.expand_retried:   # fallback: the focuser would not ask (the tile already has the sound), so click it again directly
                 self.expand_retried.add(tab_id)
@@ -1431,9 +1432,11 @@ class Server:
             self.expand_words.pop(tab_id, None)
             if proves_expand:
                 self.expand_retried.discard(tab_id)
+                self.focuser.succeeded(tab_id)
                 self._expand_swap(tab_id, rects, target)
             else:
                 log.warning("expand of tab %s tile %s did not happen: no tile took the big slot within %s s", tab_id, target, EXPAND_CHECK_S)
+                self.focuser.failed(tab_id)
                 if tab_id not in self.expand_retried:   # ask once more: the dwell is lifted for this tab, the focuser decides again
                     self.expand_retried.add(tab_id)
                     self.focuser._last_change.pop(tab_id, None)

@@ -88,3 +88,31 @@ def test_the_dwell_stays_when_the_focused_tile_is_live():
     assert f.decide(1, 100, tiles(t2={"event": 1.0})) == 2
     live = tiles(t0={"audible": False}, t2={"audible": True, "event": 0.0}, t1={"event": 1.0})
     assert f.decide(1, 112, live) is None
+
+
+def test_failed_expands_back_the_focuser_off_and_a_success_resets_it():
+    """Live 2026-11-07 20:22: a tile that would not expand was asked again every ~10 s (the break dwell) for minutes."""
+    f = TileFocuser()
+    tiles = [{"index": 0, "audible": True, "state": "break", "ad": False, "score": 0.0},
+             {"index": 1, "audible": False, "state": "live", "ad": False, "score": 0.5}]
+    assert f.decide(1, 0.0, tiles) == 1
+    assert f.decide(1, 11.0, tiles) == 1          # no failure recorded: the break dwell (10 s) applies
+    f.failed(1)
+    assert f.decide(1, 22.0, tiles) is None        # after one failure the wait doubles (20 s): 11 s later is too soon
+    assert f.decide(1, 32.0, tiles) == 1
+    f.failed(1)
+    f.failed(1)
+    assert f.decide(1, 70.0, tiles) is None        # three failures: 80 s
+    assert f.decide(1, 113.0, tiles) == 1
+    f.succeeded(1)
+    assert f.decide(1, 125.0, tiles) == 1          # reset: the plain break dwell again
+
+
+def test_the_backoff_is_capped():
+    f = TileFocuser()
+    for _ in range(20):
+        f.failed(1)
+    tiles = [{"index": 0, "audible": True, "state": "break", "ad": False, "score": 0.0},
+             {"index": 1, "audible": False, "state": "live", "ad": False, "score": 0.5}]
+    assert f.decide(1, 0.0, tiles) == 1
+    assert f.decide(1, 121.0, tiles) == 1
