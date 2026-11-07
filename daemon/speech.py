@@ -150,6 +150,20 @@ _CLAUSE_END = re.compile(r"[.!?;:,\n]|\.\.\.")
 _CLAUSE_END_HARD = re.compile(r"[.!?;:\n]")
 
 
+# American football: a turnover that is DENIED is no turnover ("un touchdown, pas d'interception", 2026-11-07 20:06 UTAH-BYU). Only these plain negations
+# just before the match count (the soccer recap tables would silence real calls: "was", "had", "obtenu"...), and only for these cues.
+AMERICAN_NEGATED_CUES = frozenset({"interception"})
+_AMERICAN_NEG = [re.compile(p, re.IGNORECASE) for p in (r"\bpas (de|du|d'|d’|un|une)", r"\bne pas\b", r"\baucune?\b", r"\bsans\b", r"\bjamais\b",
+                                                      r"\bno\b", r"\bnot\b", r"n't\b", r"\bwithout\b", r"\bnever\b")]
+
+
+def is_denied(text: str, start: int) -> bool:
+    """True when a plain negation stands in the last words of the clause before the match at `start`."""
+    clause = _CLAUSE_END.split(text[:start])[-1]
+    window = " ".join(clause.split()[-_BEFORE_WORDS:])[-_BEFORE_CHARS:]
+    return any(r.search(window) for r in _AMERICAN_NEG)
+
+
 def is_recap_or_negation(text: str, start: int, end: int, cue: str | None = None) -> bool:
     """True when the cue match text[start:end] sits in a negation or a recap (see NEGATION_OR_RECAP / RECAP_AFTER and the per-`cue` tables
     BEFORE_BY_CUE / AFTER_BY_CUE / WIDE_NEGATION). Pure; `text` is lower-cased or not."""
@@ -169,11 +183,15 @@ def is_recap_or_negation(text: str, start: int, end: int, cue: str | None = None
     return any(r.search(after) for r in _RECAP_AFTER_RE) or any(r.search(after) for r in _AFTER_BY_CUE.get(cue, ()))
 
 
-def cue_hits(cue: str, text: str, filtered: bool = True) -> bool:
-    """True when `cue` has at least one match in `text` that survives the recap filter (filtered=False: raw regex hits)."""
+def cue_hits(cue: str, text: str, filtered: bool = True, american: bool = False) -> bool:
+    """True when `cue` has at least one match in `text` that survives the recap filter (filtered=False: raw regex hits). `american`: the
+    stream is American football, where only the plain denials of AMERICAN_NEGATED_CUES are filtered."""
     use = filtered and cue in FILTERED_CUES
+    deny = american and cue in AMERICAN_NEGATED_CUES
     for p in _COMPILED[cue]:
         for m in p.finditer(text):
+            if deny and is_denied(text, m.start()):
+                continue
             if not use or not is_recap_or_negation(text, m.start(), m.end(), cue):
                 return True
     return False
@@ -185,7 +203,7 @@ def find_speech_cues(text: str, sport: str | None = None) -> list[str]:
     sport = " ".join((sport or "").lower().split())
     soccer = sport == _SOCCER
     found = [cue for cue in _COMPILED
-             if (not sport or cue_valid_for(cue, sport)) and cue_hits(cue, text, filtered=soccer)]
+             if (not sport or cue_valid_for(cue, sport)) and cue_hits(cue, text, filtered=soccer, american=sport == _AMERICAN)]
     # a proposal "call" cue only reports what the real cues missed (measured that way): drop it when its base cue fired in the same text
     return [cue for cue in found if not any(base in found for base in CALL_BASE.get(cue, ()))]
 
