@@ -3,7 +3,7 @@ import json
 import pathlib
 
 from daemon import feed
-from daemon.feed_map import DROP_AFTER, FeedMapper, shows_game, team_names
+from daemon.feed_map import AWAY_DROP_AFTER, DROP_AFTER, FeedMapper, shows_game, team_names
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -221,3 +221,42 @@ def test_lille_scorebug_code_lil():
     snap = dataclasses.replace(games()[0], home=ars, away=lill)
     assert shows_game(["ARS", "LIL"], snap)
 
+
+
+def test_lock_is_dropped_when_the_tile_shows_another_game_now():
+    """Live 2026-11-07: a DAZN multiview moved Maryland-Purdue into a tile locked to MINN-UCLA; the lock stayed and the rewind guard
+    compared the new game's clock with the old game's high point."""
+    m = mapper()
+    for _ in range(4):
+        read(m)
+    assert m.mapping(1, 0).verified
+    lines = []
+    for _ in range(AWAY_DROP_AFTER - 1):
+        lines += read(m, texts=("MARYLAND", "7", "PURDUE", "12"), score=(7, 12), clock="1:09")
+    assert m.mapping(1, 0) is not None and not lines
+    lines += read(m, texts=("MARYLAND", "7", "PURDUE", "12"), score=(7, 12), clock="1:09")
+    assert m.mapping(1, 0) is None and "no longer shows its teams" in lines[-1]
+
+
+def test_lock_stays_through_ads_and_unreadable_scorebugs():
+    m = mapper()
+    for _ in range(4):
+        read(m)
+    for _ in range(3 * AWAY_DROP_AFTER):
+        m.observe(1, 0, ["ADVERT"], None, [])        # no scorebug score: no vote
+    for _ in range(AWAY_DROP_AFTER - 1):
+        read(m, texts=("0", "0"), score=(0, 0))      # scorebug read, teams missed
+    read(m)                                           # the teams are back: the count restarts
+    for _ in range(AWAY_DROP_AFTER - 1):
+        read(m, texts=("0", "0"), score=(0, 0))
+    assert m.mapping(1, 0) is not None
+
+
+def test_unverified_popup_lock_is_not_dropped_by_missing_teams():
+    m = mapper()
+    m.set_text(1, "Como vs Roma")
+    read(m, texts=("ADVERT",), score=None, clock=None)
+    assert m.mapping(1, 0) is not None and not m.mapping(1, 0).verified
+    for _ in range(3 * AWAY_DROP_AFTER):
+        read(m, texts=("0", "0"), score=(0, 0))
+    assert m.mapping(1, 0) is not None

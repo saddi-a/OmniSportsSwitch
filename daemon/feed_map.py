@@ -19,6 +19,7 @@ from daemon.clock import first_clock_seconds
 WINDOW = 10            # readings (with at least one candidate) remembered per tile
 MIN_HITS = 3           # readings in the window that must show the game's two teams
 MIN_OK = 2             # of those, readings whose score/clock fit the feed's timeline
+AWAY_DROP_AFTER = 10   # readings in a row with a scorebug score but WITHOUT the locked game's two teams before a verified lock is dropped (the tile shows another game now)
 DROP_AFTER = 20        # readings in a row that disagree with the feed before a lock is dropped (the referee speaks at 10, first)
 SLACK_S = 90.0         # soccer: the score at the stream clock may come from the feed within this many seconds
 AHEAD_S = 120.0        # a stream cannot be ahead of the feed's clock by more than this
@@ -104,6 +105,7 @@ class _Tile:
         self.window: collections.deque = collections.deque(maxlen=WINDOW)   # per reading: {game_id: True/False/None}
         self.lock: Mapping | None = None
         self.bad = 0                  # readings in a row that disagree with the locked game
+        self.away = 0                 # readings in a row with a scorebug score where the locked game's teams are missing
         self.ambiguous = False
 
 
@@ -203,20 +205,29 @@ class FeedMapper:
             t.window.append(reading)
         msgs: list[str] = []
         if t.lock is not None:
-            msgs += self._follow_lock(tab_id, tile, t, reading)
+            msgs += self._follow_lock(tab_id, tile, t, reading, score)
         if t.lock is None or not t.lock.verified:
             msgs += self._try_lock(tab_id, tile, t, popup)
         return msgs
 
-    def _follow_lock(self, tab_id, tile, t: _Tile, reading: dict) -> list[str]:
+    def _follow_lock(self, tab_id, tile, t: _Tile, reading: dict, score: tuple | None = None) -> list[str]:
         gid = t.lock.game_id
+        if gid in reading:
+            t.away = 0
+        elif score is not None and t.lock.verified:   # a read-out scorebug, not this game's teams: a multiview moved another game into the tile
+            t.away += 1
+            if t.away >= AWAY_DROP_AFTER:
+                msg = f"feed map tab {tab_id} tile {tile} dropped {t.lock.league} {t.lock.label}: the tile no longer shows its teams ({t.away} readings)"
+                t.lock, t.bad, t.away = None, 0, 0
+                t.window.clear()
+                return [msg]
         if gid in reading and reading[gid] is False:
             t.bad += 1
         elif reading.get(gid) is True:
             t.bad = 0
         if t.bad >= DROP_AFTER:
             msg = f"feed map tab {tab_id} tile {tile} dropped {t.lock.league} {t.lock.label}: score disagrees for {t.bad} readings"
-            t.lock, t.bad = None, 0
+            t.lock, t.bad, t.away = None, 0, 0
             t.window.clear()
             return [msg]
         return []
@@ -255,7 +266,7 @@ class FeedMapper:
         snap = self.games[gid]
         via = ("ocr+text" if gid in by_popup else "ocr") if verified else "text"
         new = Mapping(gid, snap.league, snap.label, via, verified, hits.get(gid, 0), oks.get(gid, 0))
-        old, t.lock, t.bad = t.lock, new, 0
+        old, t.lock, t.bad, t.away = t.lock, new, 0, 0
         if old is not None and (old.game_id, old.verified) == (new.game_id, new.verified):
             return []
         detail = f"{new.ok}/{new.hits} readings fit the feed" if verified else "unverified, popup text only"
