@@ -75,3 +75,36 @@ def test_proposal_cues_fire_in_soccer_and_feed_no_score(cue):
 def test_proposal_cues_keep_the_recap_filter():
     assert "goal call" not in find_speech_cues("Il n'y a pas moyen de faire le break", SOCCER)
     assert "chance call" not in find_speech_cues("sans aucune occasion", SOCCER)
+
+
+# ---- American football: a negated turnover is no turnover (live 2026-11-07 20:06: 'un touchdown, pas d'interception, ça c'est bon') ----
+
+NEGATED_TURNOVERS = [
+    "Il y a moins de 50% de passe complétée, catastrophique, 140 yards, un touchdown, pas d'interception, ça c'est bon.",
+    "Ils n'ont aucune interception cette saison",
+    "A clean game, no interception and no fumble so far",
+    "That was not an intercepted pass, he got a hand on it",
+    "He's played without a fumble all year",
+]
+
+REAL_TURNOVERS = [
+    "Intercepted! Picked off at the 29",
+    "Pass intercepté par le défenseur",
+    "And he fumbles the ball, recovered by Utah",
+    "No, intercepted!",                      # the comma ends the clause: a call
+    "C'est une interception, pas de doute",  # the negation comes AFTER the cue
+]
+
+
+@pytest.mark.parametrize("text", NEGATED_TURNOVERS)
+def test_a_negated_turnover_is_no_cue_in_american_football(text):
+    assert "interception" not in find_speech_cues(text, "american football")
+
+
+@pytest.mark.parametrize("text", REAL_TURNOVERS)
+def test_a_real_turnover_call_still_is_a_cue_in_american_football(text):
+    assert "interception" in find_speech_cues(text, "american football")
+
+
+def test_an_unknown_sport_keeps_the_raw_hits_for_turnovers():
+    assert "interception" in find_speech_cues("un touchdown, pas d'interception", None)
