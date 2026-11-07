@@ -118,11 +118,11 @@ class BuildUp:
         return True
 
     def would_take(self, tab_id: int, now: float, support: float, main_score: float, min_level: float, min_gap: float,
-                   start_cooldown: bool = True, main_level: float = 0.0) -> float | None:
+                   start_cooldown: bool = True, main_level: float = 0.0, weight: float = 1.0) -> float | None:
         """The level when the stream reaches `min_level` and is `min_gap` above MAIN's score or MAIN's own build-up level `main_level`,
         whichever is higher (and was not reported within `cooldown_s`), else None. Reporting it starts the cooldown, unless `start_cooldown` is False: then the caller calls `mark_fired` itself once the
         swap really happened, so a swap that a guard stopped (dwell, hold, ad...) can be tried again on the next reading."""
-        level = self.level(tab_id, now, support)
+        level = self.level(tab_id, now, support) * max(weight, 0.0)   # the user's tab weight scales the build-up like it scales a score
         if level < min_level or level - max(main_score, main_level) < min_gap:
             return None
         if now - self._fired_at.get(tab_id, float("-inf")) < self.cooldown_s:

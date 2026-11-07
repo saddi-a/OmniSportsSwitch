@@ -216,3 +216,12 @@ def test_the_default_build_up_level_to_take_main_is_038():
     # user decision 2026-10-18 (option A): 0.32 let weak surge notes flip-flop Main between two quiet football games
     from daemon.scoring import Config
     assert Config().buildup_min == pytest.approx(0.38)
+
+
+def test_tab_weight_scales_the_build_up_level():
+    b = BuildUp()
+    b.note(1, 0.0, 0.25)
+    assert b.would_take(1, 0.0, support=0.3, main_score=0.0, min_level=0.40, min_gap=0.15, start_cooldown=False) == pytest.approx(0.55)
+    assert b.would_take(1, 0.0, support=0.3, main_score=0.0, min_level=0.40, min_gap=0.15, start_cooldown=False, weight=0.3) is None   # 0.165
+    assert b.would_take(1, 0.0, support=0.3, main_score=0.0, min_level=0.40, min_gap=0.15, start_cooldown=False, weight=0.0) is None
+    assert b.would_take(1, 0.0, support=0.3, main_score=0.0, min_level=0.40, min_gap=0.15, start_cooldown=False, weight=2.0) == pytest.approx(1.10)

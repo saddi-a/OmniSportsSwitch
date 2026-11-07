@@ -568,7 +568,8 @@ class Server:
         if hears and self.buildup.crowd_note_due(key, now, c["crowd"], cfg.buildup_crowd_min):
             self.buildup.note(key, now, cfg.buildup_crowd_note, "crowd_note")   # a crowd that keeps building: a sign, never a score
         # the cooldown starts only when the swap really happens (or in log-only mode): a swap a guard stopped may be tried again
-        level = self.buildup.would_take(key, now, support, main_score, cfg.buildup_min, cfg.buildup_gap, start_cooldown=False, main_level=main_level)
+        level = self.buildup.would_take(key, now, support, main_score, cfg.buildup_min, cfg.buildup_gap, start_cooldown=False, main_level=main_level,
+                                         weight=self.scorer.streams[tab_id].weight if tab_id in self.scorer.streams else 1.0)
         if level is not None:
             cues = ", ".join(f"{v:.2f}@{age:.0f}s" for age, v in self.buildup.cues(key, now))
             outcome, swap, stopped = "log only", None, False
