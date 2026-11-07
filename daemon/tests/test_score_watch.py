@@ -779,3 +779,14 @@ def test_a_real_touchdown_still_fires_when_neither_side_drops():
     after = (["MARYLAND", "14", "PURDUE", "12", "3RD", "14:43"], ["14:43"])
     assert feed(w, [before] * 4) == []
     assert feed(w, [after] * 5) != []
+
+
+def test_a_current_drive_graphic_is_not_a_score_reading():
+    """Live 2026-11-07 21:02:33 UTAH-BYU: BYU's 20 read as 29 inside a 'current drive' stats graphic, 3 of 5 readings, and a false +9 fired."""
+    w = ScoreWatcher()
+    bug = (["BYU", "20", "UTAH", "28", "4TH", "6:00"], ["6:00"])
+    assert feed(w, [bug] * 5) == []
+    assert w.score == (20, 28)
+    graphic = (["BYU", "29", "UTAH", "28", "current drive", "Yards 62", "Time 6:11", "2ND & GOAL"], [])
+    assert feed(w, [graphic] * 5) == []
+    assert w.score == (20, 28)

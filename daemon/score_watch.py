@@ -34,7 +34,7 @@ CHANNEL_LABEL_RE = re.compile(r"^LIVE\s?\d{1,2}$", re.I)   # "LIVE 3": a channel
 SLASH_PAIR_RE = re.compile(r"^(\d{1,3})\s?[/|]\s?(\d{1,3})$")   # two scores merged by OCR ("10/20"); also passing stats
 
 NAME_NUMBER_RE = re.compile(r"^([^\W\d_]{3,}(?:[ .'-][^\W\d_]+)*)\s+(\d{1,3})$")   # "NAVY 58": team and score in one item
-STAT_GRAPHIC_RE = re.compile(r"comparison|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b|\btop ?\d\b|statistics?|statistiques?|ballons|\btirs?\b|\bshots?\b", re.I)   # overlays full of numbers
+STAT_GRAPHIC_RE = re.compile(r"comparison|current drive|possession|conversions?|\bconv\b|this season|receptions|leaders|turnovers|negative yards|half\s?time|mi-temps|\bdef\b|\btop ?\d\b|statistics?|statistiques?|ballons|\btirs?\b|\bshots?\b", re.I)   # overlays full of numbers
 HISTORIC_DATE_RE = re.compile(
     r"\b(?:JAN|FEB|F[E\u00c9]V|MAR|APR|AVR|MAI|MAY|JUN|JUIN|JUL|JUIL|AUG|AO[U\u00db]|SEP|OCT|NOV|D[E\u00c9]C)[A-Z\u00c9\u00db]{0,6}\.?\s*(?:\d{1,2}\s*,?\s*)?((?:19|20)\d\d)\b", re.I)   # "SEPTEMBER 23,2001", "23 SEPTEMBRE 2001"
 
