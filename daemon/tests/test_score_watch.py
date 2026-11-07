@@ -760,3 +760,22 @@ def test_stacked_numbers_far_from_the_clock_are_not_a_score():
     from daemon.score_watch import find_score_geo
     far = [dict(it, x0=it["x0"] + 700, x1=it["x1"] + 700) if it["text"] in ("0", "1") else it for it in BET_BAR_CRESTS]
     assert find_score_geo(far, ["26:27"]) is None
+
+
+def test_one_side_rising_while_the_other_drops_is_no_goal():
+    """Live 2026-11-07 20:17 Maryland-Purdue (B1G Network graphic): the sides were read in the other order ((12, 5)) and then (1, 12), a 7 read as 1.
+    The right side 'rose' by 7 over the ceiling, but the left side fell from 12 to 1: a score never drops, so this is a misread, not a touchdown."""
+    w = ScoreWatcher()
+    base = (["PURDUE", "12", "MARYLAND", "5", "3RD", "14:49"], ["14:49"])
+    assert feed(w, [base] * 4) == []
+    assert w.score == (12, 5)
+    misread = (["MARYLAND", "1", "PURDUE", "12", "3RD", "14:43"], ["14:43"])
+    assert feed(w, [misread] * 5) == []
+
+
+def test_a_real_touchdown_still_fires_when_neither_side_drops():
+    w = ScoreWatcher()
+    before = (["MARYLAND", "7", "PURDUE", "12", "3RD", "14:49"], ["14:49"])
+    after = (["MARYLAND", "14", "PURDUE", "12", "3RD", "14:43"], ["14:43"])
+    assert feed(w, [before] * 4) == []
+    assert feed(w, [after] * 5) != []
