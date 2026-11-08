@@ -352,7 +352,7 @@ def find_score_geo(items: list[dict], clocks: list[str], sport: str | None = Non
         return sum(1 for t in teams if abs(cy(t) - line_cy) <= 2.2 * line_h and t["x1"] >= x0 - reach and t["x0"] <= x1 + reach)
 
     def inline(left, right, line_h) -> bool:
-        reach = 3.0 * line_h
+        reach = 3.5 * line_h
         before = any(t["x1"] <= left["x0"] + 0.5 * line_h and left["x0"] - t["x1"] <= reach and abs(cy(t) - cy(left)) <= 0.6 * line_h for t in teams)
         after = any(t["x0"] >= right["x1"] - 0.5 * line_h and t["x0"] - right["x1"] <= reach and abs(cy(t) - cy(right)) <= 0.6 * line_h for t in teams)
         return before and after

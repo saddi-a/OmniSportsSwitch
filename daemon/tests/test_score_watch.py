@@ -876,3 +876,10 @@ def test_name_then_score_layout_still_reads_when_no_pair_sits_between_the_names(
     # "PHI 14 JAX 7": each number right after its own name, no name after the right number: the old rule still applies
     row = boxes([("PHI", 40, 100, 100), ("14", 80, 200, 90), ("JAX", 40, 400, 100), ("7", 80, 500, 90), ("3rd & 4", 36, 700, 110)])
     assert find_score_geo(row, []) == (14, 7)
+
+
+def test_the_right_name_only_half_read_is_still_close_enough_to_frame_the_score():
+    # NBC college bug: the OCR read only 'DAME' of 'NOTRE DAME', which starts 3.3 digit-heights after the right score
+    frame = boxes([("MIAMI", 40, 847, 1119), ("0", 78, 1078, 1110), ("3", 70, 1387, 1117), ("DAME", 40, 1690, 1119), ("4", 102, 1850, 1096),
+                   ("Ist & 10", 38, 1539, 1213)])
+    assert find_score_geo(frame, []) == (0, 3)
