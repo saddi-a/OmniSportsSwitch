@@ -816,3 +816,23 @@ def test_a_new_game_in_the_slot_reaching_a_lower_score_still_counts():
     _, t = run(w, board(0, 0), t, 60)            # another game took the slot
     fired, t = run(w, board(0, 3), t, 6)
     assert fired
+
+
+def test_the_old_score_returning_after_a_baseline_reset_on_a_misread_is_no_goal():
+    # TENN-UK 2026-11-08 01:12:05: the watcher reset (clock jump), its new baseline was a misread 0-7 (the 3 read as 0), and the true 3-7
+    # at 01:15:59 was a false +3 (replay of the log: 01:16:18 FIRED)
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 7), 0, 6)
+    w._reset(t)
+    _, t = run(w, board(0, 7), t, 60)
+    fired, t = run(w, board(3, 7), t, 6)
+    assert not fired
+
+
+def test_a_goal_after_a_reset_to_a_lower_baseline_still_fires_when_it_is_not_the_old_score():
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 7), 0, 6)
+    w._reset(t)
+    _, t = run(w, board(0, 7), t, 60)
+    fired, t = run(w, board(0, 14), t, 6)
+    assert fired

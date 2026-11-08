@@ -618,6 +618,8 @@ class ScoreWatcher:
         if self._stable is None:
             before, self._before_reset = self._before_reset, None
             self._stable = self._peak = current
+            if before is not None and t - before[1] <= RESTORE_MEMORY_S and current != before[0] and all(c <= p for c, p in zip(current, before[0])):
+                self._restore = (before[0], t)   # a baseline BELOW the score known before the reset (a digit misread): that score coming back is no goal
             rises = [n - p for n, p in zip(current, before[0])] if before is not None else []
             if before is not None and t - before[1] <= PRE_RESET_MEMORY_S and sorted(rises)[0] == 0 and 1 <= sorted(rises)[1] <= MAX_RISE                     and self._same_game_clock(before[2], self._recent_clock):
                 # ONE side rose by 1..MAX_RISE and the other did not move across a baseline reset (a clock jump swallowed the change), and the
