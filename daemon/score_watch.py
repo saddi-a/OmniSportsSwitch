@@ -68,6 +68,7 @@ CLOCK_TEXT_RE = re.compile(r"^(\d{1,3}):(\d{2})$")
 HISTORY = 5          # readings that vote
 NEEDED = 3           # votes a value needs to count
 PRE_RESET_MEMORY_S = 300   # the score known before a baseline reset is remembered this long: a baseline that rose across it is an event
+PERIOD_BREAK_CLOCK_S = 180   # option C (2026-11-08): a game clock under 3:00 when the baseline was reset can be the end of a period; a later clock + the same teams make a score that rose across the break an event
 QUARTER_END_S = 10        # a clock jump to this many seconds or less of an American football quarter is the quarter ending, not a rewind
 STRAY_ONE_HOLD_S = 90   # a '1'-prefixed score (7 -> 17: the divider edge glued to the digit) counts only after it has been read this long (2026-11-08 02:04: 45 s of a steady '17')
 RESTORE_MEMORY_S = 600  # after a believed drop, the score returning EXACTLY to the old peak is the misread ending, not a goal (TENN-UK 2026-11-08: a 3 read as 0 for 4 min)
@@ -503,7 +504,8 @@ class ScoreWatcher:
         self._restore: tuple[tuple[int, int], float] | None = None   # (old peak, when) after a believed drop
         self._stray: tuple[tuple[int, int], float] | None = None     # (score with a '1' in front of the ceiling, since when)
         self._fired: tuple[tuple[int, int], float] | None = None   # the last score announced and when
-        self._before_reset: tuple[tuple[int, int], float, tuple[int, float] | None] | None = None   # ceiling when the baseline was last reset, when, and the game clock then
+        self._names: deque[frozenset] = deque(maxlen=10)   # team words of the latest score readings (one reading's names are often partial)
+        self._before_reset: tuple[tuple[int, int], float, tuple[int, float] | None, frozenset] | None = None   # ceiling when the baseline was last reset, when, and the game clock then
         self._recent_clock: tuple[int, float] | None = None   # the latest game clock read at all (even a jumped one) and when
         self._readings = 0
         self.candidate = False   # the last reading was a score above the ceiling that the vote has not confirmed (yet)
@@ -522,9 +524,29 @@ class ScoreWatcher:
     def _reset(self, now: float | None = None) -> None:
         if self._peak is not None and now is not None:
             # the ceiling only rises after a score has held 25 s, so the voted score counts too
-            self._before_reset = (tuple(max(p, s) for p, s in zip(self._peak, self._stable or self._peak)), now, self._clock)
+            self._before_reset = (tuple(max(p, s) for p, s in zip(self._peak, self._stable or self._peak)), now, self._clock, frozenset().union(*self._names))
         self._history.clear()
         self._stable = self._peak = self._below_since = self._above_since = self._fired = self._restore = self._stray = None
+
+    @staticmethod
+    def _team_words(texts: list[str]) -> frozenset:
+        """The words of the team-name items of one reading ('6 KENTUCKY' -> 'kentucky'), to tell the same two teams before and after a break."""
+        words = set()
+        for text in texts:
+            name = re.sub(r"^\W*\d{1,2}\s*", "", text.strip())
+            if TEAM_RE.match(name) and name.lower() not in NOT_A_TEAM:
+                words.update(w for w in re.findall(r"[^\W\d_]{3,}", name.lower()) if w not in NOT_A_TEAM)
+        return frozenset(words)
+
+    def _across_a_period_break(self, before, sport: str | None, texts: list[str]) -> bool:
+        """American football: the game clock was under 3:00 when the baseline was reset, the clock now is later (a new period began or time
+        passed in an ad break) and the same two teams are on screen: a score that rose across the break is an event after all (TENN-UK
+        2026-11-08 01:22: the break countdown reset the watcher and the 3-10 field goal became a baseline)."""
+        if (sport or "").strip().lower() != "american football" or before[2] is None or self._recent_clock is None:
+            return False
+        if before[2][0] > PERIOD_BREAK_CLOCK_S or self._recent_clock[0] <= before[2][0] + 2 * CLOCK_SLACK_S:
+            return False
+        return len(before[3] & self._team_words(texts)) >= 2
 
     def _stray_one(self, current: tuple[int, int], t: float) -> bool:
         """A side that is the ceiling with a '1' in front (0 -> 10, 3 -> 13, 7 -> 17: a divider bar or logo edge read as a digit) while the
@@ -622,11 +644,13 @@ class ScoreWatcher:
         if replay and not self._is_news(score):
             return False   # a replay re-shows old action (the same or an older score): not a reading at all
         self._readings += 1
+        names_now = self._team_words(texts)
         t = now if now is not None else self._readings * READING_S
         # A live reading above the ceiling by 1..MAX_RISE (neither side lower) is a goal CANDIDATE before the vote confirms it.
         self.candidate = (not replay and self._stable is not None and self._is_news(score)
                           and not (self._fired is not None and self._fired[0] == score and t - self._fired[1] < FIRED_MEMORY_S))   # not the goal just announced
         self._history.append(score)
+        self._names.append(names_now)
         left, right = _vote(p[0] for p in self._history), _vote(p[1] for p in self._history)
         if left is None or right is None:
             return False
@@ -637,7 +661,7 @@ class ScoreWatcher:
             if before is not None and t - before[1] <= RESTORE_MEMORY_S and current != before[0] and all(c <= p for c, p in zip(current, before[0])):
                 self._restore = (before[0], t)   # a baseline BELOW the score known before the reset (a digit misread): that score coming back is no goal
             rises = [n - p for n, p in zip(current, before[0])] if before is not None else []
-            if before is not None and t - before[1] <= PRE_RESET_MEMORY_S and sorted(rises)[0] == 0 and 1 <= sorted(rises)[1] <= MAX_RISE                     and self._same_game_clock(before[2], self._recent_clock):
+            if before is not None and t - before[1] <= PRE_RESET_MEMORY_S and sorted(rises)[0] == 0 and 1 <= sorted(rises)[1] <= MAX_RISE                     and (self._same_game_clock(before[2], self._recent_clock) or self._across_a_period_break(before, sport, texts)):
                 # ONE side rose by 1..MAX_RISE and the other did not move across a baseline reset (a clock jump swallowed the change), and the
                 # game clock fits the one before the reset: it is an event after all. Another game in the slot has other scores and a
                 # clock from somewhere else (Como-Roma at 90' -> Espanyol-Elche at 28': a false 0-2).
