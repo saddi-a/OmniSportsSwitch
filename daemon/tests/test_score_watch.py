@@ -790,3 +790,49 @@ def test_a_current_drive_graphic_is_not_a_score_reading():
     graphic = (["BYU", "29", "UTAH", "28", "current drive", "Yards 62", "Time 6:11", "2ND & GOAL"], [])
     assert feed(w, [graphic] * 5) == []
     assert w.score == (20, 28)
+
+
+def test_a_score_back_at_its_old_peak_after_a_lasting_misread_is_no_goal():
+    # TENN-UK 2026-11-08 01:12-01:16: a 3 read as 0 for over 120 s (the peak memory believed it), then the real 3-7 came back and fired a false +3
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 7), 0, 6)
+    _, t = run(w, board(0, 7), t, 60)            # 180 s of a misread 0-7: the drop is believed after PEAK_MEMORY_S
+    fired, t = run(w, board(3, 7), t, 6)         # the true score returns
+    assert not fired
+
+
+def test_a_real_goal_after_a_lasting_misread_still_fires():
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 7), 0, 6)
+    _, t = run(w, board(0, 7), t, 60)
+    _, t = run(w, board(3, 7), t, 6)
+    fired, t = run(w, board(3, 14), t + 20, 6)   # a real touchdown afterwards
+    assert fired
+
+
+def test_a_new_game_in_the_slot_reaching_a_lower_score_still_counts():
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 7), 0, 6)
+    _, t = run(w, board(0, 0), t, 60)            # another game took the slot
+    fired, t = run(w, board(0, 3), t, 6)
+    assert fired
+
+
+def test_the_old_score_returning_after_a_baseline_reset_on_a_misread_is_no_goal():
+    # TENN-UK 2026-11-08 01:12:05: the watcher reset (clock jump), its new baseline was a misread 0-7 (the 3 read as 0), and the true 3-7
+    # at 01:15:59 was a false +3 (replay of the log: 01:16:18 FIRED)
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 7), 0, 6)
+    w._reset(t)
+    _, t = run(w, board(0, 7), t, 60)
+    fired, t = run(w, board(3, 7), t, 6)
+    assert not fired
+
+
+def test_a_goal_after_a_reset_to_a_lower_baseline_still_fires_when_it_is_not_the_old_score():
+    w = ScoreWatcher()
+    _, t = run(w, board(3, 7), 0, 6)
+    w._reset(t)
+    _, t = run(w, board(0, 7), t, 60)
+    fired, t = run(w, board(0, 14), t, 6)
+    assert fired
