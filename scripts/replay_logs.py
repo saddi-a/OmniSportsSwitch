@@ -12,6 +12,7 @@ boxes.log only keeps (text, height, x, y) per item, so the right edge of each bo
 character); fine for the geometry rules, but check a screenshot of the window before trusting a result.
 """
 import ast
+import os
 import collections
 import pathlib
 import re
@@ -68,7 +69,7 @@ def score(logdir, tab, tile, since):
         if t != tab or i != tile or when < since:
             continue
         texts = [x["text"] for x in items]
-        fired = watcher.update(texts, find_clocks(texts), stamp(when), items)
+        fired = watcher.update(texts, find_clocks(texts), stamp(when), items, sport=os.environ.get("REPLAY_SPORT"))
         if fired or watcher.score != last:
             print(when[11:19], watcher.score, "FIRED" if fired else "")
             last = watcher.score
