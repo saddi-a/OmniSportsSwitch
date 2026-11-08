@@ -431,7 +431,7 @@ def find_score_geo(items: list[dict], clocks: list[str], sport: str | None = Non
                     continue
             between = sum(1 for it in live if not NUMBER_RE.match(it["text"].strip()) and left["x1"] <= it["x0"] and it["x1"] <= right["x0"]
                           and abs(cy(it) - cy(a)) <= 1.2 * max(ha, hb))
-            pairs.append((min(ha, hb), between, near, left, right, name_left(left, right, line_h)))
+            pairs.append((min(ha, hb), between, near, left, right, name_left(left, right, line_h), inline(left, right, line_h)))
     # two numbers stacked in a column, each right beside its own team (ATM 2 / RMA 1)
     for i, a in enumerate(numbers if profile.stacked_scores else []):
         for b in numbers[i + 1:]:
@@ -452,14 +452,16 @@ def find_score_geo(items: list[dict], clocks: list[str], sport: str | None = Non
                 key = (min(ha, hb), 1)
                 if best_key is None or key > best_key:
                     best, best_key = (int(top["text"]), int(bottom["text"])), key
-    if any(p[5] for p in pairs):
+    if any(p[6] for p in pairs):
+        pairs = [p for p in pairs if p[6]]   # a team name at each OUTER end (NBC college: MIAMI 0 ... 3 NOTRE DAME) beats a number that merely follows a name: a crest read as a digit after the right name looked like its score
+    elif any(p[5] for p in pairs):
         pairs = [p for p in pairs if p[5]]   # each number with its own team name before it (PHI 14  JAX 7) beats a number from elsewhere on the row
     if pairs:
         # The scores are the biggest pair. Among pairs about as big as the biggest, the one with the centre panel
         # (down and distance, clock) between its numbers wins: a team logo read as a digit ("0" for an O) forms a pair
         # with the real score next to it, with nothing between them.
         biggest = max(p[0] for p in pairs)
-        size, _, near, left, right, _ = max((p for p in pairs if p[0] >= 0.85 * biggest), key=lambda p: (p[1], p[0], p[2]))
+        size, _, near, left, right, *_ = max((p for p in pairs if p[0] >= 0.85 * biggest), key=lambda p: (p[1], p[0], p[2]))
         key = (size, near)
         if best_key is None or key > best_key:
             best, best_key = (int(left["text"]), int(right["text"])), key

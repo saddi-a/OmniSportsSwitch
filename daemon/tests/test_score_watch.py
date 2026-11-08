@@ -856,3 +856,23 @@ def test_a_leading_one_that_every_reading_agrees_on_still_counts():
     _, t = run(w, board(7, 0), 0, 6)
     fired, t = run(w, board(17, 0), t, 6)          # a real 7 -> 17 (two scores while the bug was hidden), read steadily
     assert fired
+
+
+# ---- NBC college bug (Fighting Irish TV, Notre Dame-Miami 2026-11-08): the scores sit BETWEEN the names, a crest after the right name was read as a digit ----
+
+ND_BUG_LOGO_AS_4 = boxes([("MIAMI", 40, 847, 1119), ("8-0", 30, 910, 1156), ("0", 78, 1078, 1110), ("5.02", 48, 1211, 1138), ("26", 32, 1284, 1184),
+                          ("3", 70, 1387, 1117), ("DAME", 40, 1663, 1119), ("4", 102, 1780, 1096), ("Ist & 10", 38, 1539, 1213)])
+ND_BUG_LOGO_AS_49 = boxes([("U", 82, 650, 1104), ("MIAMI", 40, 847, 1119), ("11 NOTRE DAME", 40, 1513, 1119), ("0", 72, 1092, 1114), ("3", 71, 1386, 1113),
+                           ("49", 102, 1782, 1096), ("4:56", 38, 1215, 1144), ("8-0", 30, 910, 1156), ("7-1", 32, 1552, 1154), ("40", 32, 1286, 1184),
+                           ("Ist & 10", 38, 1539, 1213)])
+
+
+def test_a_crest_read_as_a_digit_after_the_right_name_is_not_its_score():
+    assert find_score_geo(ND_BUG_LOGO_AS_49, ["4:56"]) == (0, 3)
+    assert find_score_geo(ND_BUG_LOGO_AS_4, ["5:02"]) == (0, 3)
+
+
+def test_name_then_score_layout_still_reads_when_no_pair_sits_between_the_names():
+    # "PHI 14 JAX 7": each number right after its own name, no name after the right number: the old rule still applies
+    row = boxes([("PHI", 40, 100, 100), ("14", 80, 200, 90), ("JAX", 40, 400, 100), ("7", 80, 500, 90), ("3rd & 4", 36, 700, 110)])
+    assert find_score_geo(row, []) == (14, 7)
