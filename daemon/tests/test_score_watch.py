@@ -851,10 +851,20 @@ def test_a_stray_leading_one_is_no_touchdown_and_does_not_raise_the_ceiling():
     assert fired
 
 
-def test_a_leading_one_that_every_reading_agrees_on_still_counts():
+def test_a_steady_stray_one_for_under_90_seconds_is_no_goal():
+    # Georgia-Ole Miss 2026-11-08 02:04:23-02:05:10: the 7 was read as '17' on every frame for 45 s (the divider edge glued to the digit); the feed said 7
     w = ScoreWatcher()
     _, t = run(w, board(7, 0), 0, 6)
-    fired, t = run(w, board(17, 0), t, 6)          # a real 7 -> 17 (two scores while the bug was hidden), read steadily
+    fired, t = run(w, board(17, 0), t, 15)         # 45 s of the same wrong reading
+    assert not fired
+    fired, t = run(w, board(7, 0), t, 6)
+    assert not fired
+
+
+def test_a_leading_one_held_for_over_90_seconds_still_counts():
+    w = ScoreWatcher()
+    _, t = run(w, board(7, 0), 0, 6)
+    fired, t = run(w, board(17, 0), t, 40)         # two real scores while the bug was hidden, then read steadily for 2 minutes
     assert fired
 
 

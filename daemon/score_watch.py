@@ -69,6 +69,7 @@ HISTORY = 5          # readings that vote
 NEEDED = 3           # votes a value needs to count
 PRE_RESET_MEMORY_S = 300   # the score known before a baseline reset is remembered this long: a baseline that rose across it is an event
 QUARTER_END_S = 10        # a clock jump to this many seconds or less of an American football quarter is the quarter ending, not a rewind
+STRAY_ONE_HOLD_S = 90   # a '1'-prefixed score (7 -> 17: the divider edge glued to the digit) counts only after it has been read this long (2026-11-08 02:04: 45 s of a steady '17')
 RESTORE_MEMORY_S = 600  # after a believed drop, the score returning EXACTLY to the old peak is the misread ending, not a goal (TENN-UK 2026-11-08: a 3 read as 0 for 4 min)
 PEAK_MEMORY_S = 120  # a score only goes up: a lower reading is a misread (a logo read as 0), unless it lasts this long
 PEAK_HOLD_S = 25     # a score above the ceiling becomes the new ceiling only after it has held this long
@@ -500,6 +501,7 @@ class ScoreWatcher:
         self._below_since: float | None = None          # since when the vote has been under the peak
         self._above_since: float | None = None          # since when the vote has been above the peak
         self._restore: tuple[tuple[int, int], float] | None = None   # (old peak, when) after a believed drop
+        self._stray: tuple[tuple[int, int], float] | None = None     # (score with a '1' in front of the ceiling, since when)
         self._fired: tuple[tuple[int, int], float] | None = None   # the last score announced and when
         self._before_reset: tuple[tuple[int, int], float, tuple[int, float] | None] | None = None   # ceiling when the baseline was last reset, when, and the game clock then
         self._recent_clock: tuple[int, float] | None = None   # the latest game clock read at all (even a jumped one) and when
@@ -522,16 +524,19 @@ class ScoreWatcher:
             # the ceiling only rises after a score has held 25 s, so the voted score counts too
             self._before_reset = (tuple(max(p, s) for p, s in zip(self._peak, self._stable or self._peak)), now, self._clock)
         self._history.clear()
-        self._stable = self._peak = self._below_since = self._above_since = self._fired = self._restore = None
+        self._stable = self._peak = self._below_since = self._above_since = self._fired = self._restore = self._stray = None
 
-    def _stray_one(self, current: tuple[int, int]) -> bool:
+    def _stray_one(self, current: tuple[int, int], t: float) -> bool:
         """A side that is the ceiling with a '1' in front (0 -> 10, 3 -> 13, 7 -> 17: a divider bar or logo edge read as a digit) while the
         recent readings still disagree about it. It is always a rise of exactly 10, which no single play scores; Georgia-Ole Miss 2026-11-08
-        read a 0 as '10' in 3 frames of 7 and fired a false +10. It counts only when every reading of the vote agrees."""
-        for side, (n, p) in enumerate(zip(current, self._peak)):
-            if p < 10 and n == int("1" + str(p)) and any(h[side] != n for h in self._history):
-                return True
-        return False
+        read a 0 as '10' in 3 frames of 7 and fired a false +10. It counts only after `STRAY_ONE_HOLD_S` of agreeing readings (the 02:04 '17' stayed 45 s: agreement alone was not enough)."""
+        sides = [side for side, (n, p) in enumerate(zip(current, self._peak)) if p < 10 and n == int("1" + str(p))]
+        if not sides:
+            self._stray = None
+            return False
+        if self._stray is None or self._stray[0] != current:
+            self._stray = (current, t)
+        return t - self._stray[1] < STRAY_ONE_HOLD_S or any(h[side] != current[side] for side in sides for h in self._history)
 
     def _event_size(self, current: tuple[int, int], previous: tuple[int, int], t: float, sport: str | None) -> float:
         """How big a score change is, 0..1. Only American football has point tiers: a touchdown (4+ points) is a full event,
@@ -658,7 +663,7 @@ class ScoreWatcher:
         # Above the ceiling: an event, but the ceiling rises only once the score has held for a while, so a false
         # high reading (a graphic, a record) cannot hide the real goal that follows it.
         self._below_since = None
-        if self._stray_one(current):
+        if self._stray_one(current, t):
             self._stable = current
             return False   # not an event and not a new ceiling until the readings agree
         fired = False
