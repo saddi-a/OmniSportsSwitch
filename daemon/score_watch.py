@@ -522,6 +522,15 @@ class ScoreWatcher:
         self._history.clear()
         self._stable = self._peak = self._below_since = self._above_since = self._fired = self._restore = None
 
+    def _stray_one(self, current: tuple[int, int]) -> bool:
+        """A side that is the ceiling with a '1' in front (0 -> 10, 3 -> 13, 7 -> 17: a divider bar or logo edge read as a digit) while the
+        recent readings still disagree about it. It is always a rise of exactly 10, which no single play scores; Georgia-Ole Miss 2026-11-08
+        read a 0 as '10' in 3 frames of 7 and fired a false +10. It counts only when every reading of the vote agrees."""
+        for side, (n, p) in enumerate(zip(current, self._peak)):
+            if p < 10 and n == int("1" + str(p)) and any(h[side] != n for h in self._history):
+                return True
+        return False
+
     def _event_size(self, current: tuple[int, int], previous: tuple[int, int], t: float, sport: str | None) -> float:
         """How big a score change is, 0..1. Only American football has point tiers: a touchdown (4+ points) is a full event,
         a field goal / safety (2 or 3) and a lone extra point (1) are `field_goal_strength`, and an extra point or two-point
@@ -647,6 +656,9 @@ class ScoreWatcher:
         # Above the ceiling: an event, but the ceiling rises only once the score has held for a while, so a false
         # high reading (a graphic, a record) cannot hide the real goal that follows it.
         self._below_since = None
+        if self._stray_one(current):
+            self._stable = current
+            return False   # not an event and not a new ceiling until the readings agree
         fired = False
         previous = self._stable
         if self._above_since is None or current != self._stable:

@@ -836,3 +836,23 @@ def test_a_goal_after_a_reset_to_a_lower_baseline_still_fires_when_it_is_not_the
     _, t = run(w, board(0, 7), t, 60)
     fired, t = run(w, board(0, 14), t, 6)
     assert fired
+
+
+def test_a_stray_leading_one_is_no_touchdown_and_does_not_raise_the_ceiling():
+    # Georgia-Ole Miss 2026-11-08 01:47: the left 0 was read as '10' in 3 of 7 frames (a vote of 3 in 5), fired a false +10 and raised the ceiling
+    w = ScoreWatcher()
+    _, t = run(w, board(0, 0), 0, 6)
+    fired = False
+    for a in (10, 10, 0, 10, 10, 0, 10, 10, 0):
+        f, t = run(w, board(a, 0), t, 1)
+        fired |= f
+    assert not fired
+    fired, t = run(w, board(0, 6), t + 20, 6)      # the real touchdown is still seen afterwards
+    assert fired
+
+
+def test_a_leading_one_that_every_reading_agrees_on_still_counts():
+    w = ScoreWatcher()
+    _, t = run(w, board(7, 0), 0, 6)
+    fired, t = run(w, board(17, 0), t, 6)          # a real 7 -> 17 (two scores while the bug was hidden), read steadily
+    assert fired
