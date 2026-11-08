@@ -69,6 +69,7 @@ HISTORY = 5          # readings that vote
 NEEDED = 3           # votes a value needs to count
 PRE_RESET_MEMORY_S = 300   # the score known before a baseline reset is remembered this long: a baseline that rose across it is an event
 QUARTER_END_S = 10        # a clock jump to this many seconds or less of an American football quarter is the quarter ending, not a rewind
+RESTORE_MEMORY_S = 600  # after a believed drop, the score returning EXACTLY to the old peak is the misread ending, not a goal (TENN-UK 2026-11-08: a 3 read as 0 for 4 min)
 PEAK_MEMORY_S = 120  # a score only goes up: a lower reading is a misread (a logo read as 0), unless it lasts this long
 PEAK_HOLD_S = 25     # a score above the ceiling becomes the new ceiling only after it has held this long
 FIRED_MEMORY_S = 60   # the same score is not announced twice inside this time (a misread flicker around a goal)
@@ -496,6 +497,7 @@ class ScoreWatcher:
         self._peak: tuple[int, int] | None = None      # highest value seen per side
         self._below_since: float | None = None          # since when the vote has been under the peak
         self._above_since: float | None = None          # since when the vote has been above the peak
+        self._restore: tuple[tuple[int, int], float] | None = None   # (old peak, when) after a believed drop
         self._fired: tuple[tuple[int, int], float] | None = None   # the last score announced and when
         self._before_reset: tuple[tuple[int, int], float, tuple[int, float] | None] | None = None   # ceiling when the baseline was last reset, when, and the game clock then
         self._recent_clock: tuple[int, float] | None = None   # the latest game clock read at all (even a jumped one) and when
@@ -518,7 +520,7 @@ class ScoreWatcher:
             # the ceiling only rises after a score has held 25 s, so the voted score counts too
             self._before_reset = (tuple(max(p, s) for p, s in zip(self._peak, self._stable or self._peak)), now, self._clock)
         self._history.clear()
-        self._stable = self._peak = self._below_since = self._above_since = self._fired = None
+        self._stable = self._peak = self._below_since = self._above_since = self._fired = self._restore = None
 
     def _event_size(self, current: tuple[int, int], previous: tuple[int, int], t: float, sport: str | None) -> float:
         """How big a score change is, 0..1. Only American football has point tiers: a touchdown (4+ points) is a full event,
@@ -634,6 +636,7 @@ class ScoreWatcher:
             if current != self._peak:
                 self._below_since = t if self._below_since is None else self._below_since
                 if t - self._below_since >= PEAK_MEMORY_S:
+                    self._restore = (self._peak, t)
                     self._peak, self._below_since = current, None
             else:
                 self._below_since = None
@@ -647,6 +650,8 @@ class ScoreWatcher:
         if self._above_since is None or current != self._stable:
             self._above_since = t
             fired = any(1 <= n - o <= MAX_RISE for o, n in zip(self._peak, current)) and all(n >= o for o, n in zip(self._stable, current))
+            if fired and self._restore is not None and current == self._restore[0] and t - self._restore[1] <= RESTORE_MEMORY_S:
+                fired = False   # the old score is back after a misread that outlasted the peak memory: nothing happened
             if fired and self._fired is not None and self._fired[0] == current and t - self._fired[1] < FIRED_MEMORY_S:
                 fired = False
             if fired:
