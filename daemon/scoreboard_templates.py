@@ -75,7 +75,7 @@ class Template:
     read: Callable[[list[dict], list[str]], "tuple[int, int] | None"]
 
 
-BEIN_LOOSE_RE = re.compile(r"^['`.\s]*(?:\d{1,2}\s?-\s?\d{1,2})?([A-Za-z]{2,3})(?:\s?[|!Il/\]\[}{)(E]\s?|\s)?(\d{1,3})?$")   # "Hou| 24", "JAX 20", "4-1JAX20", "1-4HOU" (a code, maybe a record glued in front, maybe its score)
+BEIN_LOOSE_RE = re.compile(r"^['`.\s]*(?:\d{1,2}\s?-\s?\d{1,2}\s?)?([A-Za-z]{2,3})(?:\s?[|!Il/\]\[}{)(E]\s?|\s)?(\d{1,3})?(?:\s+[1-4]?\s?(?:ST|ND|RD|TH|st|nd|rd|th)\b.*)?$")   # "Hou| 24", "JAX 20", "4-1JAX20", "1-4HOU" (a code, maybe a record glued in front or followed by a space, maybe its score, maybe the quarter and clock glued behind it)
 BEIN_NOT_CODES = frozenset({"NFL", "LIVE", "WEEK", "TOP", "MAX", "BEIN", "QTR", "TV", "HD", "FLAG", "UEL", "UF", "UFL"})
 BEIN_LOOSE_ROW = 0.6            # beIN bug, loose form: the two team codes lie on one row (centres within this many heights)
 
